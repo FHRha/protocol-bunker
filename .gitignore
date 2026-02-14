@@ -3,6 +3,8 @@ node_modules/
 
 .tmp-portable-unzip/
 logs/
+.tmp_*
+*.tmp
 
 # build outputs
 **/dist/

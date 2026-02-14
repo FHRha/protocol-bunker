@@ -1,5 +1,6 @@
 {
   "name": "bunker-browser",
+  "version": "0.1.1",
   "private": true,
   "packageManager": "pnpm@9.12.0",
   "workspaces": [
@@ -16,6 +17,8 @@
     "build:server": "pnpm -C server build",
     "pack:win": "node scripts/pack-win-portable.mjs",
     "pack:linux": "node scripts/pack-linux-portable.mjs",
+    "build:win-exe:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build/build-launcher.ps1",
+    "pack:win-exe": "powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1",
     "start": "node server/dist/index.js",
     "clean": "node scripts/clean.mjs"
   },

@@ -1,5 +1,12 @@
 ﻿import { useEffect, useState } from "react";
-import type { GameSettings, ManualRulesConfig, RoomState } from "@bunker/shared";
+import {
+  LINK_PATHS,
+  buildLinkSet,
+  normalizeBase,
+  type GameSettings,
+  type ManualRulesConfig,
+  type RoomState,
+} from "@bunker/shared";
 import { ru } from "../i18n/ru";
 import { API_BASE } from "../config";
 import EyeIcon from "../components/EyeIcon";
@@ -24,9 +31,12 @@ interface LobbyPageProps {
 }
 
 interface OverlayLinksPayload {
-  overlayViewUrl: string;
-  overlayControlUrl: string;
-  overlayControlStateUrl: string;
+  spectatorUrlLan: string;
+  spectatorUrlExternal: string;
+  overlayViewUrlLan: string;
+  overlayViewUrlExternal: string;
+  overlayControlUrlLan: string;
+  overlayControlUrlExternal: string;
 }
 
 const GITHUB_URL = "https://github.com/FHRha";
@@ -54,23 +64,6 @@ function fallbackCopy(value: string): boolean {
 
 function maskValue(value: string, hidden: boolean): string {
   return hidden ? ru.hiddenValue : value;
-}
-
-function encodeBase64UrlUtf8(value: string): string {
-  const utf8 = encodeURIComponent(value).replace(
-    /%([0-9A-F]{2})/g,
-    (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))
-  );
-  return btoa(utf8).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function buildSpectatorUrl(overlayViewUrl: string): string {
-  const encodedViewSrc = encodeBase64UrlUtf8(overlayViewUrl);
-  const hash = `v=${encodedViewSrc}`;
-  if (typeof window === "undefined") {
-    return `/spectate#${hash}`;
-  }
-  return `${window.location.origin}/spectate#${hash}`;
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -220,7 +213,7 @@ export default function LobbyPage({
 }: LobbyPageProps) {
   const [showOverlayView, setShowOverlayView] = useState(false);
   const [showOverlayControl, setShowOverlayControl] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<"overlayView" | "overlayControl" | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [overlayLinks, setOverlayLinks] = useState<OverlayLinksPayload | null>(null);
   const [overlayLinksLoading, setOverlayLinksLoading] = useState(false);
   const [overlayLinksError, setOverlayLinksError] = useState<string | null>(null);
@@ -279,7 +272,7 @@ export default function LobbyPage({
 
     const loadLinks = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/overlay-links`, {
+        const response = await fetch(`${API_BASE}${LINK_PATHS.apiOverlayLinks}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -294,10 +287,31 @@ export default function LobbyPage({
           throw new Error(message);
         }
         if (cancelled) return;
+        const raw = payload as Record<string, unknown>;
+        const lanBase = normalizeBase(String(raw.lanBase ?? ""));
+        const publicBase = normalizeBase(raw.publicBase == null ? "" : String(raw.publicBase));
+        const overlayViewToken = String(raw.overlayViewToken ?? "");
+        const overlayControlToken = String(raw.overlayControlToken ?? "");
+        const apiRoomCode = String(raw.roomCode ?? roomCode).trim().toUpperCase();
+
+        if (!lanBase || !overlayViewToken || !overlayControlToken || !apiRoomCode) {
+          throw new Error(ru.obsLinksUnavailable);
+        }
+
+        const built = buildLinkSet({
+          lanBase,
+          publicBase,
+          roomCode: apiRoomCode,
+          overlayViewToken,
+          overlayControlToken,
+        });
         setOverlayLinks({
-          overlayViewUrl: String(payload.overlayViewUrl ?? ""),
-          overlayControlUrl: String(payload.overlayControlUrl ?? ""),
-          overlayControlStateUrl: String(payload.overlayControlStateUrl ?? ""),
+          spectatorUrlLan: built.viewerUrl.lan,
+          spectatorUrlExternal: built.viewerUrl.public ?? "",
+          overlayViewUrlLan: built.overlayViewUrl.lan,
+          overlayViewUrlExternal: built.overlayViewUrl.public ?? "",
+          overlayControlUrlLan: built.overlayControlUrl.lan,
+          overlayControlUrlExternal: built.overlayControlUrl.public ?? "",
         });
       } catch (error) {
         if (cancelled) return;
@@ -323,7 +337,7 @@ export default function LobbyPage({
     return () => window.clearTimeout(timer);
   }, [copiedKey]);
 
-  const copyText = async (value: string, key: "overlayView" | "overlayControl") => {
+  const copyText = async (value: string, key: string) => {
     let copied = false;
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       try {
@@ -354,8 +368,13 @@ export default function LobbyPage({
 
   const overlayViewHidden = streamerMode && !showOverlayView;
   const overlayControlHidden = streamerMode && !showOverlayControl;
-  const spectatorUrl = overlayLinks?.overlayViewUrl ? buildSpectatorUrl(overlayLinks.overlayViewUrl) : "";
-  const copyLabel = (key: "overlayView" | "overlayControl") =>
+  const spectatorUrlLan = overlayLinks?.spectatorUrlLan ?? "";
+  const spectatorUrlExternal = overlayLinks?.spectatorUrlExternal ?? "";
+  const overlayViewUrlLan = overlayLinks?.overlayViewUrlLan ?? "";
+  const overlayViewUrlExternal = overlayLinks?.overlayViewUrlExternal ?? "";
+  const overlayControlUrlLan = overlayLinks?.overlayControlUrlLan ?? "";
+  const overlayControlUrlExternal = overlayLinks?.overlayControlUrlExternal ?? "";
+  const copyLabel = (key: string) =>
     copiedKey === key ? ru.copiedButton : ru.copyButton;
 
   const settings = draft ?? roomState.settings;
@@ -980,9 +999,9 @@ export default function LobbyPage({
           ) : null}
         </div>
         {canControl ? (
-          <section className="lobbyCard spectatorCard">
+          <section className="lobbyCard lobbyObsCard obsCard">
             <div className="lobbyCardHeader">
-              <h3 className="lobbyCardTitle">{ru.spectatorLinkTitle}</h3>
+              <h3 className="lobbyCardTitle">{ru.obsLinksTitle}</h3>
             </div>
             <div className="lobbyCardBody">
               <div className="muted">{ru.spectatorLinkHint}</div>
@@ -991,107 +1010,252 @@ export default function LobbyPage({
                 <div className="muted">{overlayLinksError || ru.obsLinksUnavailable}</div>
               ) : null}
               {!overlayLinksLoading && overlayLinks ? (
-                <div className="obs-link-row">
-                  <div className="obs-link-main">
-                    <div className="obs-link-label">Зрительский стол (read-only)</div>
-                    <div className="secret-value obs-link-value" title={spectatorUrl}>
-                      {spectatorUrl}
+                <>
+                  <section className="linksSection">
+                    <h4 className="linksSectionTitle">{ru.spectatorLinkTitle}</h4>
+                    <div className="obs-links-list">
+                      <div className="obs-link-row">
+                        <div className="obs-link-main">
+                          <div className="obs-link-label">LAN</div>
+                          <div className="secret-value obs-link-value" title={spectatorUrlLan || ru.obsLinksUnavailable}>
+                            {spectatorUrlLan || "—"}
+                          </div>
+                        </div>
+                        <div className="secret-actions">
+                          <button
+                            type="button"
+                            className="ghost button-small"
+                            disabled={!spectatorUrlLan}
+                            onClick={() =>
+                              spectatorUrlLan && window.open(spectatorUrlLan, "_blank", "noopener,noreferrer")
+                            }
+                          >
+                            {ru.openButton}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost button-small"
+                            disabled={!spectatorUrlLan}
+                            onClick={() => copyText(spectatorUrlLan, "spectatorLan")}
+                          >
+                            {copyLabel("spectatorLan")}
+                          </button>
+                        </div>
+                      </div>
+                      {spectatorUrlExternal ? (
+                        <div className="obs-link-row">
+                          <div className="obs-link-main">
+                            <div className="obs-link-label">Внешняя</div>
+                            <div className="secret-value obs-link-value" title={spectatorUrlExternal}>
+                              {spectatorUrlExternal}
+                            </div>
+                          </div>
+                          <div className="secret-actions">
+                            <button
+                              type="button"
+                              className="ghost button-small"
+                              onClick={() =>
+                                spectatorUrlExternal && window.open(spectatorUrlExternal, "_blank", "noopener,noreferrer")
+                              }
+                            >
+                              {ru.openButton}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost button-small"
+                              onClick={() => copyText(spectatorUrlExternal, "spectatorExternal")}
+                            >
+                              {copyLabel("spectatorExternal")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="muted linksSectionHint">{ru.externalLinksHint}</div>
+                      )}
                     </div>
-                  </div>
-                  <div className="secret-actions">
-                    <button
-                      type="button"
-                      className="ghost button-small"
-                      onClick={() => window.open(spectatorUrl, "_blank", "noopener,noreferrer")}
-                    >
-                      {ru.openButton}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost button-small"
-                      onClick={() => copyText(spectatorUrl, "overlayView")}
-                    >
-                      {copyLabel("overlayView")}
-                    </button>
-                  </div>
-                </div>
+                  </section>
+
+                  <section className="linksSection">
+                    <h4 className="linksSectionTitle">OBS Overlay (просмотр)</h4>
+                    <div className="obs-links-list">
+                      <div className="obs-link-row">
+                        <div className="obs-link-main">
+                          <div className="obs-link-label">LAN</div>
+                          <div
+                            className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
+                            title={overlayViewHidden ? ru.showSecret : overlayViewUrlLan}
+                          >
+                            {maskValue(overlayViewUrlLan || "—", overlayViewHidden)}
+                          </div>
+                        </div>
+                        <div className="secret-actions">
+                          <button
+                            type="button"
+                            className="ghost iconButton"
+                            aria-label={overlayViewHidden ? ru.showSecret : ru.hideSecret}
+                            title={overlayViewHidden ? ru.showSecret : ru.hideSecret}
+                            onClick={() => setShowOverlayView((prev) => !prev)}
+                          >
+                            <EyeIcon open={!overlayViewHidden} />
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost button-small"
+                            disabled={!overlayViewUrlLan}
+                            onClick={() =>
+                              overlayViewUrlLan && window.open(overlayViewUrlLan, "_blank", "noopener,noreferrer")
+                            }
+                          >
+                            {ru.openButton}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost button-small"
+                            disabled={!overlayViewUrlLan}
+                            onClick={() => copyText(overlayViewUrlLan, "overlayViewLan")}
+                          >
+                            {copyLabel("overlayViewLan")}
+                          </button>
+                        </div>
+                      </div>
+                      {overlayViewUrlExternal ? (
+                        <div className="obs-link-row">
+                          <div className="obs-link-main">
+                            <div className="obs-link-label">Внешняя</div>
+                            <div
+                              className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
+                              title={overlayViewHidden ? ru.showSecret : overlayViewUrlExternal}
+                            >
+                              {maskValue(overlayViewUrlExternal || "—", overlayViewHidden)}
+                            </div>
+                          </div>
+                          <div className="secret-actions">
+                            <button
+                              type="button"
+                              className="ghost iconButton"
+                              aria-label={overlayViewHidden ? ru.showSecret : ru.hideSecret}
+                              title={overlayViewHidden ? ru.showSecret : ru.hideSecret}
+                              onClick={() => setShowOverlayView((prev) => !prev)}
+                            >
+                              <EyeIcon open={!overlayViewHidden} />
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost button-small"
+                              onClick={() =>
+                                overlayViewUrlExternal && window.open(overlayViewUrlExternal, "_blank", "noopener,noreferrer")
+                              }
+                            >
+                              {ru.openButton}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost button-small"
+                              onClick={() => copyText(overlayViewUrlExternal, "overlayViewExternal")}
+                            >
+                              {copyLabel("overlayViewExternal")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="muted linksSectionHint">{ru.externalLinksHint}</div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="linksSection">
+                    <h4 className="linksSectionTitle">OBS Overlay (управление)</h4>
+                    <div className="obs-links-list">
+                      <div className="obs-link-row">
+                        <div className="obs-link-main">
+                          <div className="obs-link-label">LAN</div>
+                          <div
+                            className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
+                            title={overlayControlHidden ? ru.showSecret : overlayControlUrlLan}
+                          >
+                            {maskValue(overlayControlUrlLan || "—", overlayControlHidden)}
+                          </div>
+                        </div>
+                        <div className="secret-actions">
+                          <button
+                            type="button"
+                            className="ghost iconButton"
+                            aria-label={overlayControlHidden ? ru.showSecret : ru.hideSecret}
+                            title={overlayControlHidden ? ru.showSecret : ru.hideSecret}
+                            onClick={() => setShowOverlayControl((prev) => !prev)}
+                          >
+                            <EyeIcon open={!overlayControlHidden} />
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost button-small"
+                            disabled={!overlayControlUrlLan}
+                            onClick={() =>
+                              overlayControlUrlLan &&
+                              window.open(overlayControlUrlLan, "_blank", "noopener,noreferrer")
+                            }
+                          >
+                            {ru.openButton}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost button-small"
+                            disabled={!overlayControlUrlLan}
+                            onClick={() => copyText(overlayControlUrlLan, "overlayControlLan")}
+                          >
+                            {copyLabel("overlayControlLan")}
+                          </button>
+                        </div>
+                      </div>
+                      {overlayControlUrlExternal ? (
+                        <div className="obs-link-row">
+                          <div className="obs-link-main">
+                            <div className="obs-link-label">Внешняя</div>
+                            <div
+                              className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
+                              title={overlayControlHidden ? ru.showSecret : overlayControlUrlExternal}
+                            >
+                              {maskValue(overlayControlUrlExternal || "—", overlayControlHidden)}
+                            </div>
+                          </div>
+                          <div className="secret-actions">
+                            <button
+                              type="button"
+                              className="ghost iconButton"
+                              aria-label={overlayControlHidden ? ru.showSecret : ru.hideSecret}
+                              title={overlayControlHidden ? ru.showSecret : ru.hideSecret}
+                              onClick={() => setShowOverlayControl((prev) => !prev)}
+                            >
+                              <EyeIcon open={!overlayControlHidden} />
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost button-small"
+                              onClick={() =>
+                                overlayControlUrlExternal &&
+                                window.open(overlayControlUrlExternal, "_blank", "noopener,noreferrer")
+                              }
+                            >
+                              {ru.openButton}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost button-small"
+                              onClick={() => copyText(overlayControlUrlExternal, "overlayControlExternal")}
+                            >
+                              {copyLabel("overlayControlExternal")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="muted linksSectionHint">{ru.externalLinksHint}</div>
+                      )}
+                    </div>
+                  </section>
+
+                </>
               ) : null}
             </div>
-          </section>
-        ) : null}
-        {canControl && streamerMode ? (
-          <section className="lobbyCard lobbyObsCard obsCard">
-          <div className="lobbyCardHeader">
-            <h3 className="lobbyCardTitle">{ru.obsLinksTitle}</h3>
-          </div>
-          <div className="lobbyCardBody">
-            {overlayLinksLoading ? <div className="muted">{ru.obsLinksLoading}</div> : null}
-            {!overlayLinksLoading && overlayLinksError ? (
-              <div className="muted">{overlayLinksError || ru.obsLinksUnavailable}</div>
-            ) : null}
-            {!overlayLinksLoading && overlayLinks ? (
-              <div className="obs-links-list">
-                <div className="obs-link-row">
-                  <div className="obs-link-main">
-                    <div className="obs-link-label">{ru.overlayViewLinkLabel}</div>
-                    <div
-                      className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
-                      title={overlayViewHidden ? ru.showSecret : overlayLinks.overlayViewUrl}
-                    >
-                      {maskValue(overlayLinks.overlayViewUrl, overlayViewHidden)}
-                    </div>
-                  </div>
-                  <div className="secret-actions">
-                    <button
-                      type="button"
-                      className="ghost iconButton"
-                      aria-label={overlayViewHidden ? ru.showSecret : ru.hideSecret}
-                      title={overlayViewHidden ? ru.showSecret : ru.hideSecret}
-                      onClick={() => setShowOverlayView((prev) => !prev)}
-                    >
-                      <EyeIcon open={!overlayViewHidden} />
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost button-small"
-                      onClick={() => copyText(overlayLinks.overlayViewUrl, "overlayView")}
-                    >
-                      {copyLabel("overlayView")}
-                    </button>
-                  </div>
-                </div>
-                <div className="obs-link-row">
-                  <div className="obs-link-main">
-                    <div className="obs-link-label">{ru.overlayControlLinkLabel}</div>
-                    <div
-                      className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
-                      title={overlayControlHidden ? ru.showSecret : overlayLinks.overlayControlUrl}
-                    >
-                      {maskValue(overlayLinks.overlayControlUrl, overlayControlHidden)}
-                    </div>
-                  </div>
-                  <div className="secret-actions">
-                    <button
-                      type="button"
-                      className="ghost iconButton"
-                      aria-label={overlayControlHidden ? ru.showSecret : ru.hideSecret}
-                      title={overlayControlHidden ? ru.showSecret : ru.hideSecret}
-                      onClick={() => setShowOverlayControl((prev) => !prev)}
-                    >
-                      <EyeIcon open={!overlayControlHidden} />
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost button-small"
-                      onClick={() => copyText(overlayLinks.overlayControlUrl, "overlayControl")}
-                    >
-                      {copyLabel("overlayControl")}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
           </section>
         ) : null}
       </div>

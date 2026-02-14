@@ -396,6 +396,22 @@ body {
   gap: 8px;
 }
 
+.linksSection {
+  display: grid;
+  gap: 8px;
+}
+
+.linksSectionTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.linksSectionHint {
+  font-size: 12px;
+}
+
 .obs-link-row {
   display: flex;
   gap: 8px;

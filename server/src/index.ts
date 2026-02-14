@@ -5,6 +5,7 @@ import type { AddressInfo, Socket } from "node:net";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
+import os from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 import {
   ClientMessageSchema,
@@ -27,7 +28,9 @@ import {
   type Role,
   type PublicPlayerView,
   type WorldState30,
+  LINK_PATHS,
   OverlayOverridesSchema,
+  buildLinkSet,
   getRulesetForPlayerCount,
 } from "@bunker/shared";
 import { buildAssetCatalog } from "./catalog.js";
@@ -132,6 +135,8 @@ const MIN_CLASSIC_PLAYERS = 4;
 const MAX_CLASSIC_PLAYERS = 16;
 const TRUST_PROXY = envFlag(process.env.TRUST_PROXY);
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN;
+const PUBLIC_HOST = process.env.PUBLIC_HOST ?? process.env.BUNKER_PUBLIC_HOST;
+const DOMAIN = process.env.DOMAIN ?? process.env.BUNKER_DOMAIN;
 const SERVE_CLIENT = process.env.BUNKER_SERVE_CLIENT !== "false";
 const OVERLAY_MAX_LINE_LEN = 120;
 const OVERLAY_MAX_CATA_LEN = 600;
@@ -144,6 +149,14 @@ const MANUAL_MAX_VOTES_PER_ROUND = 9;
 const MANUAL_MIN_TARGET_REVEALS = 5;
 const MANUAL_MAX_TARGET_REVEALS = 7;
 const MANUAL_DEFAULT_TARGET_REVEALS = 7;
+const WAN_LOOKUP_TIMEOUT_MS = 2800;
+const WAN_LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000;
+
+let wanLookupCacheKey = "";
+let wanLookupCacheIp: string | null = null;
+let wanLookupCacheExpiresAt = 0;
+let wanLookupInFlight: Promise<string | null> | null = null;
+let publicBaseLogSignature = "";
 
 function envFlag(value: string | undefined): boolean {
   if (!value) return false;
@@ -180,34 +193,346 @@ function paint(text: string, ...styles: Array<keyof typeof ANSI>) {
   return `${prefix}${text}${ANSI.reset}`;
 }
 
+function isPrivateLanIp(ip: string): boolean {
+  return (
+    ip.startsWith("10.") ||
+    ip.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)
+  );
+}
+
+function selectLanIp(): string {
+  const blockedTokens = [
+    "nekobox",
+    "vpn",
+    "wintun",
+    "wireguard",
+    "tun",
+    "tap",
+    "openvpn",
+    "clash",
+    "warp",
+    "vethernet",
+    "hyper-v",
+    "vmware",
+    "virtual",
+    "loopback",
+    "docker",
+    "podman",
+    "wsl",
+    "tailscale",
+    "zerotier",
+    "hamachi",
+    "isatap",
+    "teredo",
+  ];
+
+  let bestIp = "127.0.0.1";
+  let bestScore = -1;
+  const interfaces = os.networkInterfaces();
+
+  for (const [name, addresses] of Object.entries(interfaces)) {
+    const ifaceAddresses = (addresses ?? []) as Array<{
+      family: string | number;
+      internal: boolean;
+      address: string;
+    }>;
+    const loweredName = name.toLowerCase();
+    const blocked = blockedTokens.some((token) => loweredName.includes(token));
+
+    for (const address of ifaceAddresses) {
+      const family = typeof address.family === "string" ? address.family : String(address.family);
+      if (family !== "IPv4" && family !== "4") continue;
+      if (address.internal) continue;
+
+      const ip = address.address;
+      if (!ip || ip.startsWith("127.") || ip.startsWith("169.254.")) continue;
+
+      let score = 0;
+      if (isPrivateLanIp(ip)) score += 100;
+      if (!blocked) score += 20;
+      score += 5;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIp = ip;
+      }
+    }
+  }
+
+  return bestIp;
+}
+
+function normalizeOrigin(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    try {
+      return new URL(`http://${trimmed}`).origin;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function isLocalHostValue(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "0.0.0.0" ||
+    normalized === "::1"
+  );
+}
+
+function hostFromOrigin(origin: string | undefined): string | null {
+  if (!origin) return null;
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isValidIpv4(value: string): boolean {
+  const match = value.trim().match(/^(\d{1,3})(?:\.(\d{1,3})){3}$/);
+  if (!match) return false;
+  const parts = value.trim().split(".").map((part) => Number(part));
+  return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
+}
+
+function isValidPublicIpv4(value: string): boolean {
+  if (!isValidIpv4(value)) return false;
+  const [a, b] = value.split(".").map((part) => Number(part));
+  if (a === 0 || a === 10 || a === 127) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 198 && (b === 18 || b === 19)) return false;
+  if (a >= 224) return false;
+  return true;
+}
+
+function normalizeDomainBase(value: string, allowLocalhost: boolean): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (!allowLocalhost && isLocalHostValue(parsed.hostname)) return null;
+    const host = parsed.hostname;
+    if (!host) return null;
+    return `https://${host}`;
+  } catch {
+    return null;
+  }
+}
+
+function normalizePublicHostBase(value: string, port: number, allowLocalhost: boolean): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (!allowLocalhost && isLocalHostValue(parsed.hostname)) return null;
+    if (!parsed.hostname) return null;
+    const scheme = parsed.protocol === "https:" ? "https" : "http";
+    if (parsed.port && parsed.port.length > 0) {
+      return `${scheme}://${parsed.hostname}:${parsed.port}`;
+    }
+    return `${scheme}://${parsed.hostname}:${port}`;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPublicIp(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WAN_LOOKUP_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const value = (await response.text()).trim();
+    if (!isValidPublicIpv4(value)) return null;
+    return value;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function lookupWanIp(): Promise<string | null> {
+  const primary = await fetchPublicIp("https://api.ipify.org");
+  if (primary) return primary;
+  return fetchPublicIp("https://ifconfig.me/ip");
+}
+
+async function resolveWanIpCached(cacheKey: string): Promise<string | null> {
+  const now = Date.now();
+  if (wanLookupCacheKey !== cacheKey) {
+    wanLookupCacheKey = cacheKey;
+    wanLookupCacheIp = null;
+    wanLookupCacheExpiresAt = 0;
+    wanLookupInFlight = null;
+  }
+
+  if (wanLookupCacheExpiresAt > now) {
+    return wanLookupCacheIp;
+  }
+
+  if (wanLookupInFlight) {
+    return wanLookupInFlight;
+  }
+
+  wanLookupInFlight = (async () => {
+    const ip = await lookupWanIp();
+    wanLookupCacheIp = ip;
+    wanLookupCacheExpiresAt = Date.now() + WAN_LOOKUP_CACHE_TTL_MS;
+    return ip;
+  })();
+
+  try {
+    return await wanLookupInFlight;
+  } finally {
+    wanLookupInFlight = null;
+  }
+}
+
+type PublicBaseSource = "DOMAIN" | "PUBLIC_ORIGIN" | "PUBLIC_HOST" | "WAN_LOOKUP" | "EMPTY";
+
+interface PublicBaseResolution {
+  base?: string;
+  source: PublicBaseSource;
+}
+
+function logPublicBaseResolution(resolution: PublicBaseResolution) {
+  const signature = `${resolution.source}|${resolution.base ?? ""}`;
+  if (signature === publicBaseLogSignature) return;
+  publicBaseLogSignature = signature;
+  console.log(`[links] publicBase source=${resolution.source} value=${resolution.base ?? "<empty>"}`);
+}
+
+async function resolvePublicBase(port: number): Promise<PublicBaseResolution> {
+  const allowLocalhost = IDENTITY_MODE === "dev_tab";
+
+  const domainBase = normalizeDomainBase(DOMAIN ?? "", allowLocalhost);
+  if (domainBase) {
+    return { source: "DOMAIN", base: domainBase };
+  }
+
+  const originBase = normalizeOrigin(PUBLIC_ORIGIN ?? "");
+  if (originBase) {
+    const host = hostFromOrigin(originBase);
+    if (allowLocalhost || (host && !isLocalHostValue(host))) {
+      return { source: "PUBLIC_ORIGIN", base: originBase };
+    }
+  }
+
+  const publicHostBase = normalizePublicHostBase(PUBLIC_HOST ?? "", port, allowLocalhost);
+  if (publicHostBase) {
+    return { source: "PUBLIC_HOST", base: publicHostBase };
+  }
+
+  const wanCacheKey = [
+    String(port),
+    IDENTITY_MODE,
+    DOMAIN ?? "",
+    PUBLIC_ORIGIN ?? "",
+    PUBLIC_HOST ?? "",
+  ].join("|");
+  const wanIp = await resolveWanIpCached(wanCacheKey);
+  if (wanIp) {
+    return { source: "WAN_LOOKUP", base: `http://${wanIp}:${port}` };
+  }
+
+  return { source: "EMPTY" };
+}
+
+function buildLinkOrigins(requestOrigin?: string): {
+  lanOrigin: string;
+  lanIp: string;
+} {
+  const allowLocalhost = IDENTITY_MODE === "dev_tab";
+  let lanIp = selectLanIp();
+  if (!allowLocalhost && isLocalHostValue(lanIp)) {
+    const requestHost = hostFromOrigin(normalizeOrigin(requestOrigin) ?? undefined);
+    if (requestHost && !isLocalHostValue(requestHost)) {
+      lanIp = requestHost;
+    } else if (HOST && HOST !== "0.0.0.0" && !isLocalHostValue(HOST)) {
+      lanIp = HOST;
+    } else {
+      lanIp = "0.0.0.0";
+    }
+  }
+
+  const lanOrigin = `http://${lanIp}:${LISTEN_PORT}`;
+  return { lanOrigin, lanIp };
+}
+
 function printOverlayInfo(roomCode: string, token: string, controlToken?: string) {
-  const hostForUrl = HOST === "0.0.0.0" ? "127.0.0.1" : HOST;
-  const baseOrigin = (PUBLIC_ORIGIN ?? `http://${hostForUrl}:${LISTEN_PORT}`).replace(/\/+$/, "");
-  const overlayUrl = `${baseOrigin}/overlay?room=${roomCode}&token=${token}`;
-  const debugUrl = `${overlayUrl}&debug=1`;
-  const controlUrl = controlToken
-    ? `${baseOrigin}/overlay-control?room=${roomCode}&token=${controlToken}`
-    : `${baseOrigin}/overlay-control?room=${roomCode}&token=<CONTROL_OR_EDIT_TOKEN>`;
-  const controlStateUrl = controlToken
-    ? `${baseOrigin}/overlay-control/state?room=${roomCode}&token=${controlToken}`
-    : `${baseOrigin}/overlay-control/state?room=${roomCode}&token=<CONTROL_OR_EDIT_TOKEN>`;
+  const { lanOrigin } = buildLinkOrigins();
+  const links = buildLinkSet({
+    lanBase: lanOrigin,
+    publicBase: undefined,
+    roomCode,
+    overlayViewToken: token,
+    overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
+  });
+
   const line = "-".repeat(72);
 
   console.log(paint(line, "dim"));
   console.log(paint("OBS OVERLAY", "bold", "cyan"));
   console.log(`${paint("Room:", "yellow")}        ${paint(roomCode, "bold", "yellow")}`);
   console.log(`${paint("Token:", "magenta")}       ${paint(token, "magenta")}`);
-  console.log(`${paint("URL:", "blue")}         ${paint(overlayUrl, "underline", "blue")}`);
-  console.log(`${paint("Debug URL:", "green")}   ${paint(debugUrl, "underline", "green")}`);
-  console.log(
-    `${paint("Control URL:", "cyan")} ${paint(controlUrl, "underline", "cyan")}`
-  );
-  console.log(
-    `${paint("Control API:", "cyan")} ${paint(controlStateUrl, "underline", "cyan")}`
-  );
-  console.log(`${paint("Presets:", "blue")}     see docs/overlay_presets.txt`);
+  console.log(`${paint("App LAN:", "blue")}     ${paint(links.appUrl.lan, "underline", "blue")}`);
+  console.log(`${paint("Spec LAN:", "green")}    ${paint(links.viewerUrl.lan, "underline", "green")}`);
+  console.log(`${paint("View LAN:", "cyan")}    ${paint(links.overlayViewUrl.lan, "underline", "cyan")}`);
+  console.log(`${paint("Dbg LAN:", "yellow")}     ${paint(links.overlayDebugUrl.lan, "underline", "yellow")}`);
+  console.log(`${paint("Ctrl LAN:", "magenta")}   ${paint(links.overlayControlUrl.lan, "underline", "magenta")}`);
+  console.log(`${paint("API LAN:", "blue")}     ${paint(links.overlayControlStateUrl.lan, "underline", "blue")}`);
+  console.log(`${paint("Presets:", "blue")}     see docs -> overlay_presets.txt`);
   console.log(paint("Tip: Add as OBS Browser Source (transparent background).", "dim"));
   console.log(paint(line, "dim"));
+
+  void resolvePublicBase(LISTEN_PORT)
+    .then((resolution) => {
+      logPublicBaseResolution(resolution);
+      if (!resolution.base) return;
+      const publicLinks = buildLinkSet({
+        lanBase: lanOrigin,
+        publicBase: resolution.base,
+        roomCode,
+        overlayViewToken: token,
+        overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
+      });
+      console.log(`${paint("App Ext:", "blue")}     ${paint(publicLinks.appUrl.public ?? "", "underline", "blue")}`);
+      console.log(`${paint("Spec Ext:", "green")}    ${paint(publicLinks.viewerUrl.public ?? "", "underline", "green")}`);
+      console.log(`${paint("View Ext:", "cyan")}    ${paint(publicLinks.overlayViewUrl.public ?? "", "underline", "cyan")}`);
+      if (publicLinks.overlayDebugUrl.public) {
+        console.log(`${paint("Dbg Ext:", "yellow")}     ${paint(publicLinks.overlayDebugUrl.public, "underline", "yellow")}`);
+      }
+      console.log(
+        `${paint("Ctrl Ext:", "magenta")}   ${paint(publicLinks.overlayControlUrl.public ?? "", "underline", "magenta")}`
+      );
+      console.log(
+        `${paint("API Ext:", "blue")}     ${paint(publicLinks.overlayControlStateUrl.public ?? "", "underline", "blue")}`
+      );
+      console.log(paint(line, "dim"));
+    })
+    .catch(() => {
+      // ignore public lookup errors in console helper
+    });
 }
 
 function unrefTimer(timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | undefined) {
@@ -221,7 +546,7 @@ function logRoomLifecycle(event: string, roomCode: string, details: Record<strin
     Object.entries(details)
       .map(([key, value]) => `${key}=${String(value)}`)
       .join(" ") || "-";
-  console.log(`[room] ${event} room=${roomCode} ${payload}`);
+  console.log(`[room] ${event} room:${roomCode} ${payload}`);
 }
 
 function logProtocol(event: string, details: Record<string, unknown>) {
@@ -1588,12 +1913,12 @@ async function main() {
   app.use(express.json({ limit: "256kb" }));
 
   app.use("/assets", express.static(ASSETS_ROOT));
-  app.use("/overlay-assets", express.static(OVERLAY_PUBLIC_ROOT));
+  app.use(LINK_PATHS.overlayAssets, express.static(OVERLAY_PUBLIC_ROOT));
   if (SERVE_CLIENT && fs.existsSync(CLIENT_DIST)) {
     app.use(express.static(CLIENT_DIST));
   }
 
-  app.get("/overlay", (_req, res) => {
+  app.get(LINK_PATHS.overlayView, (_req, res) => {
     const overlayHtml = path.join(OVERLAY_PUBLIC_ROOT, "overlay.html");
     if (!fs.existsSync(overlayHtml)) {
       res.status(404).type("text/plain").send("Overlay page not found");
@@ -1602,7 +1927,7 @@ async function main() {
     res.sendFile(overlayHtml);
   });
 
-  app.get("/overlay-control", (req, res) => {
+  app.get(LINK_PATHS.overlayControl, (req, res) => {
     const roomCode = String(req.query.room ?? req.query.roomCode ?? "")
       .trim()
       .toUpperCase();
@@ -1620,7 +1945,7 @@ async function main() {
     res.sendFile(controlHtml);
   });
 
-  app.get("/overlay-control/state", async (req, res) => {
+  app.get(LINK_PATHS.overlayControlState, async (req, res) => {
     const roomCode = String(req.query.room ?? req.query.roomCode ?? "")
       .trim()
       .toUpperCase();
@@ -1648,7 +1973,7 @@ async function main() {
     }
   });
 
-  app.post("/overlay-control/save", (req, res) => {
+  app.post(LINK_PATHS.overlayControlSave, (req, res) => {
     const payload = isRecord(req.body) ? req.body : {};
     const roomCode = String(payload.roomCode ?? "")
       .trim()
@@ -1682,7 +2007,7 @@ async function main() {
     });
   });
 
-  app.post("/api/overlay-links", (req, res) => {
+  app.post(LINK_PATHS.apiOverlayLinks, async (req, res) => {
     const payload = isRecord(req.body) ? req.body : {};
     const roomCode = String(payload.roomCode ?? "")
       .trim()
@@ -1706,20 +2031,26 @@ async function main() {
     }
 
     const host = req.get("host");
-    if (!host) {
-      res.status(500).json({ ok: false, message: "Host header is missing" });
-      return;
-    }
-    const origin = `${req.protocol}://${host}`;
-    const encodedRoom = encodeURIComponent(room.code);
-    const encodedViewToken = encodeURIComponent(room.overlayToken);
-    const encodedControlToken = encodeURIComponent(token);
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    logPublicBaseResolution(publicResolution);
+    const links = buildLinkSet({
+      lanBase: lanOrigin,
+      publicBase: publicResolution.base,
+      roomCode: room.code,
+      overlayViewToken: room.overlayToken,
+      overlayControlToken: token,
+    });
 
     res.json({
       ok: true,
-      overlayViewUrl: `${origin}/overlay?room=${encodedRoom}&token=${encodedViewToken}`,
-      overlayControlUrl: `${origin}/overlay-control?room=${encodedRoom}&token=${encodedControlToken}`,
-      overlayControlStateUrl: `${origin}/overlay-control/state?room=${encodedRoom}&token=${encodedControlToken}`,
+      lanBase: links.lanBase,
+      publicBase: links.publicBase ?? null,
+      roomCode: room.code,
+      overlayViewToken: room.overlayToken,
+      overlayControlToken: token,
+      links,
     });
   });
 
@@ -1877,7 +2208,7 @@ async function main() {
     return { ok: true };
   };
 
-  app.post("/overlay-control/action", (req, res) => {
+  app.post(LINK_PATHS.overlayControlAction, (req, res) => {
     const payload = isRecord(req.body) ? req.body : {};
     const roomCode = String(payload.roomCode ?? "")
       .trim()
@@ -2732,6 +3063,9 @@ async function main() {
     }
     console.log(`Overlay assets: ${OVERLAY_PUBLIC_ROOT}`);
     console.log(`Loaded scenarios: ${availableScenarios.map((s) => s.meta.name).join(", ")}`);
+    void resolvePublicBase(LISTEN_PORT)
+      .then((resolution) => logPublicBaseResolution(resolution))
+      .catch(() => logPublicBaseResolution({ source: "EMPTY" }));
     if (DEV_LOGS) {
       console.log(`[dev] mode=${IDENTITY_MODE} logs=on`);
     }

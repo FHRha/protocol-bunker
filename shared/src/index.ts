@@ -1079,3 +1079,5 @@ export type ClientHelloPayload = z.infer<typeof ClientHelloSchema>;
 
 export { formatLabelShort } from "./labelFormat.js";
 export { getRulesetForPlayerCount, RULESET_PRESET_COUNTS, RULESET_TABLE } from "./ruleset.js";
+export { buildLinkSet, normalizeBase, LINK_PATHS } from "./urlBuilder.js";
+export type { BuildLinkSetInput, BuiltLinkSet, UrlPair } from "./urlBuilder.js";

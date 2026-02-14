@@ -94,6 +94,11 @@
 | macOS (10.15+) | [DMG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [PKG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) |
 | Linux | [AppImage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [DebPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [RpmPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
 
+Windows EXE Launcher:
+- `ProtocolBunkerSetup.exe` — bootstrapper-установщик в текущую папку.
+- `ProtocolBunker.exe` — UI-лаунчер сервера с логами/статусом и кнопкой `Check updates`.
+- release assets (template): `ProtocolBunkerSetup.exe`, `protocol-bunker-win-exe-x64.zip`, `protocol-bunker-win-exe-x64-payload.zip`.
+
 Про macOS: я не обещаю, что всё заведётся идеально. Если заведётся — отлично, если нет — будем чинить (возможно).
 Если заведётся “с первого раза” — значит где-то нарушен баланс вселенной.
 
@@ -114,6 +119,8 @@ Streamer mode делает две вещи:
 
 Для зрителей есть отдельная страница (read-only). Она показывает стол и открытые элементы, но не даёт ничего нажимать и никого “не подключает” как игрока.  
 То есть зрители смотрят, а не устраивают “а давайте я нажму”.
+Внешний адрес для ссылок определяется автоматически через `api.ipify.org` (fallback: `ifconfig.me/ip`), либо задаётся вручную через `Public Host`/`Domain`.
+В интерфейсе ссылки показываются в двух вариантах: `LAN` и `Внешняя` (если внешний адрес доступен).
 
 ---
 

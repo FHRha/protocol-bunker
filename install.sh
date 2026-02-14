@@ -41,7 +41,7 @@ Usage:
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.0
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.1
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --list
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --autostart
 EOF
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version)
       shift
-      [ $# -gt 0 ] || err "--version requires a value like v0.1.0"
+      [ $# -gt 0 ] || err "--version requires a value like v0.1.1"
       VERSION="$1"
       ;;
     --list) DO_LIST=1 ;;
@@ -89,7 +89,7 @@ json_latest_tag() {
 validate_version_format() {
   # require leading "v"
   if [[ "$1" != v* ]]; then
-    err "Version must start with 'v' (example: v0.1.0). Got: $1"
+    err "Version must start with 'v' (example: v0.1.1). Got: $1"
   fi
 }
 

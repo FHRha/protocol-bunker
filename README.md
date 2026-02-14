@@ -62,17 +62,6 @@
 
 > Если `curl` не установлен — поставьте его (или просто скачайте `install.sh` через браузер и запустите локально).
 
-### Быстрый запуск (из исходников)
-Клонируем и запускаем готовыми скриптами из репозитория:
-
-**Windows**
-- `run-dev.bat` — режим разработки
-- `run-selfhost.bat` — самохост (если вы это используете)
-
-**Linux/macOS**
-- `./run-dev.sh` — режим разработки
-- `./run-selfhost.sh` — самохост (если вы это используете)
-
 ### Установка через install.sh
 Если вы хотите ставить через `install.sh`, скачайте и запустите его:
 
@@ -85,29 +74,37 @@
 
 ## Скачать
 
-Ссылки ниже ведут на **GitHub Releases (latest)**. Когда появятся реальные сборки — выбирайте нужный файл в релизе под вашу систему.
+Все ссылки ведут на **GitHub Releases → Latest**. Откроется страница релиза — там выбирайте файл под вашу систему.
 
 | OS | Download |
 |---|---|
 | Android | [APK Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK ARMv8](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK ARMv7](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
-| Windows | [OfficialSetup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Windows | [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
 | macOS (10.15+) | [DMG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [PKG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) |
 | Linux | [AppImage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [DebPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [RpmPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
 
-Windows EXE Launcher:
-- `ProtocolBunkerSetup.exe` — bootstrapper-установщик в текущую папку.
-- `ProtocolBunker.exe` — UI-лаунчер сервера с логами/статусом и кнопкой `Check updates`.
-- release assets (template): `ProtocolBunkerSetup.exe`, `protocol-bunker-win-exe-x64.zip`, `protocol-bunker-win-exe-x64-payload.zip`.
+> Если файлов на странице релиза пока нет — значит сборки ещё не залиты (или GitHub решил устроить нам квест).
 
-Про macOS: я не обещаю, что всё заведётся идеально. Если заведётся — отлично, если нет — будем чинить (возможно).
-Если заведётся “с первого раза” — значит где-то нарушен баланс вселенной.
+### Про macOS
 
----
+Я не обещаю, что всё заведётся идеально.  
+Если заведётся — отлично. Если нет — будем чинить (возможно).  
+А если заведётся “с первого раза” — значит где-то во вселенной нарушен баланс.
+
+### Windows (EXE Launcher)
+
+- `protocol-bunker-win-x64-exe-setup-v0.1.1.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
+- `protocol-bunker-win-x64-exe-v0.1.1.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+
+Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
 
 ## Про portable
 
-Portable-версия — это “скачал и запустил”. Никаких установщиков, просто папка. Удобно, если не хочется трогать систему или вы запускаете игру с флешки/второго диска.  
-(И да, это та самая версия для людей, которые на слово “установщик” отвечают “не, спасибо, я уже обжигался”.)
+Portable — это “скачал и запустил”. Без установщиков, просто папка.  
+Удобно, если не хочется трогать систему или вы запускаете игру с флешки/второго диска.
+
+(Да, это версия для людей, которые на слово “установщик” отвечают: “не, спасибо, я уже обжигался”.)
 
 ---
 
@@ -153,3 +150,23 @@ Streamer mode делает две вещи:
 
 Если что-то выглядит странно — возможно, это ещё не финальная полировка.
 Если всё работает — значит сегодня хороший день.
+
+---
+
+## Сборка релизов (0.1.1)
+
+Полная сборка:
+- `pnpm run build:all`
+- `pnpm run pack:win`
+- `pnpm run pack:linux`
+- `pnpm run pack:win-exe`
+
+Быстро (если dist уже актуальны):
+- `pnpm run pack:win -- --skip-build`
+- `pnpm run pack:linux -- --skip-build`
+- `pnpm run pack:win-exe -- --skip-build`
+
+Где результаты:
+- `artifacts/win/`
+- `artifacts/linux/`
+- `artifacts/win-exe/`

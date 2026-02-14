@@ -9,12 +9,33 @@ if (process.arch !== "x64") {
 }
 
 const rootDir = process.cwd();
+const rootPackageJsonPath = path.join(rootDir, "package.json");
+const rootPackage = JSON.parse(fs.readFileSync(rootPackageJsonPath, "utf8"));
+const appVersion = String(rootPackage.version ?? "0.0.0").trim() || "0.0.0";
+const versionTag = `v${appVersion}`;
+const fastMode = process.argv.includes("--fast");
+const skipBuild = process.argv.includes("--skip-build");
+const forceRepack = process.argv.includes("--force-repack");
+const gitHead = (() => {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: rootDir,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) return "nogit";
+  return String(result.stdout ?? "").trim() || "nogit";
+})();
 const artifactsLinuxDir = path.join(rootDir, "artifacts", "linux");
 const artifactsDir = path.join(artifactsLinuxDir, "Protocol-Bunker");
 const appDir = path.join(artifactsDir, "app");
+const appVersionFilePath = path.join(appDir, "VERSION");
 const serverAppDir = path.join(appDir, "server");
 const clientDistSrc = path.join(rootDir, "client", "dist");
 const clientDistDst = path.join(appDir, "client", "dist");
+const clientDistIndexSrc = path.join(clientDistSrc, "index.html");
+const sharedDistEntrySrc = path.join(rootDir, "shared", "dist", "index.js");
+const scenariosDistEntrySrc = path.join(rootDir, "scenarios", "dist", "index.js");
+const serverDistEntrySrc = path.join(rootDir, "server", "dist", "index.js");
 const assetsSrc = path.join(rootDir, "assets");
 const assetsDst = path.join(appDir, "assets");
 const scenariosRuntimeSrc = path.join(rootDir, "scenarios", "classic");
@@ -40,7 +61,15 @@ const nodeBinDst = path.join(nodeDir, "node");
 const startShPath = path.join(artifactsDir, "start.sh");
 const portableEnvPath = path.join(artifactsDir, "portable.env");
 const readmePath = path.join(artifactsDir, "README_PORTABLE.txt");
-const tarGzPath = path.join(artifactsLinuxDir, "protocol-bunker-linux-x64-portable.tar.gz");
+const tarGzPath = path.join(
+  artifactsLinuxDir,
+  `protocol-bunker-linux-x64-portable-${versionTag}.tar.gz`
+);
+const zipPath = path.join(
+  artifactsLinuxDir,
+  `protocol-bunker-linux-x64-portable-${versionTag}.zip`
+);
+const jsBuildStampPath = path.join(rootDir, ".cache", "pack-js-build-stamp.json");
 const pnpmCmd = "pnpm";
 
 function quoteCmdArg(value) {
@@ -76,6 +105,82 @@ function ensureExists(targetPath, label) {
   if (!fs.existsSync(targetPath)) {
     throw new Error(`Missing ${label}: ${targetPath}`);
   }
+}
+
+function ensureAnyMissing(pathsWithLabels) {
+  const missing = [];
+  for (const [targetPath, label] of pathsWithLabels) {
+    if (!fs.existsSync(targetPath)) {
+      missing.push(`${label}: ${targetPath}`);
+    }
+  }
+  return missing;
+}
+
+function readJsonSafe(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readTextSafe(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function writeJsBuildStamp() {
+  const stamp = {
+    versionTag,
+    gitHead,
+    builtAt: new Date().toISOString(),
+  };
+  fs.mkdirSync(path.dirname(jsBuildStampPath), { recursive: true });
+  fs.writeFileSync(jsBuildStampPath, `${JSON.stringify(stamp, null, 2)}\n`, "utf8");
+}
+
+function isJsBuildReusable() {
+  const required = [
+    [clientDistIndexSrc, "client dist"],
+    [sharedDistEntrySrc, "shared dist"],
+    [scenariosDistEntrySrc, "scenarios dist"],
+    [serverDistEntrySrc, "server dist"],
+  ];
+  const missing = ensureAnyMissing(required);
+  if (missing.length > 0) {
+    return { ok: false, reason: `missing outputs: ${missing.join("; ")}` };
+  }
+  const stamp = readJsonSafe(jsBuildStampPath);
+  if (!stamp) {
+    return { ok: false, reason: "missing JS build stamp" };
+  }
+  if (stamp.versionTag !== versionTag) {
+    return { ok: false, reason: `stamp version mismatch (${stamp.versionTag} != ${versionTag})` };
+  }
+  if (stamp.gitHead !== gitHead) {
+    return { ok: false, reason: "stamp git revision mismatch" };
+  }
+  return { ok: true, reason: "stamp matches" };
+}
+
+function ensureJsBuildOutputsOrThrow() {
+  const required = [
+    [clientDistIndexSrc, "client dist"],
+    [sharedDistEntrySrc, "shared dist"],
+    [scenariosDistEntrySrc, "scenarios dist"],
+    [serverDistEntrySrc, "server dist"],
+  ];
+  const missing = ensureAnyMissing(required);
+  if (missing.length === 0) return;
+  throw new Error(
+    `[pack:linux] --skip-build requested, but build outputs are missing. Run "pnpm -r build" first.\n${missing.join(
+      "\n"
+    )}`
+  );
 }
 
 function cleanPath(targetPath) {
@@ -185,11 +290,61 @@ function formatBytes(value) {
 
 function createTarGzArchive() {
   cleanPath(tarGzPath);
-  runStep("tar", ["-czf", tarGzPath, "-C", artifactsLinuxDir, "Protocol-Bunker"]);
-  ensureExists(tarGzPath, "portable tar.gz");
-  const stats = fs.statSync(tarGzPath);
-  console.log(`[pack:linux] TAR.GZ created: ${tarGzPath}`);
-  console.log(`[pack:linux] TAR.GZ size: ${formatBytes(stats.size)}`);
+  cleanPath(zipPath);
+
+  const tarResult = spawnSync("tar", ["--version"], {
+    cwd: rootDir,
+    stdio: "ignore",
+  });
+
+  if (!tarResult.error && tarResult.status === 0) {
+    runStep("tar", ["-czf", tarGzPath, "-C", artifactsLinuxDir, "Protocol-Bunker"]);
+    ensureExists(tarGzPath, "portable tar.gz");
+    const stats = fs.statSync(tarGzPath);
+    console.log(`[pack:linux] TAR.GZ created: ${tarGzPath}`);
+    console.log(`[pack:linux] TAR.GZ size: ${formatBytes(stats.size)}`);
+    return;
+  }
+
+  if (process.platform === "win32") {
+    const src = artifactsDir.replace(/'/g, "''");
+    const dst = zipPath.replace(/'/g, "''");
+    const script = [
+      `$src = '${src}'`,
+      `$dst = '${dst}'`,
+      "if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force }",
+      "Compress-Archive -Path $src -DestinationPath $dst -Force",
+    ].join("; ");
+    runStep("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]);
+    ensureExists(zipPath, "portable zip");
+    const stats = fs.statSync(zipPath);
+    console.log(`[pack:linux] ZIP created (tar unavailable): ${zipPath}`);
+    console.log(`[pack:linux] ZIP size: ${formatBytes(stats.size)}`);
+    return;
+  }
+
+  throw new Error("tar command not found and ZIP fallback is only available on Windows host.");
+}
+
+function isPortableBaseReusable() {
+  if (forceRepack) {
+    return { ok: false, reason: "--force-repack set" };
+  }
+  const versionValue = readTextSafe(appVersionFilePath);
+  if (versionValue !== versionTag) {
+    return { ok: false, reason: `app/VERSION mismatch (${versionValue || "empty"} != ${versionTag})` };
+  }
+  const required = [
+    [path.join(serverAppDir, "dist", "index.js"), "server dist entry"],
+    [path.join(appDir, "client", "dist", "index.html"), "client dist index"],
+    [path.join(appDir, "assets"), "assets"],
+    [nodeBinDst, "node runtime"],
+  ];
+  const missing = ensureAnyMissing(required);
+  if (missing.length > 0) {
+    return { ok: false, reason: `missing runtime files: ${missing.join("; ")}` };
+  }
+  return { ok: true, reason: "portable base version and files are valid" };
 }
 
 function buildStartSh() {
@@ -591,65 +746,101 @@ Logs:
 }
 
 async function main() {
+  console.log(`[pack:linux] Building version: ${versionTag}`);
   if (process.platform !== "linux") {
     console.log(
       `[pack:linux] Cross-pack on ${process.platform}; linux node runtime will be downloaded automatically.`
     );
   }
 
-  console.log("[pack:linux] Building production artifacts...");
-  runStep(pnpmCmd, ["-C", "client", "build"]);
-  runStep(pnpmCmd, ["-C", "shared", "build"]);
-  runStep(pnpmCmd, ["-C", "scenarios", "build"]);
-  runStep(pnpmCmd, ["-C", "server", "build"]);
-
-  console.log("[pack:linux] Preparing output folder...");
-  cleanPath(artifactsDir);
-  fs.mkdirSync(appDir, { recursive: true });
-
-  console.log("[pack:linux] Deploying server runtime...");
-  runStep(pnpmCmd, ["--filter", "@bunker/server", "deploy", "--prod", serverAppDir]);
-
-  const serverPrune = ["src", "tsconfig.json", "tsconfig.build.json", ".env"];
-  for (const relPath of serverPrune) {
-    cleanPath(path.join(serverAppDir, relPath));
+  if (skipBuild) {
+    console.log("[pack:linux] Skipping package builds (--skip-build).");
+    ensureJsBuildOutputsOrThrow();
+  } else if (fastMode) {
+    const reuse = isJsBuildReusable();
+    if (reuse.ok) {
+      console.log(`[pack:linux] Reusing JS build outputs (--fast): ${reuse.reason}`);
+    } else {
+      console.log(`[pack:linux] --fast fallback to build: ${reuse.reason}`);
+      runStep(pnpmCmd, ["-C", "client", "build"]);
+      runStep(pnpmCmd, ["-C", "shared", "build"]);
+      runStep(pnpmCmd, ["-C", "scenarios", "build"]);
+      runStep(pnpmCmd, ["-C", "server", "build"]);
+      writeJsBuildStamp();
+    }
+  } else {
+    console.log("[pack:linux] Building production artifacts...");
+    runStep(pnpmCmd, ["-C", "client", "build"]);
+    runStep(pnpmCmd, ["-C", "shared", "build"]);
+    runStep(pnpmCmd, ["-C", "scenarios", "build"]);
+    runStep(pnpmCmd, ["-C", "server", "build"]);
+    writeJsBuildStamp();
   }
 
-  console.log("[pack:linux] Materializing server runtime links...");
-  materializeDirectory(serverAppDir);
-  flattenNodeModules(serverAppDir);
+  console.log("[pack:linux] Preparing portable base...");
+  const portableBaseReuse = isPortableBaseReusable();
+  const shouldReusePortableBase = portableBaseReuse.ok;
+  if (shouldReusePortableBase) {
+    console.log(`[pack:linux] Reusing existing portable base: ${portableBaseReuse.reason}`);
+    fs.mkdirSync(appDir, { recursive: true });
+  } else {
+    console.log(`[pack:linux] Building portable base: ${portableBaseReuse.reason}`);
+    cleanPath(artifactsDir);
+    fs.mkdirSync(appDir, { recursive: true });
 
-  console.log("[pack:linux] Copying client dist and assets...");
-  ensureExists(clientDistSrc, "client dist source");
-  ensureExists(assetsSrc, "assets source");
-  copyDir(clientDistSrc, clientDistDst);
-  copyDir(assetsSrc, assetsDst);
+    console.log("[pack:linux] Deploying server runtime...");
+    runStep(pnpmCmd, ["--filter", "@bunker/server", "deploy", "--prod", serverAppDir]);
 
-  console.log("[pack:linux] Copying scenario runtime data...");
-  ensureExists(scenariosRuntimeSrc, "scenarios runtime source");
-  copyDir(scenariosRuntimeSrc, scenariosRuntimeDst);
-  ensureExists(disastersTextSrc, "disaster text source");
-  fs.mkdirSync(path.dirname(disastersTextDst), { recursive: true });
-  fs.copyFileSync(disastersTextSrc, disastersTextDst);
+    const serverPrune = ["src", "tsconfig.json", "tsconfig.build.json", ".env"];
+    for (const relPath of serverPrune) {
+      cleanPath(path.join(serverAppDir, relPath));
+    }
 
-  console.log("[pack:linux] Copying Linux Node runtime...");
-  await ensureLinuxNodeRuntime();
+    console.log("[pack:linux] Materializing server runtime links...");
+    materializeDirectory(serverAppDir);
+    flattenNodeModules(serverAppDir);
+
+    console.log("[pack:linux] Copying client dist and assets...");
+    ensureExists(clientDistSrc, "client dist source");
+    ensureExists(assetsSrc, "assets source");
+    copyDir(clientDistSrc, clientDistDst);
+    copyDir(assetsSrc, assetsDst);
+
+    console.log("[pack:linux] Copying scenario runtime data...");
+    ensureExists(scenariosRuntimeSrc, "scenarios runtime source");
+    copyDir(scenariosRuntimeSrc, scenariosRuntimeDst);
+    ensureExists(disastersTextSrc, "disaster text source");
+    fs.mkdirSync(path.dirname(disastersTextDst), { recursive: true });
+    fs.copyFileSync(disastersTextSrc, disastersTextDst);
+
+    console.log("[pack:linux] Copying Linux Node runtime...");
+    await ensureLinuxNodeRuntime();
+  }
 
   console.log("[pack:linux] Writing launch files...");
   writeFile(startShPath, buildStartSh());
   writeFile(portableEnvPath, buildPortableEnv());
   writeFile(readmePath, buildReadme());
+  writeFile(appVersionFilePath, `${versionTag}\n`);
   fs.chmodSync(startShPath, 0o755);
 
   ensureExists(startShPath, "start.sh");
   ensureExists(portableEnvPath, "portable.env");
   ensureExists(path.join(serverAppDir, "dist", "index.js"), "server dist entry");
   ensureExists(path.join(appDir, "client", "dist", "index.html"), "client dist index");
+  ensureExists(appVersionFilePath, "app VERSION");
 
   console.log("[pack:linux] Creating tar.gz archive...");
   createTarGzArchive();
 
-  console.log(`[pack:linux] Portable build completed: ${artifactsDir}`);
+  console.log("[pack:linux] Created files:");
+  if (fs.existsSync(tarGzPath)) {
+    console.log(` - ${tarGzPath}`);
+  } else if (fs.existsSync(zipPath)) {
+    console.log(` - ${zipPath}`);
+  }
+  console.log(` - ${artifactsDir}`);
+  console.log(`[pack:linux] Portable build completed for ${versionTag}`);
 }
 
 main().catch((error) => {

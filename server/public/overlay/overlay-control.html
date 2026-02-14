@@ -1,0 +1,232 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Protocol: Bunker Overlay Control</title>
+    <link rel="stylesheet" href="/overlay-assets/overlay-control.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <div class="topbar__meta">
+          <h1>Overlay Control</h1>
+          <p id="roomLabel" class="muted">Комната: -</p>
+          <p id="controlConnection" class="hint">Подключено: нет • Роль: - • Комната: -</p>
+          <p id="urlParamsDebug" class="hint" hidden>roomCodeFromUrl: - • tokenPresent: no</p>
+        </div>
+        <div class="topbar__actions">
+          <span id="dirtyBadge" class="badge">Синхронизировано</span>
+          <button id="saveBtn" type="button" class="btn btn--primary">Save</button>
+          <button id="reloadBtn" type="button" class="btn">Reload</button>
+          <button id="resetPlayerBtn" type="button" class="btn btn--danger">Reset Player</button>
+        </div>
+      </header>
+
+      <p id="status" class="status"></p>
+
+      <section class="layout">
+        <aside class="sidebar panel">
+          <h2>Игроки комнаты</h2>
+          <label class="field">
+            <span>Выбранный игрок</span>
+            <select id="playerSelect"></select>
+          </label>
+          <div class="sidebar-player-actions">
+            <button id="presenterKickPlayerBtn" type="button" class="btn btn--danger">Выгнать игрока</button>
+            <p id="kickSelectedLabel" class="hint">Выбран: -</p>
+          </div>
+          <div id="playersList" class="players-list"></div>
+        </aside>
+
+        <section class="editor">
+          <article class="panel" id="presenterPanel">
+            <h2>Управление игрой</h2>
+            <p id="presenterModeState" class="hint" hidden>Presenter mode: off (из state) = false</p>
+            <p id="presenterDisabled" class="hint">
+              Режим «Ведущий» выключен в настройках комнаты.
+            </p>
+            <div id="presenterContent" class="presenter" hidden>
+              <div class="presenter-meta">
+                <div><strong>Фаза комнаты:</strong> <span id="presenterRoomPhase">-</span></div>
+                <div><strong>Фаза игры:</strong> <span id="presenterGamePhase">-</span></div>
+                <div><strong>Раунд:</strong> <span id="presenterRound">-</span></div>
+                <div><strong>Фаза голосования:</strong> <span id="presenterVotePhase">-</span></div>
+              </div>
+              <div class="row">
+                <button id="presenterStartGameBtn" type="button" class="btn btn--primary">Начать игру</button>
+                <button id="presenterNextStepBtn" type="button" class="btn">Следующий шаг</button>
+                <button id="presenterSkipStepBtn" type="button" class="btn">Пропустить шаг</button>
+                <button id="presenterStartVoteBtn" type="button" class="btn">Начать голосование</button>
+                <button id="presenterEndVoteBtn" type="button" class="btn">Завершить голосование</button>
+                <button id="presenterSkipRoundBtn" type="button" class="btn">Пропустить раунд</button>
+              </div>
+              <div id="presenterOutcomeRow" class="row presenter-outcome" hidden>
+                <button id="presenterOutcomeSurvivedBtn" type="button" class="btn btn--primary">Выжил в бункере</button>
+                <button id="presenterOutcomeFailedBtn" type="button" class="btn btn--danger">Не выжил</button>
+                <span id="presenterOutcomeState" class="hint">Исход не выбран.</span>
+              </div>
+              <div class="table-wrap">
+                <table class="presenter-table">
+                  <thead>
+                    <tr>
+                      <th>Игрок</th>
+                      <th>Статус</th>
+                      <th>Голос</th>
+                      <th>Раскрыл</th>
+                    </tr>
+                  </thead>
+                  <tbody id="presenterPlayersBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Верхние блоки Overlay</h2>
+            <p class="hint">
+              Эти поля управляют текстом в верхней полосе OBS overlay. Если ручной текст выключен,
+              в overlay показывается автоматическое значение из текущего состояния игры.
+            </p>
+
+            <div class="top-grid top-grid--preview">
+              <section class="preview-box">
+                <h3>Сейчас в OBS: Бункер</h3>
+                <pre id="topCurrentBunker" class="preview-value">-</pre>
+              </section>
+              <section class="preview-box">
+                <h3>Сейчас в OBS: Катастрофа</h3>
+                <pre id="topCurrentCatastrophe" class="preview-value">-</pre>
+              </section>
+              <section class="preview-box">
+                <h3>Сейчас в OBS: Угрозы</h3>
+                <pre id="topCurrentThreats" class="preview-value">-</pre>
+              </section>
+            </div>
+
+            <div class="checks checks--stack">
+              <label title="Включает/выключает применение ручного текста к блоку Бункер. Сам блок в overlay не скрывается.">
+                <input type="checkbox" id="enabled_topBunker" /> Использовать ручной текст для блока «Бункер»
+              </label>
+              <label title="Включает/выключает применение ручного текста к блоку Катастрофа. Сам блок в overlay не скрывается.">
+                <input type="checkbox" id="enabled_topCatastrophe" /> Использовать ручной текст для блока «Катастрофа»
+              </label>
+              <label title="Включает/выключает применение ручного текста к блоку Угрозы. Сам блок в overlay не скрывается.">
+                <input type="checkbox" id="enabled_topThreats" /> Использовать ручной текст для блока «Угрозы»
+              </label>
+            </div>
+
+            <div class="top-grid">
+              <label class="field">
+                <span>Бункер (до 5 строк, до 120 символов в строке)</span>
+                <textarea id="topBunkerLines" rows="5" placeholder="Одна строка = один пункт"></textarea>
+                <span id="topBunkerMeta" class="meta">0/5 строк</span>
+              </label>
+              <label class="field">
+                <span>Катастрофа (до 600 символов)</span>
+                <textarea id="topCatastropheText" rows="5" maxlength="600" placeholder="Текст катастрофы"></textarea>
+                <span id="topCatastropheMeta" class="meta">0/600 символов</span>
+                <span class="meta">Источник из данных катастрофы:</span>
+                <pre id="topBaseCatastrophe" class="preview-inline">-</pre>
+                <span id="topCatastropheSource" class="meta">Сейчас используется: авто</span>
+              </label>
+              <label class="field">
+                <span>Угрозы (до 6 строк, до 120 символов в строке)</span>
+                <textarea id="topThreatsLines" rows="5" placeholder="Одна строка = одна угроза"></textarea>
+                <span id="topThreatsMeta" class="meta">0/6 строк</span>
+              </label>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2 id="playerEditorTitle">Игрок</h2>
+            <p class="hint">
+              Редактируйте только выбранного игрока. Поля ниже применяются к тому, что реально видит зритель на overlay.
+            </p>
+
+            <div class="checks checks--player">
+              <label title="Включает/выключает отображение имени этого игрока в overlay.">
+                <input type="checkbox" id="playerEnabledName" /> Показывать имя
+              </label>
+              <label title="Включает/выключает блок traits (пол/возраст/ориентация) этого игрока в overlay.">
+                <input type="checkbox" id="playerEnabledTraits" /> Показывать traits
+              </label>
+              <label title="Включает/выключает блок категорий этого игрока в overlay.">
+                <input type="checkbox" id="playerEnabledCategories" /> Показывать категории
+              </label>
+            </div>
+
+            <div class="fields-inline">
+              <label class="field">
+                <span>Имя на overlay (0..24)</span>
+                <input id="playerName" type="text" maxlength="24" placeholder="Имя игрока" />
+                <span id="currentPlayerName" class="meta">Сейчас в OBS: -</span>
+              </label>
+              <label class="field">
+                <span>Пол (0..120)</span>
+                <input id="traitSex" type="text" maxlength="120" placeholder="Например: М" />
+                <span id="currentTraitSex" class="meta">Сейчас в OBS: -</span>
+              </label>
+              <label class="field">
+                <span>Возраст (0..120)</span>
+                <input id="traitAge" type="text" maxlength="120" placeholder="Например: 35" />
+                <span id="currentTraitAge" class="meta">Сейчас в OBS: -</span>
+              </label>
+              <label class="field">
+                <span>Ориентация (0..120)</span>
+                <input id="traitOrient" type="text" maxlength="120" placeholder="Например: гетеро" />
+                <span id="currentTraitOrient" class="meta">Сейчас в OBS: -</span>
+              </label>
+            </div>
+
+            <h3 class="sub">Категории</h3>
+            <div id="categoriesGrid" class="categories-grid"></div>
+            <p class="hint">Кнопка «Случайно» берёт значение из уже видимых категорий игроков в текущем overlay state.</p>
+
+            <details class="advanced">
+              <summary>Advanced: categories JSON (для выбранного игрока)</summary>
+              <p class="hint">
+                Формат: <code>Record&lt;CategoryKey, string&gt;</code>. Пустая строка удаляет override. Отсутствующий ключ не меняет базовое значение.
+              </p>
+              <p id="categoriesAllowedKeys" class="hint">Разрешённые ключи: -</p>
+              <div class="row">
+                <button id="insertCategoriesTemplateBtn" type="button" class="btn">Вставить шаблон</button>
+                <button id="applyCategoriesJsonBtn" type="button" class="btn">Применить JSON</button>
+              </div>
+              <label class="field">
+                <span>categories JSON</span>
+                <textarea id="playerCategoriesJson" rows="8" placeholder="{\n  \"profession\": \"...\"\n}"></textarea>
+              </label>
+            </details>
+          </article>
+
+          <article class="panel">
+            <h2>Доп. тексты OBS</h2>
+            <p class="hint">
+              Это произвольные подписи поверх overlay (например: таймер, служебная строка, заметка ведущего).
+            </p>
+            <div id="extraTextsList" class="extra-list"></div>
+            <div class="row">
+              <button id="addExtraTextBtn" type="button" class="btn">Добавить текстовый блок</button>
+            </div>
+
+            <details class="advanced">
+              <summary>Advanced: extraTexts JSON</summary>
+              <p class="hint">Формат: <code>Array&lt;{id,text,x,y,align,size,color,shadow,visible}&gt;</code>.</p>
+              <div class="row">
+                <button id="syncExtraTextsJsonBtn" type="button" class="btn">Обновить JSON из формы</button>
+                <button id="applyExtraTextsJsonBtn" type="button" class="btn">Применить JSON</button>
+              </div>
+              <label class="field">
+                <span>extraTexts JSON</span>
+                <textarea id="extraTextsJson" rows="8"></textarea>
+              </label>
+            </details>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="/overlay-assets/overlay-control.js"></script>
+  </body>
+</html>

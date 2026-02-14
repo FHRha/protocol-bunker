@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "paths": {
+      "@bunker/shared": ["../shared/dist/index.d.ts"],
+      "@bunker/scenarios": ["../scenarios/dist/index.d.ts"]
+    }
+  }
+}

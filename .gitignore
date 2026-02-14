@@ -1,0 +1,75 @@
+node_modules/
+**/node_modules/
+
+.tmp-portable-unzip/
+logs/
+
+# build outputs
+**/dist/
+**/out/
+**/release/
+**/releases/
+**/build/
+**/bin/
+!scripts/release/
+!scripts/release/**
+
+# electron-builder and desktop artifacts
+desktop/dist/
+desktop/out/
+desktop/release/
+desktop/.cache/
+desktop/.runtime/
+desktop/.runtime-test/
+.electron-builder/
+.electron/
+.cache/
+**/.cache/
+.temp/
+tmp/
+
+# tooling caches
+.vite/
+**/.vite/
+.turbo/
+**/.turbo/
+coverage/
+**/coverage/
+
+# logs and runtime files
+*.log
+*.err
+*.tmp
+*.bak
+*.old
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# artifacts/release outputs
+artifacts/
+release/
+releases/
+
+# archives (only artifacts)
+artifacts/**/*.zip
+artifacts/**/*.7z
+artifacts/**/*.tar
+artifacts/**/*.tar.gz
+artifacts/**/*.tgz
+
+
+*.tsbuildinfo
+
+.env
+.env.*
+!**/.env.example
+
+.DS_Store
+Thumbs.db
+
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

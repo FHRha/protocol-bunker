@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "types": ["node"],
+    "paths": {
+      "@bunker/shared": ["../shared/src/index.ts"],
+      "@bunker/scenarios": ["../scenarios/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "bunker-browser",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "workspaces": [
+    "server",
+    "client",
+    "shared",
+    "scenarios"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others --kill-others-on-fail -n server,client \"pnpm -C server dev\" \"pnpm -C client dev\"",
+    "build": "pnpm -C shared build && pnpm -C scenarios build && pnpm -C server build && pnpm -C client build",
+    "typecheck": "pnpm -C shared typecheck && pnpm -C scenarios typecheck && pnpm -C server typecheck && pnpm -C client typecheck",
+    "build:client": "pnpm -C client build",
+    "build:server": "pnpm -C server build",
+    "pack:win": "node scripts/pack-win-portable.mjs",
+    "pack:linux": "node scripts/pack-linux-portable.mjs",
+    "start": "node server/dist/index.js",
+    "clean": "node scripts/clean.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}

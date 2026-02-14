@@ -1,0 +1,7 @@
+# By default keep LF in repo (important for Linux/macOS scripts)
+* text=auto eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

@@ -1,0 +1,51 @@
+﻿РџСЂРµСЃРµС‚С‹ URL РґР»СЏ OBS overlay (Протокол: Бункер)
+
+РљР°Рє РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ РІ OBS:
+1) Sources -> Browser -> Properties.
+2) Р’СЃС‚Р°РІСЊС‚Рµ URL РёР· РїСЂРµСЃРµС‚Р° РЅРёР¶Рµ (Р·Р°РјРµРЅРёС‚Рµ <ROOM> Рё <TOKEN>).
+3) РџСЂРѕРІРµСЂСЊС‚Рµ Width/Height РїРѕРґ СЃС†РµРЅСѓ (РЅР°РїСЂРёРјРµСЂ, 1920x1080) Рё СЃРѕС…СЂР°РЅРёС‚Рµ.
+
+[Base]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>
+Comment: Р‘Р°Р·РѕРІС‹Р№ URL Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹С… РїР°СЂР°РјРµС‚СЂРѕРІ.
+
+[Debug]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&debug=1
+Comment: Р’РєР»СЋС‡Р°РµС‚ РѕС‚Р»Р°РґРѕС‡РЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ РЅР° РѕРІРµСЂР»РµРµ.
+
+[Bigger text]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&scale=1.2
+Comment: РЈРІРµР»РёС‡РёРІР°РµС‚ РѕР±С‰РёР№ РјР°СЃС€С‚Р°Р±/СЂР°Р·РјРµСЂ С‚РµРєСЃС‚Р°.
+
+[Bigger top bar (FullHD)]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&top=200
+Comment: РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РІС‹СЃРѕС‚Сѓ РІРµСЂС…РЅРµР№ РїР°РЅРµР»Рё 200px (СѓРґРѕР±РЅРѕ РґР»СЏ 1920x1080).
+
+[Bigger top + bigger text]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&top=200&scale=1.2
+Comment: РљРѕРјР±РёРЅР°С†РёСЏ СѓРІРµР»РёС‡РµРЅРЅРѕР№ РІРµСЂС…РЅРµР№ РїР°РЅРµР»Рё Рё С‚РµРєСЃС‚Р°.
+
+[Theme mint]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&theme=mint
+Comment: РўРµРјР° mint.
+
+[Theme warm]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&theme=warm
+Comment: РўРµРјР° warm.
+
+[Theme dark]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&theme=dark
+Comment: РўРµРјР° dark.
+
+[Background variant 1]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&bg=1
+Comment: Р’Р°СЂРёР°РЅС‚ С„РѕРЅР°, С‚СЂРµР±СѓРµС‚ СЂРµР°Р»РёР·Р°С†РёРё (СЃРµР№С‡Р°СЃ РІ РєРѕРґРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ previewBg=1).
+
+[Background variant 2]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&bg=2
+Comment: Р’Р°СЂРёР°РЅС‚ С„РѕРЅР°, С‚СЂРµР±СѓРµС‚ СЂРµР°Р»РёР·Р°С†РёРё.
+
+[FullHD preset example]
+URL: http://127.0.0.1:3001/overlay?room=<ROOM>&token=<TOKEN>&top=200&scale=1.15&theme=mint&bg=1
+Comment: Р“РѕС‚РѕРІС‹Р№ РїСЂРёРјРµСЂ РґР»СЏ FullHD, РїР°СЂР°РјРµС‚СЂ bg С‚СЂРµР±СѓРµС‚ СЂРµР°Р»РёР·Р°С†РёРё.
+

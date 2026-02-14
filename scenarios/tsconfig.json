@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "paths": {
+      "@bunker/shared": ["../shared/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

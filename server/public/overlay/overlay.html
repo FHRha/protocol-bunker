@@ -1,0 +1,32 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Protocol: Bunker OBS Overlay</title>
+    <link rel="stylesheet" href="/overlay-assets/overlay.css" />
+  </head>
+  <body>
+    <div id="overlay-app" class="overlay-app" data-layout="l4">
+      <header class="overlay-top">
+        <div class="topCard">
+          <div class="topHeader">Бункер</div>
+          <div id="top-bunker" class="topBody">скрыто</div>
+        </div>
+        <div class="topCard">
+          <div id="top-catastrophe-label" class="topHeader">Катастрофа</div>
+          <div id="top-catastrophe" class="topBody">скрыто</div>
+        </div>
+        <div class="topCard">
+          <div class="topHeader">Угрозы</div>
+          <div id="top-threat" class="topBody">скрыто</div>
+        </div>
+      </header>
+
+      <div id="overlay-status" class="overlay-status">Подключение к игре...</div>
+      <main id="overlay-grid" class="overlay-grid"></main>
+    </div>
+
+    <script src="/overlay-assets/overlay.js"></script>
+  </body>
+</html>

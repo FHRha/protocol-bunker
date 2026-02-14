@@ -52,16 +52,47 @@
 
 ---
 
+## Установка (самохост)
+
+### Требования
+- **Git**
+- **Node.js** (актуальная LTS)
+- **pnpm**
+- **curl** (нужен, если вы пользуетесь `install.sh` через терминал/однострочник)
+
+> Если `curl` не установлен — поставьте его (или просто скачайте `install.sh` через браузер и запустите локально).
+
+### Быстрый запуск (из исходников)
+Клонируем и запускаем готовыми скриптами из репозитория:
+
+**Windows**
+- `run-dev.bat` — режим разработки
+- `run-selfhost.bat` — самохост (если вы это используете)
+
+**Linux/macOS**
+- `./run-dev.sh` — режим разработки
+- `./run-selfhost.sh` — самохост (если вы это используете)
+
+### Установка через install.sh
+Если вы хотите ставить через `install.sh`, скачайте и запустите его:
+
+- скачать:
+  - `curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh -o install.sh`
+- запустить:
+  - `bash install.sh`
+
+---
+
 ## Скачать
 
-Ссылки ниже — шаблон под GitHub Releases. Когда появятся реальные сборки, просто замените `RELEASE_URL` на ссылки на файлы или на `.../releases/latest`.
+Ссылки ниже ведут на **GitHub Releases (latest)**. Когда появятся реальные сборки — выбирайте нужный файл в релизе под вашу систему.
 
 | OS | Download |
 |---|---|
-| Android | [APK Universal](RELEASE_URL) · [APK ARMv8](RELEASE_URL) · [APK ARMv7](RELEASE_URL) · [APK x64](RELEASE_URL) |
-| Windows | [OfficialSetup x64](RELEASE_URL) · [Setup x64](RELEASE_URL) · [Portable x64](RELEASE_URL) |
-| macOS (10.15+) | [DMG Universal](RELEASE_URL) · [PKG Universal](RELEASE_URL) |
-| Linux | [AppImage x64](RELEASE_URL) · [DebPackage x64](RELEASE_URL) · [RpmPackage x64](RELEASE_URL) |
+| Android | [APK Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK ARMv8](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK ARMv7](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Windows | [OfficialSetup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| macOS (10.15+) | [DMG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [PKG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Linux | [AppImage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [DebPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [RpmPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
 
 Про macOS: я не обещаю, что всё заведётся идеально. Если заведётся — отлично, если нет — будем чинить (возможно).
 Если заведётся “с первого раза” — значит где-то нарушен баланс вселенной.
@@ -115,4 +146,3 @@ Streamer mode делает две вещи:
 
 Если что-то выглядит странно — возможно, это ещё не финальная полировка.
 Если всё работает — значит сегодня хороший день.
-

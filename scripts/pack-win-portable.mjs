@@ -104,6 +104,27 @@ function runStep(command, args) {
   }
 }
 
+function runStepWithEnv(command, args, envVars) {
+  const envPrefix = Object.entries(envVars)
+    .map(([key, value]) => `set "${key}=${String(value)}"`)
+    .join(" && ");
+  const commandLine = [command, ...args.map(quoteCmdArg)].join(" ");
+  const fullCommandLine = envPrefix ? `${envPrefix} && ${commandLine}` : commandLine;
+  console.log(`[pack:win] > ${fullCommandLine}`);
+  const result = spawnSync("cmd.exe", ["/d", "/s", "/c", fullCommandLine], {
+    cwd: rootDir,
+    stdio: "inherit",
+    windowsHide: false,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const code = result.status ?? 1;
+    throw new Error(`Command failed (${code}): ${fullCommandLine}`);
+  }
+}
+
 function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -926,6 +947,11 @@ DEV_MODE=0
 }
 
 function main() {
+  const prodClientEnv = {
+    VITE_IDENTITY_MODE: "prod",
+    VITE_DEV_TAB_IDENTITY: "false",
+    VITE_DEV_NEW_PLAYER_PER_TAB: "false",
+  };
   console.log(`[pack:win] Building version: ${versionTag}`);
   if (skipBuild) {
     console.log("[pack:win] Skipping package builds (--skip-build).");
@@ -936,7 +962,7 @@ function main() {
       console.log(`[pack:win] Reusing JS build outputs (--fast): ${reuse.reason}`);
     } else {
       console.log(`[pack:win] --fast fallback to build: ${reuse.reason}`);
-      runStep(pnpmCmd, ["-C", "client", "build"]);
+      runStepWithEnv(pnpmCmd, ["-C", "client", "build"], prodClientEnv);
       runStep(pnpmCmd, ["-C", "shared", "build"]);
       runStep(pnpmCmd, ["-C", "scenarios", "build"]);
       runStep(pnpmCmd, ["-C", "server", "build"]);
@@ -944,7 +970,7 @@ function main() {
     }
   } else {
     console.log("[pack:win] Building production artifacts...");
-    runStep(pnpmCmd, ["-C", "client", "build"]);
+    runStepWithEnv(pnpmCmd, ["-C", "client", "build"], prodClientEnv);
     runStep(pnpmCmd, ["-C", "shared", "build"]);
     runStep(pnpmCmd, ["-C", "scenarios", "build"]);
     runStep(pnpmCmd, ["-C", "server", "build"]);

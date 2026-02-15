@@ -27,6 +27,7 @@ const gitHead = (() => {
 })();
 const artifactsLinuxDir = path.join(rootDir, "artifacts", "linux");
 const artifactsDir = path.join(artifactsLinuxDir, "Protocol-Bunker");
+const serverArtifactsDir = path.join(artifactsLinuxDir, "Protocol-Bunker-server");
 const appDir = path.join(artifactsDir, "app");
 const appVersionFilePath = path.join(appDir, "VERSION");
 const serverAppDir = path.join(appDir, "server");
@@ -61,13 +62,21 @@ const nodeBinDst = path.join(nodeDir, "node");
 const startShPath = path.join(artifactsDir, "start.sh");
 const portableEnvPath = path.join(artifactsDir, "portable.env");
 const readmePath = path.join(artifactsDir, "README_PORTABLE.txt");
-const tarGzPath = path.join(
+const publicTarGzPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-x64-portable-${versionTag}.tar.gz`
+  `protocol-bunker-linux-x64-public-${versionTag}.tar.gz`
 );
-const zipPath = path.join(
+const publicZipPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-x64-portable-${versionTag}.zip`
+  `protocol-bunker-linux-x64-public-${versionTag}.zip`
+);
+const serverTarGzPath = path.join(
+  artifactsLinuxDir,
+  `protocol-bunker-linux-x64-server-${versionTag}.tar.gz`
+);
+const serverZipPath = path.join(
+  artifactsLinuxDir,
+  `protocol-bunker-linux-x64-server-${versionTag}.zip`
 );
 const jsBuildStampPath = path.join(rootDir, ".cache", "pack-js-build-stamp.json");
 const pnpmCmd = "pnpm";
@@ -188,6 +197,17 @@ function cleanPath(targetPath) {
   fs.rmSync(targetPath, { recursive: true, force: true });
 }
 
+function cleanPathBestEffort(targetPath, label) {
+  if (!fs.existsSync(targetPath)) return;
+  try {
+    cleanPath(targetPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[pack:linux] WARN: could not fully clean ${label} (${targetPath}): ${message}`);
+    console.warn(`[pack:linux] WARN: continuing with overwrite mode for ${label}.`);
+  }
+}
+
 function copyDir(src, dst) {
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.cpSync(src, dst, { recursive: true, force: true });
@@ -288,42 +308,51 @@ function formatBytes(value) {
   return `${size.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
 }
 
-function createTarGzArchive() {
-  cleanPath(tarGzPath);
-  cleanPath(zipPath);
+function createArchiveFromPortableDir(sourcePortableDir, archiveTarPath, archiveZipPath, label) {
+  cleanPath(archiveTarPath);
+  cleanPath(archiveZipPath);
 
-  const tarResult = spawnSync("tar", ["--version"], {
-    cwd: rootDir,
-    stdio: "ignore",
-  });
+  const stageRoot = path.join(os.tmpdir(), `bunker-linux-${label}-${Date.now()}-${process.pid}`);
+  const stagePortableDir = path.join(stageRoot, "Protocol-Bunker");
+  fs.mkdirSync(stageRoot, { recursive: true });
+  fs.cpSync(sourcePortableDir, stagePortableDir, { recursive: true, force: true });
 
-  if (!tarResult.error && tarResult.status === 0) {
-    runStep("tar", ["-czf", tarGzPath, "-C", artifactsLinuxDir, "Protocol-Bunker"]);
-    ensureExists(tarGzPath, "portable tar.gz");
-    const stats = fs.statSync(tarGzPath);
-    console.log(`[pack:linux] TAR.GZ created: ${tarGzPath}`);
-    console.log(`[pack:linux] TAR.GZ size: ${formatBytes(stats.size)}`);
-    return;
+  try {
+    const tarResult = spawnSync("tar", ["--version"], {
+      cwd: rootDir,
+      stdio: "ignore",
+    });
+
+    if (!tarResult.error && tarResult.status === 0) {
+      runStep("tar", ["-czf", archiveTarPath, "-C", stageRoot, "Protocol-Bunker"]);
+      ensureExists(archiveTarPath, `${label} portable tar.gz`);
+      const stats = fs.statSync(archiveTarPath);
+      console.log(`[pack:linux] TAR.GZ created (${label}): ${archiveTarPath}`);
+      console.log(`[pack:linux] TAR.GZ size (${label}): ${formatBytes(stats.size)}`);
+      return;
+    }
+
+    if (process.platform === "win32") {
+      const src = stagePortableDir.replace(/'/g, "''");
+      const dst = archiveZipPath.replace(/'/g, "''");
+      const script = [
+        `$src = '${src}'`,
+        `$dst = '${dst}'`,
+        "if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force }",
+        "Compress-Archive -Path $src -DestinationPath $dst -Force",
+      ].join("; ");
+      runStep("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]);
+      ensureExists(archiveZipPath, `${label} portable zip`);
+      const stats = fs.statSync(archiveZipPath);
+      console.log(`[pack:linux] ZIP created (${label}, tar unavailable): ${archiveZipPath}`);
+      console.log(`[pack:linux] ZIP size (${label}): ${formatBytes(stats.size)}`);
+      return;
+    }
+
+    throw new Error("tar command not found and ZIP fallback is only available on Windows host.");
+  } finally {
+    cleanPath(stageRoot);
   }
-
-  if (process.platform === "win32") {
-    const src = artifactsDir.replace(/'/g, "''");
-    const dst = zipPath.replace(/'/g, "''");
-    const script = [
-      `$src = '${src}'`,
-      `$dst = '${dst}'`,
-      "if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force }",
-      "Compress-Archive -Path $src -DestinationPath $dst -Force",
-    ].join("; ");
-    runStep("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]);
-    ensureExists(zipPath, "portable zip");
-    const stats = fs.statSync(zipPath);
-    console.log(`[pack:linux] ZIP created (tar unavailable): ${zipPath}`);
-    console.log(`[pack:linux] ZIP size: ${formatBytes(stats.size)}`);
-    return;
-  }
-
-  throw new Error("tar command not found and ZIP fallback is only available on Windows host.");
 }
 
 function isPortableBaseReusable() {
@@ -347,7 +376,9 @@ function isPortableBaseReusable() {
   return { ok: true, reason: "portable base version and files are valid" };
 }
 
-function buildStartSh() {
+function buildStartSh(profile) {
+  const publicOnlyLinks = profile === "server";
+  const profileLabel = publicOnlyLinks ? "server" : "public";
   const lines = [
     "#!/usr/bin/env bash",
     "set -u",
@@ -379,6 +410,8 @@ function buildStartSh() {
     'LAN_IP=""',
     'PUBLIC_IP=""',
     'OPEN_URL=""',
+    `PUBLIC_ONLY_LINKS="${publicOnlyLinks ? "1" : "0"}"`,
+    `BUILD_PROFILE="${profileLabel}"`,
     "BROWSER_OPENED=0",
     "",
     "assert_exists() {",
@@ -556,12 +589,16 @@ function buildStartSh() {
     '  echo "URLs"',
     '  echo "--------------------------------------------"',
     '  echo "$public_line"',
-    '  echo "$local_line"',
+    '  if [[ "$PUBLIC_ONLY_LINKS" != "1" ]]; then',
+    '    echo "$local_line"',
+    "  fi",
     '  echo "--------------------------------------------"',
     "  {",
     '    echo "$public_line"',
-    '    echo "$local_line"',
-    '    echo "$localhost_line"',
+    '    if [[ "$PUBLIC_ONLY_LINKS" != "1" ]]; then',
+    '      echo "$local_line"',
+    '      echo "$localhost_line"',
+    "    fi",
     '  } > "$URLS_FILE"',
     "}",
     "",
@@ -576,7 +613,9 @@ function buildStartSh() {
     '  echo "--------------------------------------------"',
     "  {",
     '    echo "$open_line"',
-    '    echo "$upstream_line"',
+    '    if [[ "$PUBLIC_ONLY_LINKS" != "1" ]]; then',
+    '      echo "$upstream_line"',
+    "    fi",
     '  } > "$URLS_FILE"',
     "}",
     "",
@@ -591,9 +630,19 @@ function buildStartSh() {
     '    OPEN_URL="https://${DOMAIN}"',
     "  else",
     '    print_local_urls_block "$port"',
-    '    OPEN_URL="http://${LAN_IP}:${port}"',
+    '    if [[ "$PUBLIC_ONLY_LINKS" == "1" ]]; then',
+    '      if [[ -n "$PUBLIC_IP" ]]; then',
+    '        OPEN_URL="http://${PUBLIC_IP}:${port}"',
+    "      else",
+    '        OPEN_URL=""',
+    "      fi",
+    "    else",
+    '      OPEN_URL="http://${LAN_IP}:${port}"',
+    "    fi",
     "  fi",
-    '  open_browser "$OPEN_URL"',
+    '  if [[ -n "$OPEN_URL" ]]; then',
+    '    open_browser "$OPEN_URL"',
+    "  fi",
     "}",
     "",
     "apply_dev_mode() {",
@@ -648,6 +697,11 @@ function buildStartSh() {
     'export BUNKER_PORTABLE="1"',
     'export BUNKER_ASSETS_ROOT="$ASSETS_ROOT"',
     'export BUNKER_CLIENT_DIST="$APP_ROOT/client/dist"',
+    'if [[ "$PUBLIC_ONLY_LINKS" == "1" ]]; then',
+    '  export BUNKER_LINKS_VISIBILITY="public"',
+    "else",
+    '  unset BUNKER_LINKS_VISIBILITY || true',
+    "fi",
     "",
     'if [[ "$MODE" == "domain" ]]; then',
     '  export HOST="127.0.0.1"',
@@ -666,6 +720,7 @@ function buildStartSh() {
     "fi",
     "",
     'echo "Starting Protocol Bunker server..."',
+    'echo "Build profile: ${BUILD_PROFILE}"',
     'echo "Mode: ${MODE^^}"',
     'if [[ "$CONFIG_PORT" == "0" ]]; then',
     '  echo "Port mode: auto (PORT=0 from portable.env)"',
@@ -704,7 +759,8 @@ function buildStartSh() {
   return `${lines.join("\n")}\n`;
 }
 
-function buildPortableEnv() {
+function buildPortableEnv(profile) {
+  const isServer = profile === "server";
   return `PORT=0
 DEV_MODE=0
 # MODE=local
@@ -712,11 +768,13 @@ DEV_MODE=0
 # DOMAIN=bunker.example.com
 # PORT=56986
 # DEV_MODE=1
+# PROFILE=${isServer ? "server" : "public"}
 `;
 }
 
-function buildReadme() {
-  return `Protocol Bunker Portable (Linux)
+function buildReadme(profile) {
+  const isServer = profile === "server";
+  return `Protocol Bunker Portable (Linux ${isServer ? "Server" : "Public"})
 ================================
 
 Start:
@@ -742,7 +800,28 @@ Logs:
 - logs/port.txt
 - logs/urls.txt
 - logs/last-start.txt
+${isServer ? "- Server profile hides LAN/localhost links in launcher output." : "- Public profile prints both Public and Local links."}
 `;
+}
+
+function getVariantPaths(variantDir) {
+  return {
+    variantDir,
+    variantAppDir: path.join(variantDir, "app"),
+    variantStartShPath: path.join(variantDir, "start.sh"),
+    variantPortableEnvPath: path.join(variantDir, "portable.env"),
+    variantReadmePath: path.join(variantDir, "README_PORTABLE.txt"),
+    variantVersionPath: path.join(variantDir, "app", "VERSION"),
+  };
+}
+
+function writeVariantLaunchFiles(variantDir, profile) {
+  const paths = getVariantPaths(variantDir);
+  writeFile(paths.variantStartShPath, buildStartSh(profile));
+  writeFile(paths.variantPortableEnvPath, buildPortableEnv(profile));
+  writeFile(paths.variantReadmePath, buildReadme(profile));
+  writeFile(paths.variantVersionPath, `${versionTag}\n`);
+  fs.chmodSync(paths.variantStartShPath, 0o755);
 }
 
 async function main() {
@@ -817,29 +896,42 @@ async function main() {
     await ensureLinuxNodeRuntime();
   }
 
-  console.log("[pack:linux] Writing launch files...");
-  writeFile(startShPath, buildStartSh());
-  writeFile(portableEnvPath, buildPortableEnv());
-  writeFile(readmePath, buildReadme());
-  writeFile(appVersionFilePath, `${versionTag}\n`);
-  fs.chmodSync(startShPath, 0o755);
+  console.log("[pack:linux] Writing launch files (public profile)...");
+  writeVariantLaunchFiles(artifactsDir, "public");
 
-  ensureExists(startShPath, "start.sh");
-  ensureExists(portableEnvPath, "portable.env");
+  console.log("[pack:linux] Preparing server profile variant...");
+  cleanPathBestEffort(serverArtifactsDir, "server profile directory");
+  copyDir(artifactsDir, serverArtifactsDir);
+  writeVariantLaunchFiles(serverArtifactsDir, "server");
+
+  ensureExists(startShPath, "public/start.sh");
+  ensureExists(portableEnvPath, "public/portable.env");
+  ensureExists(readmePath, "public/README_PORTABLE.txt");
+  ensureExists(appVersionFilePath, "public/app VERSION");
+  ensureExists(path.join(serverArtifactsDir, "start.sh"), "server/start.sh");
+  ensureExists(path.join(serverArtifactsDir, "portable.env"), "server/portable.env");
+  ensureExists(path.join(serverArtifactsDir, "README_PORTABLE.txt"), "server/README_PORTABLE.txt");
+  ensureExists(path.join(serverArtifactsDir, "app", "VERSION"), "server/app VERSION");
   ensureExists(path.join(serverAppDir, "dist", "index.js"), "server dist entry");
   ensureExists(path.join(appDir, "client", "dist", "index.html"), "client dist index");
-  ensureExists(appVersionFilePath, "app VERSION");
 
-  console.log("[pack:linux] Creating tar.gz archive...");
-  createTarGzArchive();
+  console.log("[pack:linux] Creating archives (public + server)...");
+  createArchiveFromPortableDir(artifactsDir, publicTarGzPath, publicZipPath, "public");
+  createArchiveFromPortableDir(serverArtifactsDir, serverTarGzPath, serverZipPath, "server");
 
   console.log("[pack:linux] Created files:");
-  if (fs.existsSync(tarGzPath)) {
-    console.log(` - ${tarGzPath}`);
-  } else if (fs.existsSync(zipPath)) {
-    console.log(` - ${zipPath}`);
+  if (fs.existsSync(publicTarGzPath)) {
+    console.log(` - ${publicTarGzPath}`);
+  } else if (fs.existsSync(publicZipPath)) {
+    console.log(` - ${publicZipPath}`);
+  }
+  if (fs.existsSync(serverTarGzPath)) {
+    console.log(` - ${serverTarGzPath}`);
+  } else if (fs.existsSync(serverZipPath)) {
+    console.log(` - ${serverZipPath}`);
   }
   console.log(` - ${artifactsDir}`);
+  console.log(` - ${serverArtifactsDir}`);
   console.log(`[pack:linux] Portable build completed for ${versionTag}`);
 }
 

@@ -137,6 +137,9 @@ const TRUST_PROXY = envFlag(process.env.TRUST_PROXY);
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN;
 const PUBLIC_HOST = process.env.PUBLIC_HOST ?? process.env.BUNKER_PUBLIC_HOST;
 const DOMAIN = process.env.DOMAIN ?? process.env.BUNKER_DOMAIN;
+const LINKS_VISIBILITY_MODE = (process.env.BUNKER_LINKS_VISIBILITY ?? "all").trim().toLowerCase();
+const HIDE_LOCAL_LINKS_IN_LOGS =
+  LINKS_VISIBILITY_MODE === "public" || LINKS_VISIBILITY_MODE === "external";
 const SERVE_CLIENT = process.env.BUNKER_SERVE_CLIENT !== "false";
 const OVERLAY_MAX_LINE_LEN = 120;
 const OVERLAY_MAX_CATA_LEN = 600;
@@ -157,6 +160,31 @@ let wanLookupCacheIp: string | null = null;
 let wanLookupCacheExpiresAt = 0;
 let wanLookupInFlight: Promise<string | null> | null = null;
 let publicBaseLogSignature = "";
+let clientIndexCacheStamp = "";
+let clientIndexCacheHtml = "";
+
+function renderClientIndexHtml(identityMode: IdentityMode): string {
+  const indexPath = path.join(CLIENT_DIST, "index.html");
+  const stats = fs.statSync(indexPath);
+  const stamp = `${stats.mtimeMs}:${identityMode}`;
+  if (stamp === clientIndexCacheStamp && clientIndexCacheHtml.length > 0) {
+    return clientIndexCacheHtml;
+  }
+
+  const raw = fs.readFileSync(indexPath, "utf8");
+  const runtimeScript =
+    `<script>` +
+    `window.__BUNKER_IDENTITY_MODE__=${JSON.stringify(identityMode)};` +
+    `window.__BUNKER_DEV_TAB_IDENTITY__=${identityMode === "dev_tab" ? "true" : "false"};` +
+    `</script>`;
+  const injected = raw.includes("</head>")
+    ? raw.replace("</head>", `${runtimeScript}\n</head>`)
+    : `${runtimeScript}\n${raw}`;
+
+  clientIndexCacheStamp = stamp;
+  clientIndexCacheHtml = injected;
+  return injected;
+}
 
 function envFlag(value: string | undefined): boolean {
   if (!value) return false;
@@ -495,12 +523,16 @@ function printOverlayInfo(roomCode: string, token: string, controlToken?: string
   console.log(paint("OBS OVERLAY", "bold", "cyan"));
   console.log(`${paint("Room:", "yellow")}        ${paint(roomCode, "bold", "yellow")}`);
   console.log(`${paint("Token:", "magenta")}       ${paint(token, "magenta")}`);
-  console.log(`${paint("App LAN:", "blue")}     ${paint(links.appUrl.lan, "underline", "blue")}`);
-  console.log(`${paint("Spec LAN:", "green")}    ${paint(links.viewerUrl.lan, "underline", "green")}`);
-  console.log(`${paint("View LAN:", "cyan")}    ${paint(links.overlayViewUrl.lan, "underline", "cyan")}`);
-  console.log(`${paint("Dbg LAN:", "yellow")}     ${paint(links.overlayDebugUrl.lan, "underline", "yellow")}`);
-  console.log(`${paint("Ctrl LAN:", "magenta")}   ${paint(links.overlayControlUrl.lan, "underline", "magenta")}`);
-  console.log(`${paint("API LAN:", "blue")}     ${paint(links.overlayControlStateUrl.lan, "underline", "blue")}`);
+  if (!HIDE_LOCAL_LINKS_IN_LOGS) {
+    console.log(`${paint("App LAN:", "blue")}     ${paint(links.appUrl.lan, "underline", "blue")}`);
+    console.log(`${paint("Spec LAN:", "green")}    ${paint(links.viewerUrl.lan, "underline", "green")}`);
+    console.log(`${paint("View LAN:", "cyan")}    ${paint(links.overlayViewUrl.lan, "underline", "cyan")}`);
+    console.log(`${paint("Dbg LAN:", "yellow")}     ${paint(links.overlayDebugUrl.lan, "underline", "yellow")}`);
+    console.log(`${paint("Ctrl LAN:", "magenta")}   ${paint(links.overlayControlUrl.lan, "underline", "magenta")}`);
+    console.log(`${paint("API LAN:", "blue")}     ${paint(links.overlayControlStateUrl.lan, "underline", "blue")}`);
+  } else {
+    console.log(paint("LAN links are hidden for this server profile.", "dim"));
+  }
   console.log(`${paint("Presets:", "blue")}     see docs -> overlay_presets.txt`);
   console.log(paint("Tip: Add as OBS Browser Source (transparent background).", "dim"));
   console.log(paint(line, "dim"));
@@ -1915,7 +1947,7 @@ async function main() {
   app.use("/assets", express.static(ASSETS_ROOT));
   app.use(LINK_PATHS.overlayAssets, express.static(OVERLAY_PUBLIC_ROOT));
   if (SERVE_CLIENT && fs.existsSync(CLIENT_DIST)) {
-    app.use(express.static(CLIENT_DIST));
+    app.use(express.static(CLIENT_DIST, { index: false }));
   }
 
   app.get(LINK_PATHS.overlayView, (_req, res) => {
@@ -2047,6 +2079,7 @@ async function main() {
       ok: true,
       lanBase: links.lanBase,
       publicBase: links.publicBase ?? null,
+      linkVisibility: HIDE_LOCAL_LINKS_IN_LOGS ? "public" : "all",
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
       overlayControlToken: token,
@@ -2256,8 +2289,11 @@ async function main() {
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/assets")) return next();
     if (SERVE_CLIENT && fs.existsSync(CLIENT_DIST)) {
-      res.sendFile(path.join(CLIENT_DIST, "index.html"));
-      return;
+      const indexPath = path.join(CLIENT_DIST, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.status(200).type("html").send(renderClientIndexHtml(IDENTITY_MODE));
+        return;
+      }
     }
     if (!SERVE_CLIENT && req.path === "/") {
       res

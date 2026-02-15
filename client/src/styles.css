@@ -193,6 +193,10 @@ body {
   display: none;
 }
 
+.pill.role-pill-mobile {
+  display: none;
+}
+
 .status.online {
   background: var(--status-green);
   color: var(--status-green-text);
@@ -2442,6 +2446,10 @@ button.ghost {
   }
 
   .role-pill-mobile {
+    display: inline-flex;
+  }
+
+  .pill.role-pill-mobile {
     display: inline-flex;
   }
   html,

@@ -38,15 +38,36 @@ export const ASSET_BASE =
 
 export type IdentityMode = "prod" | "dev_tab";
 
+declare global {
+  interface Window {
+    __BUNKER_IDENTITY_MODE__?: IdentityMode;
+    __BUNKER_DEV_TAB_IDENTITY__?: boolean;
+  }
+}
+
+const runtimeMode =
+  typeof window !== "undefined" &&
+  (window.__BUNKER_IDENTITY_MODE__ === "prod" || window.__BUNKER_IDENTITY_MODE__ === "dev_tab")
+    ? window.__BUNKER_IDENTITY_MODE__
+    : undefined;
+
 const envMode = import.meta.env.VITE_IDENTITY_MODE as IdentityMode | undefined;
-const legacyDevFlag =
+const envLegacyDevFlag =
   import.meta.env.VITE_DEV_TAB_IDENTITY === "true" ||
   import.meta.env.VITE_DEV_NEW_PLAYER_PER_TAB === "true";
+const runtimeLegacyDevFlag =
+  typeof window !== "undefined" && window.__BUNKER_DEV_TAB_IDENTITY__ === true;
 
-export const IDENTITY_MODE: IdentityMode = envMode === "dev_tab" || envMode === "prod"
-  ? envMode
-  : legacyDevFlag
-    ? "dev_tab"
+// In production build we never trust compile-time dev flags.
+// Runtime mode (injected by server) is the source of truth.
+export const IDENTITY_MODE: IdentityMode = runtimeMode
+  ? runtimeMode
+  : import.meta.env.DEV
+    ? envMode === "dev_tab" || envMode === "prod"
+      ? envMode
+      : envLegacyDevFlag || runtimeLegacyDevFlag
+        ? "dev_tab"
+        : "prod"
     : "prod";
 
 export const DEV_TAB_IDENTITY = IDENTITY_MODE === "dev_tab";

@@ -5,7 +5,6 @@ set -euo pipefail
 # Config (edit this)
 # =========================
 REPO="FHRha/protocol-bunker" 
-ASSET="protocol-bunker-linux-x64-portable.tar.gz"
 APP_NAME="protocol-bunker"
 # =========================
 
@@ -31,17 +30,19 @@ need tar
 VERSION=""         # empty => latest
 DO_LIST=0
 AUTOSTART_MODE=""  # "yes" | "no" | ""
+EDITION="public"   # public | server
 
 usage() {
   cat <<EOF
 Install ${APP_NAME} (Linux, no sudo)
 
 Usage:
-  install.sh [--version vX.Y.Z] [--list] [--autostart|--no-autostart]
+  install.sh [--version vX.Y.Z] [--edition public|server] [--list] [--autostart|--no-autostart]
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.1
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.2
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --list
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --autostart
 EOF
@@ -52,8 +53,13 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version)
       shift
-      [ $# -gt 0 ] || err "--version requires a value like v0.1.1"
+      [ $# -gt 0 ] || err "--version requires a value like v0.1.2"
       VERSION="$1"
+      ;;
+    --edition)
+      shift
+      [ $# -gt 0 ] || err "--edition requires 'public' or 'server'"
+      EDITION="$1"
       ;;
     --list) DO_LIST=1 ;;
     --autostart) AUTOSTART_MODE="yes" ;;
@@ -89,8 +95,15 @@ json_latest_tag() {
 validate_version_format() {
   # require leading "v"
   if [[ "$1" != v* ]]; then
-    err "Version must start with 'v' (example: v0.1.1). Got: $1"
+    err "Version must start with 'v' (example: v0.1.2). Got: $1"
   fi
+}
+
+validate_edition() {
+  case "$1" in
+    public|server) ;;
+    *) err "Edition must be 'public' or 'server'. Got: $1" ;;
+  esac
 }
 
 list_versions() {
@@ -123,6 +136,8 @@ else
   info "Latest: $VERSION"
 fi
 
+validate_edition "$EDITION"
+ASSET="protocol-bunker-linux-x64-${EDITION}-${VERSION}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
 # ----- download + install -----
@@ -152,6 +167,7 @@ SYSTEMD_DIR="\${HOME}/.config/systemd/user"
 SERVICE_NAME="${SERVICE_NAME}"
 SERVICE_FILE="\${SYSTEMD_DIR}/\${SERVICE_NAME}.service"
 INSTALL_URL="${INSTALL_URL}"
+EDITION="${EDITION}"
 
 msg() { printf "[%s] %s\n" "\$APP_NAME" "\$*"; }
 
@@ -204,9 +220,9 @@ case "\${1:-}" in
   --update)
     # If version provided -> install that, else latest
     if [ -n "\${2:-}" ]; then
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --version "\$2"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --version "\$2"
     else
-      curl -fsSL "\$INSTALL_URL" | bash
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION"
     fi
     exit 0
     ;;
@@ -266,4 +282,5 @@ else
 fi
 
 info "Installed version: $VERSION"
+info "Installed edition: $EDITION"
 info "Run: ${APP_NAME}"

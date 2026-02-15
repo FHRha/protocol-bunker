@@ -1,4 +1,4 @@
-﻿# Протокол: Бункер
+# Протокол: Бункер
 
 Это браузерная версия настолки «Бункер» для друзей, которые хотят спорить и голосовать, но не хотят собираться в одной комнате и печатать карточки (хотя собраться вместе вы сможете с андроид версией).
 
@@ -69,6 +69,7 @@
   - `curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh -o install.sh`
 - запустить:
   - `bash install.sh`
+  - `bash install.sh --edition server` (серверный Linux-профиль: без вывода LAN/localhost ссылок)
 
 ---
 
@@ -93,9 +94,9 @@
 
 ### Windows (EXE Launcher)
 
-- `protocol-bunker-win-x64-exe-setup-v0.1.1.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `protocol-bunker-win-x64-exe-setup-v0.1.2.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
 - `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
-- `protocol-bunker-win-x64-exe-v0.1.1.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+- `protocol-bunker-win-x64-exe-v0.1.2.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
 
 Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
 
@@ -153,7 +154,7 @@ Streamer mode делает две вещи:
 
 ---
 
-## Сборка релизов (0.1.1)
+## Сборка релизов (0.1.2)
 
 Полная сборка:
 - `pnpm run build:all`
@@ -168,5 +169,7 @@ Streamer mode делает две вещи:
 
 Где результаты:
 - `artifacts/win/`
-- `artifacts/linux/`
+- `artifacts/linux/`:
+  - `protocol-bunker-linux-x64-public-v0.1.2.tar.gz`
+  - `protocol-bunker-linux-x64-server-v0.1.2.tar.gz`
 - `artifacts/win-exe/`

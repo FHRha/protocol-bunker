@@ -164,6 +164,8 @@ export default function App() {
   const isSpectateRoute = location.pathname.startsWith("/spectate");
   const showConnectionStatus = isGameRoute || isLobbyRoute;
   const showRolePill = Boolean(roomState);
+  const showRolePillCompact = showRolePill && isMobile;
+  const showDevIdentityBadge = roomState ? Boolean(roomState.isDev) : DEV_TAB_IDENTITY;
   const wsInteractive = connectionStatus === "connected";
   const roleLabel = isControl ? ru.roleControl : isHost ? ru.roleHost : ru.rolePlayer;
   const statusLabel =
@@ -941,13 +943,13 @@ export default function App() {
           <div className="brand">
             {APP_NAME}
           </div>
-          {DEV_TAB_IDENTITY ? <span className="pill">{ru.devBadge}</span> : null}
+          {showDevIdentityBadge ? <span className="pill">{ru.devBadge}</span> : null}
           {showConnectionStatus ? (
             <>
               <span className={`status ${statusClass}`}>{statusLabel}</span>
               {statusHint ? <span className="status-hint">{statusHint}</span> : null}
               {lastWsError ? <span className="status-error">{lastWsError}</span> : null}
-              {showRolePill ? <span className="pill role-pill role-pill-mobile">{roleLabel}</span> : null}
+              {showRolePillCompact ? <span className="pill role-pill role-pill-mobile">{roleLabel}</span> : null}
             </>
           ) : null}
         </div>
@@ -964,7 +966,7 @@ export default function App() {
                 </button>
               ) : null}
             </div>
-          ) : showRolePill ? (
+          ) : showRolePill && !showRolePillCompact ? (
             <span className="pill role-pill">{roleLabel}</span>
           ) : isSpectateRoute ? (
             <span className="pill role-pill">{ru.spectatorLinkTitle}</span>
@@ -1100,6 +1102,7 @@ export default function App() {
                   scenariosLoading={scenariosLoading}
                   onCreate={handleCreate}
                   onJoin={handleJoin}
+                  devBadgeActive={showDevIdentityBadge}
                 />
               }
             />

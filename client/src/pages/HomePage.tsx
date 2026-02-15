@@ -11,6 +11,7 @@ interface HomePageProps {
   scenariosLoading: boolean;
   onCreate: (name: string, scenarioId: string) => void;
   onJoin: (name: string, roomCode: string) => void;
+  devBadgeActive?: boolean;
 }
 
 export default function HomePage({
@@ -18,6 +19,7 @@ export default function HomePage({
   scenariosLoading,
   onCreate,
   onJoin,
+  devBadgeActive,
 }: HomePageProps) {
   const [name, setName] = useState(() => localStorage.getItem("bunker.playerName") ?? "");
   const [roomCode, setRoomCode] = useState("");
@@ -39,6 +41,8 @@ export default function HomePage({
     return scenarios;
   }, [scenarios, scenariosLoading]);
 
+  const showDevBadge = devBadgeActive ?? DEV_TAB_IDENTITY;
+
   return (
     <div className="stack home-page">
       <section className="panel">
@@ -47,7 +51,7 @@ export default function HomePage({
             <h1>{ru.homeTitle}</h1>
             <p>{ru.homeSubtitle}</p>
           </div>
-          {DEV_TAB_IDENTITY ? <span className="pill">{ru.devBadge}</span> : null}
+          {showDevBadge ? <span className="pill">{ru.devBadge}</span> : null}
         </div>
       </section>
 
@@ -114,7 +118,7 @@ export default function HomePage({
               {ru.joinButton}
             </button>
             <div className="muted">
-              {DEV_TAB_IDENTITY ? ru.devHint : ru.prodHint}
+              {showDevBadge ? ru.devHint : ru.prodHint}
             </div>
           </div>
         </section>

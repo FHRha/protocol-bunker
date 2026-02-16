@@ -1,4 +1,4 @@
-# Протокол: Бункер
+﻿# Протокол: Бункер
 
 Это браузерная версия настолки «Бункер» для друзей, которые хотят спорить и голосовать, но не хотят собираться в одной комнате и печатать карточки (хотя собраться вместе вы сможете с андроид версией).
 
@@ -49,6 +49,43 @@
 - править тексты, оформление, механики (если руки чешутся — лечению не подлежит).
 
 Если вы хотите сделать “свой Бункер” (с мемами вашей компании, локальными приколами и “сценарием про ЖКХ”) — это как раз тот случай: берёте, форкаете, делаете.
+
+---
+
+## Скачать
+
+Все ссылки ведут на **GitHub Releases → Latest**. На странице релиза выберите нужный файл:
+
+| Платформа | Файлы в релизе |
+|---|---|
+| Android | В разработке |
+| macOS | В разработке |
+| Windows | [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [EXE x64 (zip)](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Linux x64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Linux ARM64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
+
+> Если файлов на странице релиза пока нет — значит сборки ещё не залиты (или GitHub решил устроить нам квест).
+
+### Про macOS
+
+Я не обещаю, что всё заведётся идеально.  
+Если заведётся — отлично. Если нет — будем чинить (возможно).  
+А если заведётся “с первого раза” — значит где-то во вселенной нарушен баланс.
+
+### Windows (EXE Launcher)
+
+- `protocol-bunker-win-x64-exe-setup-v0.1.2.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
+- `protocol-bunker-win-x64-exe-v0.1.2.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+
+Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
+
+## Про portable
+
+Portable — это “скачал и запустил”. Без установщиков, просто папка.  
+Удобно, если не хочется трогать систему или вы запускаете игру с флешки/второго диска.
+
+(Да, это версия для людей, которые на слово “установщик” отвечают: “не, спасибо, я уже обжигался”.)
 
 ---
 
@@ -197,42 +234,6 @@ protocol-bunker --uninstall
 ~/.local/bin/protocol-bunker --disable-autostart
 ~/.local/bin/protocol-bunker --uninstall
 ```
----
-
-## Скачать
-
-Все ссылки ведут на **GitHub Releases → Latest**. На странице релиза выберите нужный файл:
-
-| Платформа | Файлы в релизе |
-|---|---|
-| Android | В разработке |
-| macOS | В разработке |
-| Windows | [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [EXE x64 (zip)](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
-| Linux x64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
-| Linux ARM64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
-
-> Если файлов на странице релиза пока нет — значит сборки ещё не залиты (или GitHub решил устроить нам квест).
-
-### Про macOS
-
-Я не обещаю, что всё заведётся идеально.  
-Если заведётся — отлично. Если нет — будем чинить (возможно).  
-А если заведётся “с первого раза” — значит где-то во вселенной нарушен баланс.
-
-### Windows (EXE Launcher)
-
-- `protocol-bunker-win-x64-exe-setup-v0.1.2.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
-- `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
-- `protocol-bunker-win-x64-exe-v0.1.2.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
-
-Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
-
-## Про portable
-
-Portable — это “скачал и запустил”. Без установщиков, просто папка.  
-Удобно, если не хочется трогать систему или вы запускаете игру с флешки/второго диска.
-
-(Да, это версия для людей, которые на слово “установщик” отвечают: “не, спасибо, я уже обжигался”.)
 
 ---
 

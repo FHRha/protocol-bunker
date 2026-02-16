@@ -199,14 +199,15 @@ protocol-bunker --uninstall
 
 ## Скачать
 
-Все ссылки ведут на **GitHub Releases → Latest**. Откроется страница релиза — там выбирайте файл под вашу систему.
+Все ссылки ведут на **GitHub Releases → Latest**. На странице релиза выберите нужный файл:
 
-| OS | Download |
+| Платформа | Файлы в релизе |
 |---|---|
-| Android | [APK Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK ARMv8](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK ARMv7](https://github.com/FHRha/protocol-bunker/releases/latest) · [APK x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
-| Windows | [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
-| macOS (10.15+) | [DMG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) · [PKG Universal](https://github.com/FHRha/protocol-bunker/releases/latest) |
-| Linux | [AppImage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [DebPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [RpmPackage x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Android | В разработке |
+| macOS | В разработке |
+| Windows | [Setup x64](https://github.com/FHRha/protocol-bunker/releases/latest) · [EXE x64 (zip)](https://github.com/FHRha/protocol-bunker/releases/latest) · [Portable x64](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Linux x64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
+| Linux ARM64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
 
 > Если файлов на странице релиза пока нет — значит сборки ещё не залиты (или GitHub решил устроить нам квест).
 

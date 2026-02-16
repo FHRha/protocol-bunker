@@ -446,7 +446,9 @@ function buildStartSh(profile) {
     'CLIENT_INDEX="$APP_ROOT/client/dist/index.html"',
     'ASSETS_ROOT="$APP_ROOT/assets"',
     "",
-    'SERVER_LOG="$LOGS_DIR/server.log"',
+    'LOG_DAY="$(date +%Y-%m-%d)"',
+    'SERVER_LOG_DAY="$LOGS_DIR/server-${LOG_DAY}.log"',
+    'SERVER_LOG_LINK="$LOGS_DIR/server.log"',
     'PORT_FILE="$LOGS_DIR/port.txt"',
     'URLS_FILE="$LOGS_DIR/urls.txt"',
     'LAST_START_FILE="$LOGS_DIR/last-start.txt"',
@@ -457,6 +459,7 @@ function buildStartSh(profile) {
     'CONFIG_DOMAIN=""',
     'CONFIG_PUBLIC_HOST=""',
     'CONFIG_PUBLIC_ORIGIN=""',
+    'CONFIG_LOG_RETENTION_DAYS="14"',
     'MODE=""',
     'DOMAIN=""',
     'LAN_IP=""',
@@ -479,6 +482,16 @@ function buildStartSh(profile) {
     '  local path_value="$1"',
     '  if [[ -f "$path_value" ]]; then',
     '    chmod +x "$path_value" 2>/dev/null || true',
+    "  fi",
+    "}",
+    "",
+    "cleanup_old_logs() {",
+    '  local keep_days="${1:-14}"',
+    '  if [[ "$keep_days" == "0" ]]; then',
+    "    return",
+    "  fi",
+    "  if command -v find >/dev/null 2>&1; then",
+    '    find "$LOGS_DIR" -maxdepth 1 -type f -name "server-*.log" -mtime "+$((keep_days - 1))" -delete 2>/dev/null || true',
     "  fi",
     "}",
     "",
@@ -514,6 +527,7 @@ function buildStartSh(profile) {
     '        DOMAIN) CONFIG_DOMAIN="$value" ;;',
     '        PUBLIC_HOST) CONFIG_PUBLIC_HOST="$value" ;;',
     '        PUBLIC_ORIGIN) CONFIG_PUBLIC_ORIGIN="$value" ;;',
+    '        LOG_RETENTION_DAYS) CONFIG_LOG_RETENTION_DAYS="$value" ;;',
     "      esac",
     "    fi",
     '  done < "$ENV_FILE"',
@@ -526,6 +540,16 @@ function buildStartSh(profile) {
     "  fi",
     "  if (( CONFIG_PORT < 0 || CONFIG_PORT > 65535 )); then",
     '    CONFIG_PORT="0"',
+    "  fi",
+    "}",
+    "",
+    "normalize_log_retention_days() {",
+    '  if [[ ! "$CONFIG_LOG_RETENTION_DAYS" =~ ^[0-9]+$ ]]; then',
+    '    CONFIG_LOG_RETENTION_DAYS="14"',
+    "    return",
+    "  fi",
+    "  if (( CONFIG_LOG_RETENTION_DAYS < 0 || CONFIG_LOG_RETENTION_DAYS > 365 )); then",
+    '    CONFIG_LOG_RETENTION_DAYS="14"',
     "  fi",
     "}",
     "",
@@ -737,12 +761,20 @@ function buildStartSh(profile) {
     'assert_exists "$ASSETS_ROOT" "assets directory"',
     "",
     'mkdir -p "$LOGS_DIR"',
-    '> "$SERVER_LOG"',
+    "parse_portable_env",
+    "normalize_port",
+    "normalize_log_retention_days",
+    'cleanup_old_logs "$CONFIG_LOG_RETENTION_DAYS"',
+    'touch "$SERVER_LOG_DAY"',
+    'if ln -sfn "server-${LOG_DAY}.log" "$SERVER_LOG_LINK" 2>/dev/null; then',
+    "  :",
+    "else",
+    '  rm -f "$SERVER_LOG_LINK" 2>/dev/null || true',
+    '  ln -f "$SERVER_LOG_DAY" "$SERVER_LOG_LINK" 2>/dev/null || true',
+    "fi",
     'rm -f "$PORT_FILE" "$URLS_FILE"',
     'date "+%Y-%m-%d %H:%M:%S %z" > "$LAST_START_FILE"',
     "",
-    "parse_portable_env",
-    "normalize_port",
     "resolve_mode",
     "",
     'if [[ "$MODE" == "domain" ]]; then',
@@ -807,7 +839,13 @@ function buildStartSh(profile) {
     "else",
     '  echo "Port mode: fixed (${CONFIG_PORT}) from portable.env"',
     "fi",
-    'echo "Log file: logs/server.log"',
+    'echo "Log file (daily): logs/server-${LOG_DAY}.log"',
+    'echo "Latest log alias: logs/server.log"',
+    'if [[ "$CONFIG_LOG_RETENTION_DAYS" == "0" ]]; then',
+    '  echo "Log retention: disabled (LOG_RETENTION_DAYS=0)"',
+    "else",
+    '  echo "Log retention: ${CONFIG_LOG_RETENTION_DAYS} days"',
+    "fi",
     'if [[ "$MODE" == "local" ]]; then',
     '  if [[ -n "$CONFIG_PUBLIC_ORIGIN" ]]; then',
     '    echo "Public source: PUBLIC_ORIGIN from portable.env"',
@@ -820,7 +858,7 @@ function buildStartSh(profile) {
     'echo "Press Ctrl+C to stop."',
     "",
     'pushd "$SERVER_ROOT" >/dev/null',
-    '"$NODE_BIN" "$SERVER_ENTRY" 2>&1 | tee -a "$SERVER_LOG" | while IFS= read -r line || [[ -n "$line" ]]; do',
+    '"$NODE_BIN" "$SERVER_ENTRY" 2>&1 | tee -a "$SERVER_LOG_DAY" | while IFS= read -r line || [[ -n "$line" ]]; do',
     '  if [[ ! -s "$PORT_FILE" ]]; then',
     '    if [[ "$line" =~ __BUNKER_PORT__=([0-9]{1,5}) ]]; then',
     '      handle_detected_port "${BASH_REMATCH[1]}"',
@@ -839,7 +877,7 @@ function buildStartSh(profile) {
     "fi",
     "",
     'if [[ "$SERVER_EXIT" -ne 0 ]]; then',
-    '  echo "Server exited with code ${SERVER_EXIT}. See logs/server.log" >&2',
+    '  echo "Server exited with code ${SERVER_EXIT}. See logs/server.log (daily: logs/server-${LOG_DAY}.log)" >&2',
     '  exit "$SERVER_EXIT"',
     "fi",
     "",
@@ -857,6 +895,7 @@ DEV_MODE=0
 # DOMAIN=bunker.example.com
 # PUBLIC_HOST=203.0.113.10
 # PUBLIC_ORIGIN=http://203.0.113.10:8080
+# LOG_RETENTION_DAYS=14
 # PORT=56986
 # DEV_MODE=1
 # PROFILE=${isServer ? "server" : "public"}
@@ -889,10 +928,12 @@ Dev mode:
 - DEV_MODE=1 enables dev_tab behavior and dev logs/scenarios
 
 Logs:
-- logs/server.log
+- logs/server-YYYY-MM-DD.log (daily server log)
+- logs/server.log (alias to current daily log)
 - logs/port.txt
 - logs/urls.txt
 - logs/last-start.txt
+- retention: set LOG_RETENTION_DAYS in portable.env (default: 14, 0 disables cleanup)
 ${isServer ? "- Server profile hides LAN/localhost links in launcher output." : "- Public profile prints both Public and Local links."}
 `;
 }

@@ -12,9 +12,12 @@ INSTALL_ROOT="${HOME}/.local/share/${APP_NAME}"
 BIN_DIR="${HOME}/.local/bin"
 GLOBAL_BIN_DIR="/usr/local/bin"
 APP_DIR="${INSTALL_ROOT}/Protocol-Bunker"
-SYSTEMD_DIR="${HOME}/.config/systemd/user"
+INSTALL_HOME="${HOME}"
+SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
+SYSTEMD_SYSTEM_DIR="/etc/systemd/system"
 SERVICE_NAME="protocol-bunker"
-SERVICE_FILE="${SYSTEMD_DIR}/${SERVICE_NAME}.service"
+SERVICE_FILE_USER="${SYSTEMD_USER_DIR}/${SERVICE_NAME}.service"
+SERVICE_FILE_SYSTEM="${SYSTEMD_SYSTEM_DIR}/${SERVICE_NAME}.service"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -33,22 +36,25 @@ DO_LIST=0
 AUTOSTART_MODE=""  # "yes" | "no" | ""
 EDITION="public"   # public | server
 ARCH=""            # x64 | arm64 (empty => auto-detect)
+SERVICE_SCOPE="auto"      # auto | system | user
+EFFECTIVE_SERVICE_SCOPE="" # resolved service scope
 TARGET_ARCH=""     # normalized arch used for assets
 VERSION_TAG=""     # canonical version for asset names (e.g. v0.1.2)
 RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.1.2 or v0.1.2)
 
 usage() {
   cat <<EOF
-Install ${APP_NAME} (Linux, no sudo)
+Install ${APP_NAME} (Linux)
 
 Usage:
-  install.sh [--version vX.Y.Z] [--edition public|server] [--arch x64|arm64] [--list] [--autostart|--no-autostart]
+  install.sh [--version vX.Y.Z] [--edition public|server] [--arch x64|arm64] [--service-scope auto|system|user] [--list] [--autostart|--no-autostart]
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.2
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --arch arm64
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --service-scope system --autostart
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --list
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --autostart
 EOF
@@ -71,6 +77,11 @@ while [ $# -gt 0 ]; do
       shift
       [ $# -gt 0 ] || err "--arch requires 'x64' or 'arm64'"
       ARCH="$1"
+      ;;
+    --service-scope)
+      shift
+      [ $# -gt 0 ] || err "--service-scope requires 'auto', 'system' or 'user'"
+      SERVICE_SCOPE="$1"
       ;;
     --list) DO_LIST=1 ;;
     --autostart) AUTOSTART_MODE="yes" ;;
@@ -144,6 +155,26 @@ validate_edition() {
   esac
 }
 
+validate_service_scope() {
+  case "$1" in
+    auto|system|user) ;;
+    *) err "Service scope must be auto, system or user. Got: $1" ;;
+  esac
+}
+
+resolve_service_scope() {
+  local scope="$1"
+  if [ "$scope" = "auto" ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+      printf "system"
+    else
+      printf "user"
+    fi
+    return
+  fi
+  printf "%s" "$scope"
+}
+
 normalize_arch() {
   local value
   value="$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')"
@@ -202,6 +233,11 @@ else
 fi
 
 validate_edition "$EDITION"
+validate_service_scope "$SERVICE_SCOPE"
+EFFECTIVE_SERVICE_SCOPE="$(resolve_service_scope "$SERVICE_SCOPE")"
+if [ "$EFFECTIVE_SERVICE_SCOPE" = "system" ] && [ "$(id -u)" -ne 0 ]; then
+  err "--service-scope system requires root. Use sudo/root or --service-scope user."
+fi
 if [ -n "$ARCH" ]; then
   TARGET_ARCH="$(normalize_arch "$ARCH")"
   info "Requested arch: $TARGET_ARCH"
@@ -209,6 +245,7 @@ else
   TARGET_ARCH="$(detect_arch)"
   info "Detected arch: $TARGET_ARCH"
 fi
+info "Service scope: ${EFFECTIVE_SERVICE_SCOPE}"
 ASSET="protocol-bunker-linux-${TARGET_ARCH}-${EDITION}-${VERSION_TAG}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
 
@@ -237,10 +274,14 @@ cat > "$LAUNCHER" <<EOF
 set -euo pipefail
 
 APP_NAME="${APP_NAME}"
-APP_DIR="\${HOME}/.local/share/${APP_NAME}/Protocol-Bunker"
-SYSTEMD_DIR="\${HOME}/.config/systemd/user"
+INSTALL_HOME="${INSTALL_HOME}"
+APP_DIR="${APP_DIR}"
+SYSTEMD_USER_DIR="${INSTALL_HOME}/.config/systemd/user"
+SYSTEMD_SYSTEM_DIR="/etc/systemd/system"
 SERVICE_NAME="${SERVICE_NAME}"
-SERVICE_FILE="\${SYSTEMD_DIR}/\${SERVICE_NAME}.service"
+SERVICE_FILE_USER="\${SYSTEMD_USER_DIR}/\${SERVICE_NAME}.service"
+SERVICE_FILE_SYSTEM="\${SYSTEMD_SYSTEM_DIR}/\${SERVICE_NAME}.service"
+SERVICE_SCOPE="${EFFECTIVE_SERVICE_SCOPE}"
 GLOBAL_LINK="${GLOBAL_BIN_DIR}/${APP_NAME}"
 INSTALL_URL="${INSTALL_URL}"
 EDITION="${EDITION}"
@@ -248,38 +289,95 @@ ARCH="${TARGET_ARCH}"
 
 msg() { printf "[%s] %s\n" "\$APP_NAME" "\$*"; }
 
+run_systemctl() {
+  local scope="\$1"
+  shift
+  if [ "\$scope" = "user" ]; then
+    systemctl --user "\$@"
+  else
+    systemctl "\$@"
+  fi
+}
+
+service_file_for_scope() {
+  local scope="\$1"
+  if [ "\$scope" = "user" ]; then
+    printf "%s" "\$SERVICE_FILE_USER"
+  else
+    printf "%s" "\$SERVICE_FILE_SYSTEM"
+  fi
+}
+
+wanted_by_for_scope() {
+  local scope="\$1"
+  if [ "\$scope" = "user" ]; then
+    printf "default.target"
+  else
+    printf "multi-user.target"
+  fi
+}
+
+scope_allowed() {
+  local scope="\$1"
+  if [ "\$scope" = "system" ] && [ "\$(id -u)" -ne 0 ]; then
+    msg "system scope requires root. Run with sudo/root."
+    return 1
+  fi
+  return 0
+}
+
 enable_autostart() {
   command -v systemctl >/dev/null 2>&1 || { msg "systemctl not found; autostart unavailable."; return 1; }
-  mkdir -p "\$SYSTEMD_DIR"
+  local scope="\$SERVICE_SCOPE"
+  local unit_file unit_dir wanted_by
+  scope_allowed "\$scope" || return 1
+  unit_file="\$(service_file_for_scope "\$scope")"
+  unit_dir="\$(dirname "\$unit_file")"
+  wanted_by="\$(wanted_by_for_scope "\$scope")"
+  mkdir -p "\$unit_dir"
 
-  cat > "\$SERVICE_FILE" <<SERVICE
+  cat > "\$unit_file" <<SERVICE
 [Unit]
 Description=Protocol: Bunker (self-host server)
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/.local/share/${APP_NAME}/Protocol-Bunker
-ExecStart=%h/.local/share/${APP_NAME}/Protocol-Bunker/start.sh
+WorkingDirectory=${APP_DIR}
+ExecStart=${APP_DIR}/start.sh
 Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=default.target
+WantedBy=\${wanted_by}
 SERVICE
 
-  systemctl --user daemon-reload
-  systemctl --user enable --now "\$SERVICE_NAME"
-  msg "Autostart enabled (systemd --user)."
-  msg "Tip: if it doesn't start after reboot on headless systems, you may need linger (requires sudo):"
-  msg "  sudo loginctl enable-linger \$USER"
+  run_systemctl "\$scope" daemon-reload
+  run_systemctl "\$scope" enable --now "\$SERVICE_NAME"
+  msg "Autostart enabled (systemd --\${scope})."
+  if [ "\$scope" = "user" ]; then
+    msg "Tip: if it doesn't start after reboot on headless systems, you may need linger (requires sudo):"
+    msg "  sudo loginctl enable-linger \$USER"
+  fi
+}
+
+disable_scope() {
+  local scope="\$1"
+  local unit_file
+  unit_file="\$(service_file_for_scope "\$scope")"
+  if [ "\$scope" = "system" ] && [ "\$(id -u)" -ne 0 ]; then
+    return 0
+  fi
+  run_systemctl "\$scope" disable --now "\$SERVICE_NAME" >/dev/null 2>&1 || true
+  rm -f "\$unit_file"
+  run_systemctl "\$scope" daemon-reload >/dev/null 2>&1 || true
 }
 
 disable_autostart() {
   command -v systemctl >/dev/null 2>&1 || true
-  systemctl --user disable --now "\$SERVICE_NAME" >/dev/null 2>&1 || true
-  rm -f "\$SERVICE_FILE"
-  systemctl --user daemon-reload >/dev/null 2>&1 || true
+  disable_scope "system"
+  disable_scope "user"
   msg "Autostart disabled."
 }
 
@@ -297,9 +395,9 @@ case "\${1:-}" in
   --update)
     # If version provided -> install that, else latest
     if [ -n "\${2:-}" ]; then
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --version "\$2"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --service-scope "\$SERVICE_SCOPE" --version "\$2"
     else
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --service-scope "\$SERVICE_SCOPE"
     fi
     exit 0
     ;;
@@ -310,13 +408,13 @@ case "\${1:-}" in
     if [ -L "\$GLOBAL_LINK" ]; then
       target="\$(readlink "\$GLOBAL_LINK" || true)"
       case "\$target" in
-        "\${HOME}/.local/bin/\${APP_NAME}"|"\${HOME}/.local/share/${APP_NAME}/"*)
+        "${INSTALL_HOME}/.local/bin/\${APP_NAME}"|"${INSTALL_HOME}/.local/share/${APP_NAME}/"*)
           rm -f "\$GLOBAL_LINK"
           ;;
       esac
     fi
-    rm -rf "\${HOME}/.local/share/${APP_NAME}"
-    rm -f  "\${HOME}/.local/bin/${APP_NAME}"
+    rm -rf "${INSTALL_HOME}/.local/share/${APP_NAME}"
+    rm -f  "${INSTALL_HOME}/.local/bin/${APP_NAME}"
     msg "Uninstalled."
     exit 0
     ;;
@@ -349,7 +447,7 @@ if [ -t 0 ] && [ -t 1 ]; then is_interactive=1; fi
 if [ -z "$AUTOSTART_MODE" ]; then
   if [ "$is_interactive" -eq 1 ]; then
     echo
-    echo "Enable autostart (systemd --user) after install?"
+    echo "Enable autostart (systemd --${EFFECTIVE_SERVICE_SCOPE}) after install?"
     echo "  1) Yes"
     echo "  2) No"
     printf "Choose [1-2]: "
@@ -367,7 +465,7 @@ if [ "$AUTOSTART_MODE" = "yes" ]; then
   if "$LAUNCHER" --enable-autostart; then
     :
   else
-    warn "Autostart could not be enabled (systemd user may be unavailable). Install completed without autostart."
+    warn "Autostart could not be enabled (scope: ${EFFECTIVE_SERVICE_SCOPE}). Install completed without autostart."
   fi
 else
   info "Autostart not enabled."
@@ -377,6 +475,7 @@ info "Installed release tag: $RELEASE_TAG"
 info "Installed version: $VERSION_TAG"
 info "Installed edition: $EDITION"
 info "Installed arch: $TARGET_ARCH"
+info "Installed service scope: $EFFECTIVE_SERVICE_SCOPE"
 if command -v "${APP_NAME}" >/dev/null 2>&1; then
   info "Run: ${APP_NAME}"
 elif [ -n "$GLOBAL_LAUNCHER" ]; then

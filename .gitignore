@@ -53,6 +53,7 @@ yarn-error.log*
 artifacts/
 release/
 releases/
+win-exe/
 
 # archives (only artifacts)
 artifacts/**/*.zip

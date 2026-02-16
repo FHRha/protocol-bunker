@@ -173,6 +173,9 @@ systemctl --user start protocol-bunker
 journalctl --user -u protocol-bunker -f
 ```
 
+Подробный пример reverse-proxy через `nginx stream` (Linux, server-профиль):
+- `docs/nginx-stream-linux.md`
+
 
 Удаление установки (Linux):
 

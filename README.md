@@ -95,6 +95,53 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 - `public` — обычный профиль (показывает и Public, и Local ссылки).
 - `server` — серверный профиль (скрывает LAN/localhost ссылки в выводе launcher и в блоке ссылок в лобби).
 
+### Автозапуск и сервис (Linux)
+
+Включить автозапуск сразу при установке:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --autostart
+```
+
+Включить автозапуск после установки:
+
+```bash
+protocol-bunker --enable-autostart
+```
+
+Отключить автозапуск:
+
+```bash
+protocol-bunker --disable-autostart
+```
+
+Стандартные пути установки (Linux):
+
+- игра: `~/.local/share/protocol-bunker/Protocol-Bunker`
+- launcher-команда: `~/.local/bin/protocol-bunker`
+- service unit: `~/.config/systemd/user/protocol-bunker.service`
+
+Редактирование настроек (стандартная установка):
+
+```bash
+nano ~/.local/share/protocol-bunker/Protocol-Bunker/portable.env
+```
+
+После изменения настроек перезапустите сервис:
+
+```bash
+systemctl --user restart protocol-bunker
+```
+
+Полезные команды сервиса:
+
+```bash
+systemctl --user status protocol-bunker
+systemctl --user stop protocol-bunker
+systemctl --user start protocol-bunker
+journalctl --user -u protocol-bunker -f
+```
+
 ---
 
 ## Скачать

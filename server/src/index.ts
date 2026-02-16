@@ -137,7 +137,12 @@ const TRUST_PROXY = envFlag(process.env.TRUST_PROXY);
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN;
 const PUBLIC_HOST = process.env.PUBLIC_HOST ?? process.env.BUNKER_PUBLIC_HOST;
 const DOMAIN = process.env.DOMAIN ?? process.env.BUNKER_DOMAIN;
-const LINKS_VISIBILITY_MODE = (process.env.BUNKER_LINKS_VISIBILITY ?? "all").trim().toLowerCase();
+const BUILD_PROFILE = (process.env.BUNKER_BUILD_PROFILE ?? "").trim().toLowerCase();
+const LINKS_VISIBILITY_MODE = (
+  process.env.BUNKER_LINKS_VISIBILITY ?? (BUILD_PROFILE === "server" ? "public" : "all")
+)
+  .trim()
+  .toLowerCase();
 const HIDE_LOCAL_LINKS_IN_LOGS =
   LINKS_VISIBILITY_MODE === "public" || LINKS_VISIBILITY_MODE === "external";
 const SERVE_CLIENT = process.env.BUNKER_SERVE_CLIENT !== "false";
@@ -2080,6 +2085,7 @@ async function main() {
       lanBase: links.lanBase,
       publicBase: links.publicBase ?? null,
       linkVisibility: HIDE_LOCAL_LINKS_IN_LOGS ? "public" : "all",
+      buildProfile: BUILD_PROFILE || "public",
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
       overlayControlToken: token,

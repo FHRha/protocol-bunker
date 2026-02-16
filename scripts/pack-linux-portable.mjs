@@ -405,6 +405,8 @@ function buildStartSh(profile) {
     'CONFIG_DEV_MODE="0"',
     'CONFIG_MODE=""',
     'CONFIG_DOMAIN=""',
+    'CONFIG_PUBLIC_HOST=""',
+    'CONFIG_PUBLIC_ORIGIN=""',
     'MODE=""',
     'DOMAIN=""',
     'LAN_IP=""',
@@ -460,6 +462,8 @@ function buildStartSh(profile) {
     '        DEV_MODE) CONFIG_DEV_MODE="$value" ;;',
     '        MODE) CONFIG_MODE="$value" ;;',
     '        DOMAIN) CONFIG_DOMAIN="$value" ;;',
+    '        PUBLIC_HOST) CONFIG_PUBLIC_HOST="$value" ;;',
+    '        PUBLIC_ORIGIN) CONFIG_PUBLIC_ORIGIN="$value" ;;',
     "      esac",
     "    fi",
     '  done < "$ENV_FILE"',
@@ -709,6 +713,7 @@ function buildStartSh(profile) {
     'export BUNKER_PORTABLE="1"',
     'export BUNKER_ASSETS_ROOT="$ASSETS_ROOT"',
     'export BUNKER_CLIENT_DIST="$APP_ROOT/client/dist"',
+    'export BUNKER_BUILD_PROFILE="$BUILD_PROFILE"',
     'if [[ "$PUBLIC_ONLY_LINKS" == "1" ]]; then',
     '  export BUNKER_LINKS_VISIBILITY="public"',
     "else",
@@ -719,10 +724,23 @@ function buildStartSh(profile) {
     '  export HOST="127.0.0.1"',
     '  export TRUST_PROXY="true"',
     '  export PUBLIC_ORIGIN="https://${DOMAIN}"',
+    '  unset PUBLIC_HOST || true',
+    '  unset BUNKER_PUBLIC_HOST || true',
     "else",
     '  export HOST="0.0.0.0"',
     '  export TRUST_PROXY="false"',
-    "  unset PUBLIC_ORIGIN || true",
+    '  if [[ -n "$CONFIG_PUBLIC_ORIGIN" ]]; then',
+    '    export PUBLIC_ORIGIN="$CONFIG_PUBLIC_ORIGIN"',
+    "  else",
+    "    unset PUBLIC_ORIGIN || true",
+    "  fi",
+    '  if [[ -n "$CONFIG_PUBLIC_HOST" ]]; then',
+    '    export PUBLIC_HOST="$CONFIG_PUBLIC_HOST"',
+    '    export BUNKER_PUBLIC_HOST="$CONFIG_PUBLIC_HOST"',
+    "  else",
+    "    unset PUBLIC_HOST || true",
+    "    unset BUNKER_PUBLIC_HOST || true",
+    "  fi",
     "fi",
     "",
     "apply_dev_mode",
@@ -740,6 +758,15 @@ function buildStartSh(profile) {
     '  echo "Port mode: fixed (${CONFIG_PORT}) from portable.env"',
     "fi",
     'echo "Log file: logs/server.log"',
+    'if [[ "$MODE" == "local" ]]; then',
+    '  if [[ -n "$CONFIG_PUBLIC_ORIGIN" ]]; then',
+    '    echo "Public source: PUBLIC_ORIGIN from portable.env"',
+    '  elif [[ -n "$CONFIG_PUBLIC_HOST" ]]; then',
+    '    echo "Public source: PUBLIC_HOST from portable.env"',
+    "  else",
+    '    echo "Public source: auto WAN lookup (ipify/ifconfig)"',
+    "  fi",
+    "fi",
     'echo "Press Ctrl+C to stop."',
     "",
     'pushd "$SERVER_ROOT" >/dev/null',
@@ -778,6 +805,8 @@ DEV_MODE=0
 # MODE=local
 # MODE=domain
 # DOMAIN=bunker.example.com
+# PUBLIC_HOST=203.0.113.10
+# PUBLIC_ORIGIN=http://203.0.113.10:8080
 # PORT=56986
 # DEV_MODE=1
 # PROFILE=${isServer ? "server" : "public"}
@@ -798,6 +827,8 @@ Modes:
 - MODE=local|domain in portable.env (if not set, launcher asks)
 - DOMAIN=your.domain.com for domain mode
 - Domain mode requires fixed PORT (PORT must be 1..65535)
+- For local mode, set PUBLIC_HOST or PUBLIC_ORIGIN in portable.env to skip WAN lookup
+- If PUBLIC_HOST/PUBLIC_ORIGIN are not set, WAN is detected via ipify/ifconfig
 
 Port:
 - Set PORT=0 for auto-port

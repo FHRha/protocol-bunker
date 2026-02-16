@@ -295,7 +295,10 @@ export default function LobbyPage({
         const overlayControlToken = String(raw.overlayControlToken ?? "");
         const apiRoomCode = String(raw.roomCode ?? roomCode).trim().toUpperCase();
         const linkVisibility = String(raw.linkVisibility ?? "all").trim().toLowerCase();
-        const showLanLinks = !(linkVisibility === "public" || linkVisibility === "external");
+        const buildProfile = String(raw.buildProfile ?? "").trim().toLowerCase();
+        const forcePublicOnly = buildProfile === "server";
+        const showLanLinks =
+          !forcePublicOnly && !(linkVisibility === "public" || linkVisibility === "external");
 
         if (!lanBase || !overlayViewToken || !overlayControlToken || !apiRoomCode) {
           throw new Error(ru.obsLinksUnavailable);

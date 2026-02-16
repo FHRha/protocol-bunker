@@ -143,6 +143,16 @@ MODE=domain
 DOMAIN=your.domain.com
 ```
 
+Для режима `MODE=local` можно явно задать внешний адрес и отключить авто-определение через внешние сервисы:
+
+```env
+PUBLIC_HOST=203.0.113.10
+# или
+PUBLIC_ORIGIN=http://203.0.113.10:8080
+```
+
+Если `PUBLIC_HOST`/`PUBLIC_ORIGIN` не заданы, внешний адрес определяется автоматически через `api.ipify.org` (fallback: `ifconfig.me/ip`).
+
 После изменения настроек перезапустите сервис:
 
 ```bash

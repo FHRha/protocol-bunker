@@ -10,6 +10,7 @@ APP_NAME="protocol-bunker"
 
 INSTALL_ROOT="${HOME}/.local/share/${APP_NAME}"
 BIN_DIR="${HOME}/.local/bin"
+GLOBAL_BIN_DIR="/usr/local/bin"
 APP_DIR="${INSTALL_ROOT}/Protocol-Bunker"
 SYSTEMD_DIR="${HOME}/.config/systemd/user"
 SERVICE_NAME="protocol-bunker"
@@ -205,6 +206,7 @@ APP_DIR="\${HOME}/.local/share/${APP_NAME}/Protocol-Bunker"
 SYSTEMD_DIR="\${HOME}/.config/systemd/user"
 SERVICE_NAME="${SERVICE_NAME}"
 SERVICE_FILE="\${SYSTEMD_DIR}/\${SERVICE_NAME}.service"
+GLOBAL_LINK="${GLOBAL_BIN_DIR}/${APP_NAME}"
 INSTALL_URL="${INSTALL_URL}"
 EDITION="${EDITION}"
 
@@ -269,6 +271,14 @@ case "\${1:-}" in
   --disable-autostart) disable_autostart; exit 0 ;;
   --uninstall)
     disable_autostart >/dev/null 2>&1 || true
+    if [ -L "\$GLOBAL_LINK" ]; then
+      target="\$(readlink "\$GLOBAL_LINK" || true)"
+      case "\$target" in
+        "\${HOME}/.local/bin/\${APP_NAME}"|"\${HOME}/.local/share/${APP_NAME}/"*)
+          rm -f "\$GLOBAL_LINK"
+          ;;
+      esac
+    fi
     rm -rf "\${HOME}/.local/share/${APP_NAME}"
     rm -f  "\${HOME}/.local/bin/${APP_NAME}"
     msg "Uninstalled."
@@ -282,8 +292,15 @@ EOF
 
 chmod +x "$LAUNCHER"
 
+GLOBAL_LAUNCHER=""
+if [ -d "$GLOBAL_BIN_DIR" ] && [ -w "$GLOBAL_BIN_DIR" ]; then
+  if ln -sfn "$LAUNCHER" "${GLOBAL_BIN_DIR}/${APP_NAME}" 2>/dev/null; then
+    GLOBAL_LAUNCHER="${GLOBAL_BIN_DIR}/${APP_NAME}"
+  fi
+fi
+
 # ----- PATH hint -----
-if ! echo ":$PATH:" | grep -q ":$BIN_DIR:"; then
+if ! command -v "$APP_NAME" >/dev/null 2>&1 && ! echo ":$PATH:" | grep -q ":$BIN_DIR:"; then
   warn "$BIN_DIR is not in PATH."
   warn "Add to ~/.bashrc or ~/.zshrc:"
   echo "  export PATH=\"$BIN_DIR:\$PATH\""
@@ -323,4 +340,10 @@ fi
 info "Installed release tag: $RELEASE_TAG"
 info "Installed version: $VERSION_TAG"
 info "Installed edition: $EDITION"
-info "Run: ${APP_NAME}"
+if command -v "${APP_NAME}" >/dev/null 2>&1; then
+  info "Run: ${APP_NAME}"
+elif [ -n "$GLOBAL_LAUNCHER" ]; then
+  info "Run: ${GLOBAL_LAUNCHER}"
+else
+  info "Run: ${LAUNCHER}"
+fi

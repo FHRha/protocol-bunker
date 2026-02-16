@@ -18,6 +18,7 @@
     "build:server": "pnpm -C server build",
     "pack:win": "node scripts/pack-win-portable.mjs",
     "pack:linux": "node scripts/pack-linux-portable.mjs",
+    "pack:linux:arm64": "node scripts/pack-linux-portable.mjs --arch arm64",
     "build:win-exe:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build/build-launcher.ps1",
     "pack:win-exe": "powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1",
     "pack:all": "pnpm run pack:win && pnpm run pack:linux && pnpm run pack:win-exe",

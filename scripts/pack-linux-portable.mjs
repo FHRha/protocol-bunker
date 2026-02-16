@@ -3,9 +3,29 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-if (process.arch !== "x64") {
-  console.error("[pack:linux] This script currently supports x64 host only.");
-  process.exit(1);
+const SUPPORTED_ARCHES = {
+  x64: { label: "x64", nodeDistArch: "x64" },
+  arm64: { label: "arm64", nodeDistArch: "arm64" },
+};
+
+function normalizeArch(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "x64" || raw === "amd64" || raw === "x86_64") return "x64";
+  if (raw === "arm64" || raw === "aarch64") return "arm64";
+  return "";
+}
+
+function readArchArg(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--arch") {
+      return argv[index + 1] ?? "";
+    }
+    if (arg.startsWith("--arch=")) {
+      return arg.slice("--arch=".length);
+    }
+  }
+  return "";
 }
 
 const rootDir = process.cwd();
@@ -16,6 +36,15 @@ const versionTag = `v${appVersion}`;
 const fastMode = process.argv.includes("--fast");
 const skipBuild = process.argv.includes("--skip-build");
 const forceRepack = process.argv.includes("--force-repack");
+const targetArchInput = readArchArg(process.argv.slice(2));
+const targetArch = normalizeArch(targetArchInput || "x64");
+if (!targetArch || !SUPPORTED_ARCHES[targetArch]) {
+  console.error(
+    `[pack:linux] Unsupported --arch value: "${targetArchInput}". Supported: x64, arm64`
+  );
+  process.exit(1);
+}
+const targetArchConfig = SUPPORTED_ARCHES[targetArch];
 const gitHead = (() => {
   const result = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: rootDir,
@@ -26,8 +55,11 @@ const gitHead = (() => {
   return String(result.stdout ?? "").trim() || "nogit";
 })();
 const artifactsLinuxDir = path.join(rootDir, "artifacts", "linux");
-const artifactsDir = path.join(artifactsLinuxDir, "Protocol-Bunker");
-const serverArtifactsDir = path.join(artifactsLinuxDir, "Protocol-Bunker-server");
+const artifactsDirName = targetArch === "x64" ? "Protocol-Bunker" : `Protocol-Bunker-${targetArch}`;
+const serverArtifactsDirName =
+  targetArch === "x64" ? "Protocol-Bunker-server" : `Protocol-Bunker-${targetArch}-server`;
+const artifactsDir = path.join(artifactsLinuxDir, artifactsDirName);
+const serverArtifactsDir = path.join(artifactsLinuxDir, serverArtifactsDirName);
 const appDir = path.join(artifactsDir, "app");
 const appVersionFilePath = path.join(appDir, "VERSION");
 const serverAppDir = path.join(appDir, "server");
@@ -64,19 +96,19 @@ const portableEnvPath = path.join(artifactsDir, "portable.env");
 const readmePath = path.join(artifactsDir, "README_PORTABLE.txt");
 const publicTarGzPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-x64-public-${versionTag}.tar.gz`
+  `protocol-bunker-linux-${targetArch}-public-${versionTag}.tar.gz`
 );
 const publicZipPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-x64-public-${versionTag}.zip`
+  `protocol-bunker-linux-${targetArch}-public-${versionTag}.zip`
 );
 const serverTarGzPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-x64-server-${versionTag}.tar.gz`
+  `protocol-bunker-linux-${targetArch}-server-${versionTag}.tar.gz`
 );
 const serverZipPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-x64-server-${versionTag}.zip`
+  `protocol-bunker-linux-${targetArch}-server-${versionTag}.zip`
 );
 const jsBuildStampPath = path.join(rootDir, ".cache", "pack-js-build-stamp.json");
 const pnpmCmd = "pnpm";
@@ -267,7 +299,7 @@ async function downloadFile(url, destinationPath) {
 async function ensureLinuxNodeRuntime() {
   fs.mkdirSync(nodeDir, { recursive: true });
 
-  if (process.platform === "linux") {
+  if (process.platform === "linux" && normalizeArch(process.arch) === targetArch) {
     const nodeBinSrc = process.execPath;
     ensureExists(nodeBinSrc, "local node runtime");
     fs.copyFileSync(nodeBinSrc, nodeBinDst);
@@ -276,17 +308,35 @@ async function ensureLinuxNodeRuntime() {
   }
 
   const version = (process.env.PORTABLE_NODE_VERSION?.trim() || process.version).replace(/^v/, "");
-  const archiveBase = `node-v${version}-linux-x64`;
-  const archivePath = path.join(artifactsLinuxDir, `${archiveBase}.tar.gz`);
-  const downloadUrl = `https://nodejs.org/dist/v${version}/${archiveBase}.tar.gz`;
+  const archiveBase = `node-v${version}-linux-${targetArchConfig.nodeDistArch}`;
+  const archiveCandidates = [".tar.gz", ".tar.xz"].map((ext) => ({
+    ext,
+    path: path.join(artifactsLinuxDir, `${archiveBase}${ext}`),
+    url: `https://nodejs.org/dist/v${version}/${archiveBase}${ext}`,
+  }));
 
-  if (!fs.existsSync(archivePath)) {
-    await downloadFile(downloadUrl, archivePath);
+  let archiveToUse = archiveCandidates.find((item) => fs.existsSync(item.path)) ?? null;
+  if (!archiveToUse) {
+    let lastError = "";
+    for (const candidate of archiveCandidates) {
+      try {
+        await downloadFile(candidate.url, candidate.path);
+        archiveToUse = candidate;
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    if (!archiveToUse) {
+      throw new Error(
+        `Failed to download Node runtime for linux-${targetArchConfig.nodeDistArch}: ${lastError}`
+      );
+    }
   }
 
   runStep("tar", [
-    "-xzf",
-    archivePath,
+    "-xf",
+    archiveToUse.path,
     "-C",
     nodeDir,
     "--strip-components=2",
@@ -294,7 +344,7 @@ async function ensureLinuxNodeRuntime() {
   ]);
   ensureExists(nodeBinDst, "downloaded linux node runtime");
   fs.chmodSync(nodeBinDst, 0o755);
-  cleanPath(archivePath);
+  cleanPath(archiveToUse.path);
 }
 
 function formatBytes(value) {
@@ -869,9 +919,10 @@ function writeVariantLaunchFiles(variantDir, profile) {
 
 async function main() {
   console.log(`[pack:linux] Building version: ${versionTag}`);
+  console.log(`[pack:linux] Target architecture: ${targetArch}`);
   if (process.platform !== "linux") {
     console.log(
-      `[pack:linux] Cross-pack on ${process.platform}; linux node runtime will be downloaded automatically.`
+      `[pack:linux] Cross-pack on ${process.platform}; linux-${targetArch} node runtime will be downloaded automatically.`
     );
   }
 

@@ -81,6 +81,10 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server
 ```
+- latest, server-профиль (ARM64):
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --arch arm64
+```
 - конкретная версия, public-профиль:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.1.2
@@ -94,6 +98,7 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 
 - `public` — обычный профиль (показывает и Public, и Local ссылки).
 - `server` — серверный профиль (скрывает LAN/localhost ссылки в выводе launcher и в блоке ссылок в лобби).
+- `--arch` — можно явно выбрать `x64` или `arm64`. Если не указывать, `install.sh` определит архитектуру автоматически (`uname -m`).
 
 ### Автозапуск и сервис (Linux)
 
@@ -279,11 +284,13 @@ Streamer mode делает две вещи:
 - `pnpm run build:all`
 - `pnpm run pack:win`
 - `pnpm run pack:linux`
+- `pnpm run pack:linux:arm64`
 - `pnpm run pack:win-exe`
 
 Быстро (если dist уже актуальны):
 - `pnpm run pack:win -- --skip-build`
 - `pnpm run pack:linux -- --skip-build`
+- `pnpm run pack:linux:arm64 -- --skip-build`
 - `pnpm run pack:win-exe -- --skip-build`
 
 Где результаты:
@@ -291,5 +298,7 @@ Streamer mode делает две вещи:
 - `artifacts/linux/`:
   - `protocol-bunker-linux-x64-public-v0.1.2.tar.gz`
   - `protocol-bunker-linux-x64-server-v0.1.2.tar.gz`
+  - `protocol-bunker-linux-arm64-public-v0.1.2.tar.gz`
+  - `protocol-bunker-linux-arm64-server-v0.1.2.tar.gz`
 - `artifacts/win-exe/`
 

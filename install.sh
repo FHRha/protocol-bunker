@@ -32,6 +32,8 @@ VERSION=""         # empty => latest
 DO_LIST=0
 AUTOSTART_MODE=""  # "yes" | "no" | ""
 EDITION="public"   # public | server
+ARCH=""            # x64 | arm64 (empty => auto-detect)
+TARGET_ARCH=""     # normalized arch used for assets
 VERSION_TAG=""     # canonical version for asset names (e.g. v0.1.2)
 RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.1.2 or v0.1.2)
 
@@ -40,12 +42,13 @@ usage() {
 Install ${APP_NAME} (Linux, no sudo)
 
 Usage:
-  install.sh [--version vX.Y.Z] [--edition public|server] [--list] [--autostart|--no-autostart]
+  install.sh [--version vX.Y.Z] [--edition public|server] [--arch x64|arm64] [--list] [--autostart|--no-autostart]
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.2
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --arch arm64
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --list
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --autostart
 EOF
@@ -63,6 +66,11 @@ while [ $# -gt 0 ]; do
       shift
       [ $# -gt 0 ] || err "--edition requires 'public' or 'server'"
       EDITION="$1"
+      ;;
+    --arch)
+      shift
+      [ $# -gt 0 ] || err "--arch requires 'x64' or 'arm64'"
+      ARCH="$1"
       ;;
     --list) DO_LIST=1 ;;
     --autostart) AUTOSTART_MODE="yes" ;;
@@ -136,6 +144,26 @@ validate_edition() {
   esac
 }
 
+normalize_arch() {
+  local value
+  value="$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    x64|amd64|x86_64) printf "x64" ;;
+    arm64|aarch64) printf "arm64" ;;
+    *) err "Architecture must be x64 or arm64. Got: $1" ;;
+  esac
+}
+
+detect_arch() {
+  local machine
+  machine="$(uname -m 2>/dev/null || true)"
+  case "$machine" in
+    x86_64|amd64) printf "x64" ;;
+    aarch64|arm64) printf "arm64" ;;
+    *) err "Unsupported host architecture: ${machine:-unknown}. Use --arch x64|arm64." ;;
+  esac
+}
+
 list_versions() {
   info "Fetching releases list from GitHub..."
   gh_api "https://api.github.com/repos/${REPO}/releases?per_page=100" \
@@ -174,7 +202,14 @@ else
 fi
 
 validate_edition "$EDITION"
-ASSET="protocol-bunker-linux-x64-${EDITION}-${VERSION_TAG}.tar.gz"
+if [ -n "$ARCH" ]; then
+  TARGET_ARCH="$(normalize_arch "$ARCH")"
+  info "Requested arch: $TARGET_ARCH"
+else
+  TARGET_ARCH="$(detect_arch)"
+  info "Detected arch: $TARGET_ARCH"
+fi
+ASSET="protocol-bunker-linux-${TARGET_ARCH}-${EDITION}-${VERSION_TAG}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
 
 # ----- download + install -----
@@ -209,6 +244,7 @@ SERVICE_FILE="\${SYSTEMD_DIR}/\${SERVICE_NAME}.service"
 GLOBAL_LINK="${GLOBAL_BIN_DIR}/${APP_NAME}"
 INSTALL_URL="${INSTALL_URL}"
 EDITION="${EDITION}"
+ARCH="${TARGET_ARCH}"
 
 msg() { printf "[%s] %s\n" "\$APP_NAME" "\$*"; }
 
@@ -261,9 +297,9 @@ case "\${1:-}" in
   --update)
     # If version provided -> install that, else latest
     if [ -n "\${2:-}" ]; then
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --version "\$2"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --version "\$2"
     else
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH"
     fi
     exit 0
     ;;
@@ -340,6 +376,7 @@ fi
 info "Installed release tag: $RELEASE_TAG"
 info "Installed version: $VERSION_TAG"
 info "Installed edition: $EDITION"
+info "Installed arch: $TARGET_ARCH"
 if command -v "${APP_NAME}" >/dev/null 2>&1; then
   info "Run: ${APP_NAME}"
 elif [ -n "$GLOBAL_LAUNCHER" ]; then

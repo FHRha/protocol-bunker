@@ -126,6 +126,22 @@ protocol-bunker --disable-autostart
 ```bash
 nano ~/.local/share/protocol-bunker/Protocol-Bunker/portable.env
 ```
+Для запуска на выделенном сервере перед первым стартом поправьте `portable.env` и поставьте минимум:
+
+```env
+PORT=0
+DEV_MODE=0
+MODE=local
+```
+
+Или для домена:
+
+```env
+PORT=8080
+DEV_MODE=0
+MODE=domain
+DOMAIN=your.domain.com
+```
 
 После изменения настроек перезапустите сервис:
 
@@ -142,6 +158,20 @@ systemctl --user start protocol-bunker
 journalctl --user -u protocol-bunker -f
 ```
 
+
+Удаление установки (Linux):
+
+```bash
+protocol-bunker --disable-autostart
+protocol-bunker --uninstall
+```
+
+Если команда `protocol-bunker` не в PATH:
+
+```bash
+~/.local/bin/protocol-bunker --disable-autostart
+~/.local/bin/protocol-bunker --uninstall
+```
 ---
 
 ## Скачать
@@ -244,3 +274,4 @@ Streamer mode делает две вещи:
   - `protocol-bunker-linux-x64-public-v0.1.2.tar.gz`
   - `protocol-bunker-linux-x64-server-v0.1.2.tar.gz`
 - `artifacts/win-exe/`
+

@@ -188,6 +188,9 @@ tar -xzf "$TMP/$ASSET" -C "$INSTALL_ROOT"
 
 [ -f "$APP_DIR/start.sh" ] || err "start.sh not found at $APP_DIR/start.sh (check tar structure)"
 chmod +x "$APP_DIR/start.sh" || true
+if [ -f "$APP_DIR/app/node/node" ]; then
+  chmod +x "$APP_DIR/app/node/node" || true
+fi
 
 # ----- create launcher -----
 LAUNCHER="${BIN_DIR}/${APP_NAME}"

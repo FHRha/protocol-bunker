@@ -105,8 +105,10 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 Включить автозапуск сразу при установке:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --autostart
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --service-scope system --autostart
 ```
+
+По умолчанию `--service-scope auto`: для `root` используется `system`, для обычного пользователя — `user`.
 
 Включить автозапуск после установки:
 
@@ -124,7 +126,7 @@ protocol-bunker --disable-autostart
 
 - игра: `~/.local/share/protocol-bunker/Protocol-Bunker`
 - launcher-команда: `~/.local/bin/protocol-bunker`
-- service unit: `~/.config/systemd/user/protocol-bunker.service`
+- service unit: `/etc/systemd/system/protocol-bunker.service`
 
 Редактирование настроек (стандартная установка):
 
@@ -166,16 +168,16 @@ PUBLIC_ORIGIN=http://203.0.113.10:8080
 После изменения настроек перезапустите сервис:
 
 ```bash
-systemctl --user restart protocol-bunker
+sudo systemctl restart protocol-bunker
 ```
 
 Полезные команды сервиса:
 
 ```bash
-systemctl --user status protocol-bunker
-systemctl --user stop protocol-bunker
-systemctl --user start protocol-bunker
-journalctl --user -u protocol-bunker -f
+sudo systemctl status protocol-bunker
+sudo systemctl stop protocol-bunker
+sudo systemctl start protocol-bunker
+sudo journalctl -u protocol-bunker -f
 ```
 
 Подробный пример reverse-proxy через `nginx stream` (Linux, server-профиль):
@@ -302,4 +304,3 @@ Streamer mode делает две вещи:
   - `protocol-bunker-linux-arm64-public-v0.1.2.tar.gz`
   - `protocol-bunker-linux-arm64-server-v0.1.2.tar.gz`
 - `artifacts/win-exe/`
-

@@ -74,13 +74,21 @@
 Быстрые команды через `curl` (без ручного скачивания файла):
 
 - latest, public-профиль:
-  - `curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash`
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash
+```
 - latest, server-профиль:
-  - `curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server`
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server
+```
 - конкретная версия, public-профиль:
-  - `curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.1.2`
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.1.2
+```
 - конкретная версия, server-профиль:
-  - `curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.1.2`
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.1.2
+```
 
 Что выбрать:
 

@@ -31,6 +31,8 @@ VERSION=""         # empty => latest
 DO_LIST=0
 AUTOSTART_MODE=""  # "yes" | "no" | ""
 EDITION="public"   # public | server
+VERSION_TAG=""     # canonical version for asset names (e.g. v0.1.2)
+RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.1.2 or v0.1.2)
 
 usage() {
   cat <<EOF
@@ -111,6 +113,21 @@ normalize_version_tag() {
   err "Invalid version format: $value (expected v0.1.2 or 0.1.2)"
 }
 
+resolve_release_tag_by_candidates() {
+  # Try candidates in order and return the first existing release tag_name.
+  local candidate json resolved
+  for candidate in "$@"; do
+    [ -n "$candidate" ] || continue
+    if json="$(gh_api "https://api.github.com/repos/${REPO}/releases/tags/${candidate}" 2>/dev/null)"; then
+      resolved="$(printf "%s" "$json" | json_latest_tag | head -n 1)"
+      [ -n "$resolved" ] || resolved="$candidate"
+      printf "%s" "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
 validate_edition() {
   case "$1" in
     public|server) ;;
@@ -138,19 +155,26 @@ fi
 
 # ----- decide version -----
 if [ -n "$VERSION" ]; then
-  VERSION="$(normalize_version_tag "$VERSION")"
-  info "Requested version: $VERSION"
+  VERSION_TAG="$(normalize_version_tag "$VERSION")"
+  if [[ "$VERSION_TAG" == v* ]]; then
+    RELEASE_TAG="$(resolve_release_tag_by_candidates "$VERSION" "${VERSION_TAG#v}" "$VERSION_TAG" || true)"
+  else
+    RELEASE_TAG="$(resolve_release_tag_by_candidates "$VERSION" "$VERSION_TAG" || true)"
+  fi
+  [ -n "$RELEASE_TAG" ] || err "Release for version '$VERSION' not found."
+  VERSION_TAG="$(normalize_version_tag "$RELEASE_TAG")"
+  info "Requested version: $VERSION_TAG (release tag: $RELEASE_TAG)"
 else
   info "Resolving latest version..."
-  VERSION="$(resolve_latest_version || true)"
-  [ -n "$VERSION" ] || err "Failed to resolve latest release version."
-  VERSION="$(normalize_version_tag "$VERSION")"
-  info "Latest: $VERSION"
+  RELEASE_TAG="$(resolve_latest_version || true)"
+  [ -n "$RELEASE_TAG" ] || err "Failed to resolve latest release version."
+  VERSION_TAG="$(normalize_version_tag "$RELEASE_TAG")"
+  info "Latest: $VERSION_TAG (release tag: $RELEASE_TAG)"
 fi
 
 validate_edition "$EDITION"
-ASSET="protocol-bunker-linux-x64-${EDITION}-${VERSION}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+ASSET="protocol-bunker-linux-x64-${EDITION}-${VERSION_TAG}.tar.gz"
+URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
 
 # ----- download + install -----
 mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
@@ -293,6 +317,7 @@ else
   info "Autostart not enabled."
 fi
 
-info "Installed version: $VERSION"
+info "Installed release tag: $RELEASE_TAG"
+info "Installed version: $VERSION_TAG"
 info "Installed edition: $EDITION"
 info "Run: ${APP_NAME}"

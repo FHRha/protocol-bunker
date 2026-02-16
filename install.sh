@@ -92,11 +92,23 @@ json_latest_tag() {
   fi
 }
 
-validate_version_format() {
-  # require leading "v"
-  if [[ "$1" != v* ]]; then
-    err "Version must start with 'v' (example: v0.1.2). Got: $1"
+normalize_version_tag() {
+  local value="$1"
+  if [ -z "$value" ]; then
+    err "Version is empty. Use format like v0.1.2 or 0.1.2"
   fi
+
+  if [[ "$value" == v* ]]; then
+    printf "%s" "$value"
+    return
+  fi
+
+  if [[ "$value" =~ ^[0-9]+([.][0-9]+){1,3}([.-][0-9A-Za-z]+)*$ ]]; then
+    printf "v%s" "$value"
+    return
+  fi
+
+  err "Invalid version format: $value (expected v0.1.2 or 0.1.2)"
 }
 
 validate_edition() {
@@ -126,13 +138,13 @@ fi
 
 # ----- decide version -----
 if [ -n "$VERSION" ]; then
-  validate_version_format "$VERSION"
+  VERSION="$(normalize_version_tag "$VERSION")"
   info "Requested version: $VERSION"
 else
   info "Resolving latest version..."
   VERSION="$(resolve_latest_version || true)"
   [ -n "$VERSION" ] || err "Failed to resolve latest release version."
-  validate_version_format "$VERSION"
+  VERSION="$(normalize_version_tag "$VERSION")"
   info "Latest: $VERSION"
 fi
 

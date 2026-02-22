@@ -118,7 +118,8 @@ jobs:
 
       - name: Pack Windows EXE
         if: steps.detect_win_exe.outputs.available == 'true'
-        run: pnpm run pack:win-exe -- --skip-build --force-repack
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1 -SkipBuild -ForceRepack
 
       - name: Validate Windows artifacts
         shell: pwsh

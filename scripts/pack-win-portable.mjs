@@ -281,17 +281,34 @@ function writeFile(filePath, content) {
   fs.writeFileSync(filePath, content, "utf8");
 }
 
+function resolveIconsSourceDir() {
+  if (fs.existsSync(rootIconsSrc)) {
+    return { path: rootIconsSrc, source: "root icons/" };
+  }
+  if (fs.existsSync(clientPublicFaviconDir)) {
+    return { path: clientPublicFaviconDir, source: "client/public/favicon (fallback)" };
+  }
+  throw new Error(
+    `Missing icons source. Checked:\n- ${rootIconsSrc}\n- ${clientPublicFaviconDir}`
+  );
+}
+
 function syncRootIconsIntoClientSource() {
-  ensureExists(rootIconsSrc, "root icons directory");
+  const resolved = resolveIconsSourceDir();
+  if (path.resolve(resolved.path) === path.resolve(clientPublicFaviconDir)) {
+    console.log(`[pack:win] Icons source: ${resolved.source}; client/public/favicon kept as-is.`);
+    return;
+  }
   cleanPath(clientPublicFaviconDir);
-  copyDir(rootIconsSrc, clientPublicFaviconDir);
+  copyDir(resolved.path, clientPublicFaviconDir);
+  console.log(`[pack:win] Icons source: ${resolved.source}`);
 }
 
 function syncRootIconsIntoPortableClientDist() {
-  ensureExists(rootIconsSrc, "root icons directory");
+  const resolved = resolveIconsSourceDir();
   ensureExists(clientDistDst, "portable client dist directory");
   cleanPath(portableClientFaviconDir);
-  copyDir(rootIconsSrc, portableClientFaviconDir);
+  copyDir(resolved.path, portableClientFaviconDir);
 }
 
 function removeLinuxShellScripts(root) {
@@ -969,7 +986,7 @@ function main() {
     VITE_DEV_NEW_PLAYER_PER_TAB: "false",
   };
   console.log(`[pack:win] Building version: ${versionTag}`);
-  console.log("[pack:win] Syncing icons from root icons/...");
+  console.log("[pack:win] Syncing icons...");
   syncRootIconsIntoClientSource();
   if (skipBuild) {
     console.log("[pack:win] Skipping package builds (--skip-build).");

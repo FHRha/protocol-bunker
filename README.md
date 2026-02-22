@@ -74,9 +74,9 @@
 
 ### Windows (EXE Launcher)
 
-- `protocol-bunker-win-x64-exe-setup-v0.1.2.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `protocol-bunker-win-x64-exe-setup-v0.1.3.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
 - `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
-- `protocol-bunker-win-x64-exe-v0.1.2.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+- `protocol-bunker-win-x64-exe-v0.1.3.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
 
 Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
 
@@ -124,11 +124,11 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 ```
 - конкретная версия, public-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.1.2
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.1.3
 ```
 - конкретная версия, server-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.1.2
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.1.3
 ```
 
 Что выбрать:
@@ -282,7 +282,7 @@ Streamer mode делает две вещи:
 
 ---
 
-## Сборка релизов (0.1.2)
+## Сборка релизов (0.1.3)
 
 Полная сборка:
 - `pnpm run build:all`
@@ -300,8 +300,8 @@ Streamer mode делает две вещи:
 Где результаты:
 - `artifacts/win/`
 - `artifacts/linux/`:
-  - `protocol-bunker-linux-x64-public-v0.1.2.tar.gz`
-  - `protocol-bunker-linux-x64-server-v0.1.2.tar.gz`
-  - `protocol-bunker-linux-arm64-public-v0.1.2.tar.gz`
-  - `protocol-bunker-linux-arm64-server-v0.1.2.tar.gz`
+  - `protocol-bunker-linux-x64-public-v0.1.3.tar.gz`
+  - `protocol-bunker-linux-x64-server-v0.1.3.tar.gz`
+  - `protocol-bunker-linux-arm64-public-v0.1.3.tar.gz`
+  - `protocol-bunker-linux-arm64-server-v0.1.3.tar.gz`
 - `artifacts/win-exe/`

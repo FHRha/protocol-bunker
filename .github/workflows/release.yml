@@ -1,0 +1,220 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify-version:
+    name: Verify tag matches package version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      package_version: ${{ steps.meta.outputs.package_version }}
+      version_tag: ${{ steps.meta.outputs.version_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read and validate version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_NAME="${GITHUB_REF_NAME}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+
+          if [[ "${TAG_NAME}" == v* ]]; then
+            TAG_VERSION="${TAG_NAME#v}"
+          else
+            TAG_VERSION="${TAG_NAME}"
+          fi
+
+          if [[ "${TAG_VERSION}" != "${PKG_VERSION}" ]]; then
+            echo "Tag and package version mismatch."
+            echo "Tag: ${TAG_NAME} -> ${TAG_VERSION}"
+            echo "package.json version: ${PKG_VERSION}"
+            exit 1
+          fi
+
+          echo "tag_name=${TAG_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "package_version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "version_tag=v${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
+
+          echo "Release tag: ${TAG_NAME}"
+          echo "Artifact version tag: v${PKG_VERSION}"
+
+  build-windows:
+    name: Build Windows artifacts
+    runs-on: windows-latest
+    timeout-minutes: 120
+    needs: verify-version
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all JS packages
+        run: pnpm run build:all
+
+      - name: Pack Windows portable
+        run: pnpm run pack:win -- --skip-build --force-repack
+
+      - name: Pack Windows EXE
+        run: pnpm run pack:win-exe -- --skip-build --force-repack
+
+      - name: Validate Windows artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/win -ErrorAction SilentlyContinue | Format-Table -AutoSize
+          Get-ChildItem artifacts/win-exe -ErrorAction SilentlyContinue | Format-Table -AutoSize
+
+          $v = "${{ needs.verify-version.outputs.version_tag }}"
+          $expected = @(
+            "artifacts/win/protocol-bunker-win-x64-portable-$v.zip",
+            "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
+            "artifacts/win-exe/protocol-bunker-win-x64-exe-setup-$v.exe"
+          )
+          foreach ($file in $expected) {
+            if (-not (Test-Path -LiteralPath $file)) {
+              throw "Missing expected artifact: $file"
+            }
+          }
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: |
+            artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
+            artifacts/win-exe/protocol-bunker-win-x64-exe-${{ needs.verify-version.outputs.version_tag }}.zip
+            artifacts/win-exe/protocol-bunker-win-x64-exe-setup-${{ needs.verify-version.outputs.version_tag }}.exe
+
+  build-linux:
+    name: Build Linux artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: verify-version
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all JS packages
+        run: pnpm run build:all
+
+      - name: Pack Linux x64
+        run: pnpm run pack:linux -- --skip-build --force-repack
+
+      - name: Pack Linux arm64
+        run: pnpm run pack:linux:arm64 -- --skip-build --force-repack
+
+      - name: Validate Linux artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la artifacts/linux || true
+
+          test -f "artifacts/linux/protocol-bunker-linux-x64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-x64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-arm64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-arm64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+
+      - name: Upload Linux release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          if-no-files-found: error
+          path: |
+            artifacts/linux/protocol-bunker-linux-x64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-x64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-arm64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-arm64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+
+  publish-release:
+    name: Publish GitHub Release assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - verify-version
+      - build-windows
+      - build-linux
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: List release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la release-assets
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify-version.outputs.tag_name }}
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          overwrite_files: true

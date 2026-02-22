@@ -1,0 +1,6 @@
+bin/
+obj/
+dist/
+src/**/bin/
+src/**/obj/
+src/ProtocolBunker.Bootstrapper/Embedded/payload.zip

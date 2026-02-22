@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ProtocolBunker</AssemblyName>
+    <RootNamespace>ProtocolBunker.Launcher</RootNamespace>
+    <ApplicationIcon>..\..\assets\icons\app.ico</ApplicationIcon>
+    <Version>0.1.3</Version>
+    <FileVersion>0.1.3.0</FileVersion>
+    <AssemblyVersion>0.1.3.0</AssemblyVersion>
+  </PropertyGroup>
+
+</Project>

@@ -101,10 +101,23 @@ jobs:
       - name: Build all JS packages
         run: pnpm run build:all
 
+      - name: Detect win-exe sources
+        id: detect_win_exe
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath "win-exe/build.ps1") {
+            "available=true" >> $env:GITHUB_OUTPUT
+            Write-Host "[release] win-exe sources found."
+          } else {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Host "[release] win-exe sources are missing in this repository snapshot. Skipping pack:win-exe."
+          }
+
       - name: Pack Windows portable
         run: pnpm run pack:win -- --skip-build --force-repack
 
       - name: Pack Windows EXE
+        if: steps.detect_win_exe.outputs.available == 'true'
         run: pnpm run pack:win-exe -- --skip-build --force-repack
 
       - name: Validate Windows artifacts
@@ -114,24 +127,33 @@ jobs:
           Get-ChildItem artifacts/win-exe -ErrorAction SilentlyContinue | Format-Table -AutoSize
 
           $v = "${{ needs.verify-version.outputs.version_tag }}"
-          $expected = @(
-            "artifacts/win/protocol-bunker-win-x64-portable-$v.zip",
-            "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
-            "artifacts/win-exe/protocol-bunker-win-x64-exe-setup-$v.exe"
-          )
+          $expected = @("artifacts/win/protocol-bunker-win-x64-portable-$v.zip")
+          if ("${{ steps.detect_win_exe.outputs.available }}" -eq "true") {
+            $expected += @(
+              "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
+              "artifacts/win-exe/protocol-bunker-win-x64-exe-setup-$v.exe"
+            )
+          }
           foreach ($file in $expected) {
             if (-not (Test-Path -LiteralPath $file)) {
               throw "Missing expected artifact: $file"
             }
           }
 
-      - name: Upload Windows release assets
+      - name: Upload Windows portable release asset
         uses: actions/upload-artifact@v4
         with:
           name: release-windows
           if-no-files-found: error
+          path: artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
+
+      - name: Upload Windows EXE release assets
+        if: steps.detect_win_exe.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-exe
+          if-no-files-found: error
           path: |
-            artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
             artifacts/win-exe/protocol-bunker-win-x64-exe-${{ needs.verify-version.outputs.version_tag }}.zip
             artifacts/win-exe/protocol-bunker-win-x64-exe-setup-${{ needs.verify-version.outputs.version_tag }}.exe
 

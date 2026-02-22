@@ -53,7 +53,7 @@ const BUNKER_CAPACITY = 5;
 const RESOLUTION_DELAY_MS = 2000;
 const DEV_SHOW_ALL_PUBLIC = true;
 const DEV_AUTO_BOTS = true;
-const DEV_ALLOW_REUSE_SPECIAL = true;
+const DEV_ALLOW_REUSE_SPECIAL = false;
 const DEV_BOT_NAME_PREFIX = "Тестовый";
 
 const CATEGORY_KEY_TO_DECK: Record<string, string> = {
@@ -619,7 +619,7 @@ export const scenario: ScenarioModule = {
       return player.hand.filter((card) => {
         if (card.deck !== deckName) return false;
         if (slotKey && card.slotKey !== slotKey) return false;
-        if (onlyRevealed && !card.revealed) return false;
+        if (onlyRevealed && !(DEV_SHOW_ALL_PUBLIC || card.revealed)) return false;
         return true;
       });
     };
@@ -1671,6 +1671,8 @@ export const scenario: ScenarioModule = {
       revealed: card.revealed,
     });
 
+    const isPubliclyVisibleCard = (card: CardState) => DEV_SHOW_ALL_PUBLIC || card.revealed;
+
     const buildPublicCategories = (player: PlayerState): PublicCategorySlot[] => {
       return CATEGORY_ORDER.map((category) => {
         if (category === SPECIAL_CATEGORY) {
@@ -1694,7 +1696,7 @@ export const scenario: ScenarioModule = {
           const matchDeck =
             card.deck === deckInfo.deck && (!deckInfo.slotKey || card.slotKey === deckInfo.slotKey);
           if (!matchDeck) return false;
-          return DEV_SHOW_ALL_PUBLIC ? true : card.revealed;
+          return isPubliclyVisibleCard(card);
         });
         const cards = visibleCards.map((card) => ({
           labelShort: card.labelShort,
@@ -1834,8 +1836,8 @@ export const scenario: ScenarioModule = {
               status: p.status,
               connected: true,
               leftBunker: p.status === "left_bunker",
-              revealedCards: p.hand.filter((card) => card.revealed).map((card) => toCardRef(card)),
-              revealedCount: p.hand.filter((card) => card.revealed).length,
+              revealedCards: p.hand.filter((card) => isPubliclyVisibleCard(card)).map((card) => toCardRef(card)),
+              revealedCount: p.hand.filter((card) => isPubliclyVisibleCard(card)).length,
               totalCards: p.hand.length,
               specialRevealed: DEV_SHOW_ALL_PUBLIC
                 ? p.specialConditions.length > 0

@@ -252,6 +252,40 @@ export default function GamePage({
     !youRevealedThisRound;
   const canRevealPostGame = phase === "ended" && youStatus !== "left_bunker";
   const canReveal = wsInteractive && (canRevealDuringGame || canRevealPostGame);
+  const forcedRevealCategory = (gameView?.public.roundRules?.forcedRevealCategory ?? "").trim();
+  const forcedRevealCategoryHasHiddenCards = useMemo(() => {
+    if (!forcedRevealCategory) return false;
+    const forcedSlot = you?.categories.find((entry) => entry.category === forcedRevealCategory);
+    if (!forcedSlot) return false;
+    return forcedSlot.cards.some((card) => !card.revealed && (canRevealPostGame || youStatus === "alive"));
+  }, [canRevealPostGame, forcedRevealCategory, you?.categories, youStatus]);
+  const isCategoryLockedByForcedReveal = (category: string) =>
+    Boolean(
+      canRevealDuringGame &&
+        forcedRevealCategory &&
+        forcedRevealCategoryHasHiddenCards &&
+        category !== forcedRevealCategory
+    );
+  const isCardSelectableForReveal = (category: string, revealed: boolean) =>
+    Boolean(
+      canReveal &&
+        !revealed &&
+        (canRevealPostGame || youStatus === "alive") &&
+        !isCategoryLockedByForcedReveal(category)
+    );
+  const selectedCardCategory = useMemo(() => {
+    if (!selectedCardId) return null;
+    for (const slot of you?.categories ?? []) {
+      if (slot.cards.some((card) => card.instanceId === selectedCardId)) {
+        return slot.category;
+      }
+    }
+    return null;
+  }, [selectedCardId, you?.categories]);
+  const canRevealSelectedCard =
+    selectedCard !== null &&
+    selectedCardCategory !== null &&
+    isCardSelectableForReveal(selectedCardCategory, selectedCard.revealed);
   const canVote =
     wsInteractive &&
     phase === "voting" &&
@@ -933,16 +967,16 @@ export default function GamePage({
         const renderMiniCard = (category: string, fullWidth = false, featured = false) => {
           const slot = youSafe.categories.find((entry) => entry.category === category);
           const cards = slot?.cards ?? [];
+          const categoryLocked = isCategoryLockedByForcedReveal(category);
           const preview = cards.length === 0 ? "—" : cards[0]?.labelShort ?? "—";
           const expandedText = cards.length === 0 ? "—" : cards.map((card) => card.labelShort).join(" • ");
           const expanded = expandedDossierKey === category;
           const firstSelectableCard =
-            cards.find((card) => canReveal && !card.revealed && (canRevealPostGame || youStatus === "alive")) ??
-            null;
+            cards.find((card) => isCardSelectableForReveal(category, card.revealed)) ?? null;
           const selectedInCategory = cards.some((card) => card.instanceId === selectedCardId);
           const revealedInCategory = cards.some((card) => card.revealed);
           const options = cards.map((card) => {
-            const selectable = canReveal && !card.revealed && (canRevealPostGame || youStatus === "alive");
+            const selectable = isCardSelectableForReveal(category, card.revealed);
             return {
               id: card.instanceId,
               label: card.labelShort,
@@ -961,6 +995,7 @@ export default function GamePage({
               revealed={revealedInCategory}
               fullWidth={fullWidth}
               featured={featured}
+              inactive={categoryLocked}
               expandable={category !== DOSSIER_MAIN_CATEGORY}
               options={options}
               onCardClick={() => {
@@ -1000,7 +1035,7 @@ export default function GamePage({
         <div className="action-block">
           <button
             className="primary"
-            disabled={!canReveal || !selectedCardId}
+            disabled={!canReveal || !selectedCardId || !canRevealSelectedCard}
             onClick={() => selectedCardId && onRevealCard(selectedCardId)}
           >
             {canRevealPostGame ? ru.revealPostGameAction : ru.revealAction}
@@ -1073,13 +1108,13 @@ export default function GamePage({
       .map((category) => {
         const slot = youSafe.categories.find((entry) => entry.category === category);
         const cards = slot?.cards ?? [];
-        const selectableCards = cards.filter(
-          (card) => !card.revealed && (canRevealPostGame || youStatus === "alive")
-        );
+        const categoryLocked = isCategoryLockedByForcedReveal(category);
+        const selectableCards = cards.filter((card) => isCardSelectableForReveal(category, card.revealed));
         return {
           category,
           cards,
           selectableCards,
+          categoryLocked,
         };
       });
 
@@ -1135,7 +1170,7 @@ export default function GamePage({
         <div className="mobile-dossier-section">
           <div className="panel-subtitle">{ru.dossierCardsTitle}</div>
           <div className="mobile-dossier-cards">
-            {cardsByCategory.map(({ category, cards, selectableCards }) => {
+            {cardsByCategory.map(({ category, cards, selectableCards, categoryLocked }) => {
               const label = CATEGORY_KEY_TO_RU[category] ?? category;
               const value =
                 cards.length === 0 ? "—" : cards.map((card) => card.labelShort ?? "—").join(" • ");
@@ -1146,15 +1181,17 @@ export default function GamePage({
               return (
                 <div
                   key={category}
-                  className={`mobile-dossier-card${selectedInCategory ? " selected" : ""}${revealedInCategory ? " revealed" : ""}`}
+                  className={`mobile-dossier-card${selectedInCategory ? " selected" : ""}${revealedInCategory ? " revealed" : ""}${categoryLocked ? " inactive" : ""}`}
                   onClick={() => {
+                    if (categoryLocked) return;
                     if (firstSelectable) {
                       setSelectedCardId(firstSelectable.instanceId);
                     }
                   }}
                   role="button"
-                  tabIndex={0}
+                  tabIndex={categoryLocked ? -1 : 0}
                   onKeyDown={(event) => {
+                    if (categoryLocked) return;
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       if (firstSelectable) {
@@ -1168,7 +1205,7 @@ export default function GamePage({
                   {showOptions ? (
                     <div className="mobile-dossier-options">
                       {cards.map((card) => {
-                        const selectable = !card.revealed && (canRevealPostGame || youStatus === "alive");
+                        const selectable = isCardSelectableForReveal(category, card.revealed);
                         return (
                           <button
                             key={card.instanceId}
@@ -1578,7 +1615,7 @@ export default function GamePage({
               <div className="mobile-dossier-footer">
                 <button
                   className="primary"
-                  disabled={!canReveal || !selectedCardId}
+                  disabled={!canReveal || !selectedCardId || !canRevealSelectedCard}
                   onClick={() => selectedCardId && onRevealCard(selectedCardId)}
                 >
                   {canRevealPostGame ? ru.revealPostGameAction : ru.revealAction}

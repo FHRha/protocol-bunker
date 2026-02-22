@@ -65,6 +65,9 @@ const appVersionFilePath = path.join(appDir, "VERSION");
 const serverAppDir = path.join(appDir, "server");
 const clientDistSrc = path.join(rootDir, "client", "dist");
 const clientDistDst = path.join(appDir, "client", "dist");
+const rootIconsSrc = path.join(rootDir, "icons");
+const clientPublicFaviconDir = path.join(rootDir, "client", "public", "favicon");
+const portableClientFaviconDir = path.join(clientDistDst, "favicon");
 const clientDistIndexSrc = path.join(clientDistSrc, "index.html");
 const sharedDistEntrySrc = path.join(rootDir, "shared", "dist", "index.js");
 const scenariosDistEntrySrc = path.join(rootDir, "scenarios", "dist", "index.js");
@@ -248,6 +251,19 @@ function copyDir(src, dst) {
 function writeFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf8");
+}
+
+function syncRootIconsIntoClientSource() {
+  ensureExists(rootIconsSrc, "root icons directory");
+  cleanPath(clientPublicFaviconDir);
+  copyDir(rootIconsSrc, clientPublicFaviconDir);
+}
+
+function syncRootIconsIntoPortableClientDist() {
+  ensureExists(rootIconsSrc, "root icons directory");
+  ensureExists(clientDistDst, "portable client dist directory");
+  cleanPath(portableClientFaviconDir);
+  copyDir(rootIconsSrc, portableClientFaviconDir);
 }
 
 function materializeDirectory(sourceDir) {
@@ -961,6 +977,8 @@ function writeVariantLaunchFiles(variantDir, profile) {
 async function main() {
   console.log(`[pack:linux] Building version: ${versionTag}`);
   console.log(`[pack:linux] Target architecture: ${targetArch}`);
+  console.log("[pack:linux] Syncing icons from root icons/...");
+  syncRootIconsIntoClientSource();
   if (process.platform !== "linux") {
     console.log(
       `[pack:linux] Cross-pack on ${process.platform}; linux-${targetArch} node runtime will be downloaded automatically.`
@@ -1032,6 +1050,7 @@ async function main() {
   }
 
   console.log("[pack:linux] Writing launch files (public profile)...");
+  syncRootIconsIntoPortableClientDist();
   writeVariantLaunchFiles(artifactsDir, "public");
 
   console.log("[pack:linux] Preparing server profile variant...");

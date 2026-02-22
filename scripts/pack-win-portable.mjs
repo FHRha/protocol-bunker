@@ -43,6 +43,9 @@ const appVersionFilePath = path.join(appDir, "VERSION");
 const serverAppDir = path.join(appDir, "server");
 const clientDistSrc = path.join(rootDir, "client", "dist");
 const clientDistDst = path.join(appDir, "client", "dist");
+const rootIconsSrc = path.join(rootDir, "icons");
+const clientPublicFaviconDir = path.join(rootDir, "client", "public", "favicon");
+const portableClientFaviconDir = path.join(clientDistDst, "favicon");
 const clientDistIndexSrc = path.join(clientDistSrc, "index.html");
 const sharedDistEntrySrc = path.join(rootDir, "shared", "dist", "index.js");
 const scenariosDistEntrySrc = path.join(rootDir, "scenarios", "dist", "index.js");
@@ -276,6 +279,19 @@ function copyDir(src, dst) {
 function writeFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf8");
+}
+
+function syncRootIconsIntoClientSource() {
+  ensureExists(rootIconsSrc, "root icons directory");
+  cleanPath(clientPublicFaviconDir);
+  copyDir(rootIconsSrc, clientPublicFaviconDir);
+}
+
+function syncRootIconsIntoPortableClientDist() {
+  ensureExists(rootIconsSrc, "root icons directory");
+  ensureExists(clientDistDst, "portable client dist directory");
+  cleanPath(portableClientFaviconDir);
+  copyDir(rootIconsSrc, portableClientFaviconDir);
 }
 
 function removeLinuxShellScripts(root) {
@@ -953,6 +969,8 @@ function main() {
     VITE_DEV_NEW_PLAYER_PER_TAB: "false",
   };
   console.log(`[pack:win] Building version: ${versionTag}`);
+  console.log("[pack:win] Syncing icons from root icons/...");
+  syncRootIconsIntoClientSource();
   if (skipBuild) {
     console.log("[pack:win] Skipping package builds (--skip-build).");
     ensureJsBuildOutputsOrThrow();
@@ -1021,6 +1039,7 @@ function main() {
   }
 
   console.log("[pack:win] Writing launch files...");
+  syncRootIconsIntoPortableClientDist();
   writeFile(startBatPath, buildStartBat());
   writeFile(startPs1Path, buildStartPs1());
   writeFile(portableEnvPath, buildPortableEnv());

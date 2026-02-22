@@ -1941,6 +1941,16 @@ button.ghost {
   background: color-mix(in srgb, #2bc47d 10%, var(--bg-soft));
 }
 
+.dossier-mini-card.inactive {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.dossier-mini-card.inactive:hover {
+  transform: none;
+  border-color: var(--border);
+}
+
 .dossier-mini-card.full-width {
   grid-column: 1 / -1;
 }
@@ -2603,6 +2613,11 @@ button.ghost {
     border-color: color-mix(in srgb, #2bc47d 72%, var(--border));
     box-shadow: 0 0 0 2px color-mix(in srgb, #2bc47d 30%, transparent);
     background: color-mix(in srgb, #2bc47d 10%, var(--panel));
+  }
+
+  .mobile-dossier-card.inactive {
+    opacity: 0.58;
+    cursor: default;
   }
 
   .mobile-dossier-label {

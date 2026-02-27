@@ -214,7 +214,19 @@ sudo systemctl restart protocol-bunker
 sudo systemctl status protocol-bunker
 sudo systemctl stop protocol-bunker
 sudo systemctl start protocol-bunker
+sudo systemctl restart protocol-bunker
 sudo journalctl -u protocol-bunker -f
+```
+
+Полезные команды `protocol-bunker`:
+
+```bash
+protocol-bunker --help
+protocol-bunker --update
+protocol-bunker --update vX.Y.Z
+protocol-bunker --enable-autostart
+protocol-bunker --disable-autostart
+protocol-bunker --uninstall
 ```
 
 Подробный пример reverse-proxy через `nginx stream` (Linux, server-профиль):

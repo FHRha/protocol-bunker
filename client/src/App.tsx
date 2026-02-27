@@ -858,7 +858,7 @@ export default function App() {
 
   const handleExitGame = () => {
     setErrorMessage(null);
-    hardResetSession({ clearLastRoom: true });
+    hardResetSession();
     navigate("/");
   };
 
@@ -931,7 +931,7 @@ export default function App() {
   const showErrorScreen = Boolean(errorMessage && (isLobbyRoute || isGameRoute));
   const exitToMenu = () => {
     setErrorMessage(null);
-    hardResetSession({ clearLastRoom: true });
+    hardResetSession();
     navigate("/");
   };
 

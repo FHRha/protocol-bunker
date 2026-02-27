@@ -256,6 +256,21 @@ info "Downloading: $URL"
 curl -fL --retry 3 --retry-delay 1 -o "$TMP/$ASSET" "$URL"
 
 info "Installing to: $APP_DIR"
+PRESERVE_DIR="$TMP/preserve"
+rm -rf "$PRESERVE_DIR"
+mkdir -p "$PRESERVE_DIR"
+if [ -d "$APP_DIR" ]; then
+  if [ -f "$APP_DIR/portable.env" ]; then
+    cp "$APP_DIR/portable.env" "$PRESERVE_DIR/portable.env"
+    info "Preserving settings: portable.env"
+  fi
+  if [ -d "$APP_DIR/app/data" ]; then
+    mkdir -p "$PRESERVE_DIR/app"
+    cp -a "$APP_DIR/app/data" "$PRESERVE_DIR/app/data"
+    info "Preserving data: app/data"
+  fi
+fi
+
 rm -rf "$APP_DIR"
 tar -xzf "$TMP/$ASSET" -C "$INSTALL_ROOT"
 
@@ -263,6 +278,63 @@ tar -xzf "$TMP/$ASSET" -C "$INSTALL_ROOT"
 chmod +x "$APP_DIR/start.sh" || true
 if [ -f "$APP_DIR/app/node/node" ]; then
   chmod +x "$APP_DIR/app/node/node" || true
+fi
+if [ -f "$PRESERVE_DIR/portable.env" ]; then
+  if [ -f "$APP_DIR/portable.env" ]; then
+    awk '
+      function parse_assignment(line,   s, eq) {
+        s = line
+        sub(/^[[:space:]]*/, "", s)
+        if (s ~ /^#/ || s !~ /^[A-Za-z_][A-Za-z0-9_]*=/) return 0
+        eq = index(s, "=")
+        if (eq <= 1) return 0
+        assign_key = substr(s, 1, eq - 1)
+        assign_val = substr(s, eq + 1)
+        return 1
+      }
+      NR == FNR {
+        if (parse_assignment($0)) {
+          k = assign_key
+          if (!(k in old_seen)) {
+            old_order[++old_n] = k
+            old_seen[k] = 1
+          }
+          old_val[k] = assign_val
+        }
+        next
+      }
+      {
+        if (parse_assignment($0)) {
+          k = assign_key
+          base_key[k] = 1
+          if (k in old_val) {
+            print k "=" old_val[k]
+            next
+          }
+        }
+        print $0
+      }
+      END {
+        for (i = 1; i <= old_n; i++) {
+          k = old_order[i]
+          if (!(k in base_key)) {
+            print k "=" old_val[k]
+          }
+        }
+      }
+    ' "$PRESERVE_DIR/portable.env" "$APP_DIR/portable.env" > "$TMP/portable.env.merged"
+    mv "$TMP/portable.env.merged" "$APP_DIR/portable.env"
+    info "Merged settings: portable.env (user values kept, new defaults added)"
+  else
+    cp "$PRESERVE_DIR/portable.env" "$APP_DIR/portable.env"
+    info "Restored settings: portable.env"
+  fi
+fi
+if [ -d "$PRESERVE_DIR/app/data" ]; then
+  mkdir -p "$APP_DIR/app"
+  rm -rf "$APP_DIR/app/data"
+  cp -a "$PRESERVE_DIR/app/data" "$APP_DIR/app/data"
+  info "Restored data: app/data"
 fi
 
 # ----- create launcher -----

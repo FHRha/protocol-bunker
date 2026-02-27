@@ -229,6 +229,8 @@ protocol-bunker --disable-autostart
 protocol-bunker --uninstall
 ```
 
+Примечание по обновлению: `protocol-bunker --update` переустанавливает архив целиком, но сохраняет ваши настройки (`portable.env`) и данные (`app/data`).
+
 Подробный пример reverse-proxy через `nginx stream` (Linux, server-профиль):
 - `docs/nginx-stream-linux.md`
 

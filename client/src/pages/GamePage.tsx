@@ -1397,7 +1397,10 @@ export default function GamePage({
                       {publicPlayers.map((player, index) => {
                         const isYou = player.playerId === you?.playerId;
                         const isSelected = player.playerId === selectedPlayerId;
-                        const label = isYou ? `${player.name} (${ru.youBadge})` : player.name || `Игрок ${index + 1}`;
+                        const rawName = (player.name ?? "").trim() || `Игрок ${index + 1}`;
+                        const shortName = formatPlayerNameShort(rawName, 12);
+                        const label = isYou ? `${shortName} (${ru.youBadge})` : shortName;
+                        const fullLabel = isYou ? `${rawName} (${ru.youBadge})` : rawName;
                         const classes = [
                           "mobile-player-chip",
                           isSelected ? "selected" : "",
@@ -1414,6 +1417,7 @@ export default function GamePage({
                             className={classes}
                             onClick={() => handleSelectPlayer(player.playerId)}
                             role="listitem"
+                            title={fullLabel}
                           >
                             {label}
                           </button>

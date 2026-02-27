@@ -2854,11 +2854,11 @@ button.ghost {
   }
 
   .mobile-player-strip {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
-    overflow-x: auto;
+    overflow-x: visible;
     padding: 4px 2px;
-    -webkit-overflow-scrolling: touch;
   }
 
   .mobile-player-bar {
@@ -2881,8 +2881,14 @@ button.ghost {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     font-size: 13px;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .mobile-player-chip.selected {

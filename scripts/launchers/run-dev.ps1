@@ -1,5 +1,9 @@
 ﻿$ErrorActionPreference = "Stop"
 
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 . (Join-Path $PSScriptRoot "_deps.ps1")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
@@ -102,3 +106,4 @@ if (-not (Test-Path (Join-Path $repoRoot "node_modules"))) {
   Write-Info "Dependencies already installed, skipping pnpm install."
 }
 pnpm dev
+

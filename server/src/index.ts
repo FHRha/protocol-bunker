@@ -28,6 +28,7 @@ import {
   type Role,
   type PublicPlayerView,
   type WorldState30,
+  type AssetCatalog,
   LINK_PATHS,
   OverlayOverridesSchema,
   buildLinkSet,
@@ -69,6 +70,7 @@ interface Room {
   scenarioMeta: ScenarioMeta;
   scenarioModule: ScenarioModule;
   settings: GameSettings;
+  disasterOptions: Array<{ id: string; title: string }>;
   ruleset: GameRuleset;
   rulesOverriddenByHost: boolean;
   rulesPresetCount?: number;
@@ -130,6 +132,9 @@ const DEV_SCENARIOS_ENABLED =
 const DISCONNECT_GRACE_MS = 300_000;
 const RECONNECT_GRACE_AFTER_KICK_MS = 300_000;
 const HOST_GRACE_MS = 60_000;
+const ROOM_CLEANUP_INTERVAL_MS = Number(process.env.BUNKER_ROOM_CLEANUP_INTERVAL_MS ?? 60_000);
+const ROOM_INACTIVE_TTL_MS = Number(process.env.BUNKER_ROOM_INACTIVE_TTL_MS ?? 6 * 60 * 60 * 1000);
+const ROOM_ENDED_TTL_MS = Number(process.env.BUNKER_ROOM_ENDED_TTL_MS ?? 30 * 60 * 1000);
 const CLASSIC_SCENARIO_ID = "classic";
 const MIN_CLASSIC_PLAYERS = 4;
 const MAX_CLASSIC_PLAYERS = 16;
@@ -167,6 +172,7 @@ let wanLookupInFlight: Promise<string | null> | null = null;
 let publicBaseLogSignature = "";
 let clientIndexCacheStamp = "";
 let clientIndexCacheHtml = "";
+let controlDeckCatalog: Record<string, Array<{ id: string; labelShort: string }>> = {};
 
 function renderClientIndexHtml(identityMode: IdentityMode): string {
   const indexPath = path.join(CLIENT_DIST, "index.html");
@@ -604,6 +610,29 @@ function clampInt(value: number, min: number, max: number): number {
   return clampNumber(Math.round(value), min, max);
 }
 
+function buildDisasterOptions(assets: AssetCatalog): Array<{ id: string; title: string }> {
+  const deck = assets.decks["Катастрофа"] ?? [];
+  const unique = new Map<string, string>();
+  for (const card of deck) {
+    const id = card.id?.trim();
+    if (!id || unique.has(id)) continue;
+    const title = card.labelShort?.trim() || id;
+    unique.set(id, title);
+  }
+  return Array.from(unique.entries())
+    .map(([id, title]) => ({ id, title }))
+    .sort((left, right) => left.title.localeCompare(right.title, "ru-RU"));
+}
+
+function normalizeForcedDisasterId(
+  value: string | undefined,
+  options: Array<{ id: string; title: string }>
+): string {
+  const next = (value ?? "").trim();
+  if (!next || next === "random") return "random";
+  return options.some((item) => item.id === next) ? next : "random";
+}
+
 function getRequiredVotes(playerCount: number, bunkerSlots: number): number {
   return Math.max(0, clampInt(playerCount, 0, 64) - clampInt(bunkerSlots, 1, 16));
 }
@@ -879,6 +908,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   preVoteDiscussionSeconds: 60,
   enablePostVoteDiscussionTimer: false,
   postVoteDiscussionSeconds: 45,
+  automationMode: "semi",
   enablePresenterMode: false,
   continuePermission: "revealer_only",
   revealTimeoutAction: "random_card",
@@ -886,11 +916,88 @@ const DEFAULT_SETTINGS: GameSettings = {
   specialUsage: "anytime",
   maxPlayers: 12,
   finalThreatReveal: "host",
+  forcedDisasterId: "random",
 };
 
 const rooms = new Map<string, Room>();
 const connectionInfo = new WeakMap<WebSocket, { roomCode: string; playerId: string }>();
 const overlaySubscriptions = new Map<WebSocket, { roomCode: string; role: Role }>();
+let roomCleanupTimer: ReturnType<typeof setInterval> | undefined;
+
+function hasOverlaySubscribers(roomCode: string): boolean {
+  for (const sub of overlaySubscriptions.values()) {
+    if (sub.roomCode === roomCode) return true;
+  }
+  return false;
+}
+
+function getRoomGamePhase(room: Room): string | undefined {
+  if (room.lastGameViews && room.lastGameViews.size > 0) {
+    const cached = room.lastGameViews.values().next().value as { phase?: string } | undefined;
+    if (cached?.phase) return cached.phase;
+  }
+  if (!room.session) return undefined;
+  const anchorId = room.players.has(room.hostId)
+    ? room.hostId
+    : room.joinOrder.find((id) => room.players.has(id));
+  if (!anchorId) return undefined;
+  try {
+    return room.session.getGameView(anchorId).phase;
+  } catch {
+    return undefined;
+  }
+}
+
+function cleanupInactiveRooms(): void {
+  const now = Date.now();
+  for (const [roomCode, room] of rooms.entries()) {
+    const players = Array.from(room.players.values());
+    if (players.length === 0) {
+      logRoomLifecycle("closed", roomCode, { reason: "cleanup_empty" });
+      rooms.delete(roomCode);
+      continue;
+    }
+    if (players.some((player) => player.connected || Boolean(player.ws))) continue;
+    if (hasOverlaySubscribers(roomCode)) continue;
+
+    let lastDisconnectAt = 0;
+    for (const player of players) {
+      if (player.disconnectedAt) {
+        lastDisconnectAt = Math.max(lastDisconnectAt, player.disconnectedAt);
+      }
+    }
+    if (!lastDisconnectAt) continue;
+
+    const inactiveMs = now - lastDisconnectAt;
+    const gamePhase = getRoomGamePhase(room);
+    const ttlMs = gamePhase === "ended" ? ROOM_ENDED_TTL_MS : ROOM_INACTIVE_TTL_MS;
+    if (inactiveMs < ttlMs) continue;
+
+    if (room.hostTransferTimer) {
+      clearTimeout(room.hostTransferTimer);
+      room.hostTransferTimer = undefined;
+    }
+    for (const player of room.players.values()) {
+      if (player.disconnectTimer) {
+        clearTimeout(player.disconnectTimer);
+        player.disconnectTimer = undefined;
+      }
+      if (player.disconnectTicker) {
+        clearInterval(player.disconnectTicker);
+        player.disconnectTicker = undefined;
+      }
+    }
+
+    logRoomLifecycle("closed", roomCode, {
+      reason: gamePhase === "ended" ? "cleanup_ended_ttl" : "cleanup_inactive_ttl",
+      inactiveSec: Math.floor(inactiveMs / 1000),
+      phase: room.phase,
+      gamePhase,
+      players: room.players.size,
+    });
+    rooms.delete(roomCode);
+  }
+}
 
 function generateRoomCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -921,9 +1028,7 @@ function buildRoomState(room: Room): RoomState {
       currentOfflineMs: !player.connected && player.disconnectedAt ? Date.now() - player.disconnectedAt : 0,
       kickRemainingMs: Math.max(
         0,
-        DISCONNECT_GRACE_MS -
-          ((player.totalAbsentMs ?? 0) +
-            (!player.connected && player.disconnectedAt ? Date.now() - player.disconnectedAt : 0))
+        DISCONNECT_GRACE_MS - (!player.connected && player.disconnectedAt ? Date.now() - player.disconnectedAt : 0)
       ),
       leftBunker: player.leftBunker,
     })),
@@ -937,6 +1042,7 @@ function buildRoomState(room: Room): RoomState {
     rulesPresetCount: room.rulesPresetCount,
     world: room.world,
     isDev: room.isDev,
+    disasterOptions: room.disasterOptions,
   };
 }
 
@@ -1068,15 +1174,6 @@ function buildTopItems(
     }
     if (subtitle && normalizeOverlayCompareValue(subtitle) === normalizeOverlayCompareValue(title)) {
       subtitle = undefined;
-    }
-    if (DEV_LOGS && deck === "угроза" && norm(title).includes("стресс")) {
-      const keyMain = `${normDeck(deck)}::${norm(title)}`;
-      const fromMap = readMappedSubtitle(subtitleMap, deck, titleRaw, title);
-      console.log("[overlay subtitles] stress debug", {
-        title,
-        keyMain,
-        subtitleFromMapFound: Boolean(fromMap),
-      });
     }
     return { title, subtitle, imageId: card.imageId };
   });
@@ -1273,6 +1370,8 @@ function buildOverlayPresenterState(room: Room) {
       connected: player!.connected,
       status: player!.leftBunker ? ("left_bunker" as const) : ("alive" as const),
       voted: false,
+      votedTargetName: "-",
+      votesAgainst: 0,
       revealedThisRound: false,
     }));
 
@@ -1291,6 +1390,74 @@ function buildOverlayPresenterState(room: Room) {
     postGameActive: false,
     postGameOutcome: null as "survived" | "failed" | null,
     players: fallbackPlayers,
+    control: {
+      players: [] as Array<{
+        playerId: string;
+        name: string;
+        status: PlayerStatus;
+      hand: Array<{
+        instanceId: string;
+        id: string;
+        deck: string;
+        labelShort: string;
+        revealed: boolean;
+        missing?: boolean;
+      }>;
+        specialConditions: Array<{
+          instanceId: string;
+          id: string;
+          title: string;
+          text: string;
+          used: boolean;
+          revealedPublic: boolean;
+          pendingActivation?: boolean;
+          implemented: boolean;
+          choiceKind?: string;
+          targetScope?: string;
+          allowSelfTarget?: boolean;
+          effectType?: string;
+          requires?: string[];
+          imgUrl?: string;
+        }>;
+      }>,
+      specialCatalog: [] as Array<{
+        id: string;
+        title: string;
+        text: string;
+        implemented: boolean;
+        choiceKind?: string;
+        targetScope?: string;
+        allowSelfTarget?: boolean;
+        effectType?: string;
+        requires?: string[];
+      }>,
+      world: null as
+        | {
+            disaster: { title: string; imageId?: string };
+            bunker: Array<{ index: number; title: string; isRevealed: boolean; imageId?: string }>;
+            threats: Array<{ index: number; title: string; isRevealed: boolean; imageId?: string }>;
+          }
+        | null,
+      supportedScenarioActions: [
+        "revealCard",
+        "applySpecial",
+        "vote",
+        "continueRound",
+        "finalizeVoting",
+        "revealWorldThreat",
+        "setBunkerOutcome",
+        "markLeftBunker",
+        "devKickPlayer",
+        "devSkipRound",
+        "devAddPlayer",
+        "devRemovePlayer",
+        "adminReplacePlayerCard",
+        "adminSetWorldCardReveal",
+        "adminReplaceWorldCard",
+        "adminSetWorldCount",
+        "adminApplySpecial",
+      ] as const,
+    },
     actions: {
       canStartGame: room.phase === "lobby",
       canNextStep: false,
@@ -1314,7 +1481,135 @@ function buildOverlayPresenterState(room: Room) {
     if (!anchorId) return base;
     const view = room.session.getGameView(anchorId);
     const votesByPlayer = new Map((view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.status]));
+    const voteTargetNameByVoter = new Map(
+      (view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.targetName ?? ""])
+    );
+    const votesAgainstByTarget = new Map<string, number>();
+    for (const vote of view.public.votesPublic ?? []) {
+      if (vote.status !== "voted" || !vote.targetId) continue;
+      votesAgainstByTarget.set(vote.targetId, (votesAgainstByTarget.get(vote.targetId) ?? 0) + 1);
+    }
     const revealedThisRound = new Set(view.public.revealedThisRound ?? []);
+
+    const controlPlayers = view.public.players.map((publicPlayer) => {
+      let hand: Array<{
+        instanceId: string;
+        deck: string;
+        labelShort: string;
+        revealed: boolean;
+        missing?: boolean;
+      }> = [];
+      let specialConditions: Array<{
+        instanceId: string;
+        id: string;
+        title: string;
+        text: string;
+        used: boolean;
+        revealedPublic: boolean;
+        pendingActivation?: boolean;
+        implemented: boolean;
+        choiceKind?: string;
+        targetScope?: string;
+        allowSelfTarget?: boolean;
+        effectType?: string;
+        requires?: string[];
+        imgUrl?: string;
+      }> = [];
+      try {
+        const personalView = room.session!.getGameView(publicPlayer.playerId);
+        hand = personalView.you.hand.map((card) => ({
+          instanceId: String(card.instanceId ?? card.id ?? `${publicPlayer.playerId}-card`),
+          id: String(card.id ?? ""),
+          deck: card.deck,
+          labelShort: String(card.labelShort ?? card.deck ?? "Карта"),
+          revealed: card.revealed,
+          missing: card.missing,
+        }));
+        specialConditions = personalView.you.specialConditions.map((special) => {
+          const requiresRaw = (special as { requires?: unknown[] }).requires;
+          return {
+            instanceId: special.instanceId,
+            id: special.id,
+            title: special.title,
+            text: special.text,
+            used: special.used,
+            revealedPublic: special.revealedPublic,
+            pendingActivation: special.pendingActivation,
+            implemented: special.implemented,
+            choiceKind: special.choiceKind,
+            targetScope: special.targetScope,
+            allowSelfTarget: special.allowSelfTarget,
+            effectType: String(special.effect?.type ?? ""),
+            requires: Array.isArray(requiresRaw)
+              ? requiresRaw
+                  .map((item) => String(item ?? "").trim())
+                  .filter(Boolean)
+              : undefined,
+            imgUrl: special.imgUrl,
+          };
+        });
+      } catch {
+        // ignore per-player read errors in presenter state
+      }
+      return {
+        playerId: publicPlayer.playerId,
+        name: publicPlayer.name,
+        status: publicPlayer.status,
+        hand,
+        specialConditions,
+      };
+    });
+
+    const worldControl = view.world
+      ? {
+          disaster: {
+            title: view.world.disaster.title,
+            imageId: view.world.disaster.imageId,
+          },
+          bunker: view.world.bunker.map((card, index) => ({
+            index,
+            title: card.title,
+            isRevealed: card.isRevealed,
+            imageId: card.imageId,
+          })),
+          threats: view.world.threats.map((card, index) => ({
+            index,
+            title: card.title,
+            isRevealed: card.isRevealed,
+            imageId: card.imageId,
+          })),
+        }
+      : null;
+
+    const sessionWithCatalog = room.session as ScenarioSession & {
+      getSpecialCatalog?: () => Array<{
+        id: string;
+        title: string;
+        text: string;
+        implemented?: boolean;
+        choiceKind?: string;
+        targetScope?: string;
+        allowSelfTarget?: boolean;
+        effectType?: string;
+        requires?: string[];
+      }>;
+    };
+    const rawSpecialCatalog = sessionWithCatalog.getSpecialCatalog?.();
+    const specialCatalog = Array.isArray(rawSpecialCatalog)
+      ? rawSpecialCatalog.map((item) => ({
+          id: String(item.id ?? "").trim(),
+          title: String(item.title ?? item.id ?? "").trim(),
+          text: String(item.text ?? "").trim(),
+          implemented: Boolean(item.implemented ?? true),
+          choiceKind: item.choiceKind ? String(item.choiceKind) : undefined,
+          targetScope: item.targetScope ? String(item.targetScope) : undefined,
+          allowSelfTarget: item.allowSelfTarget === true,
+          effectType: item.effectType ? String(item.effectType) : undefined,
+          requires: Array.isArray(item.requires)
+            ? item.requires.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+            : undefined,
+        }))
+      : [];
 
     return {
       ...base,
@@ -1330,8 +1625,16 @@ function buildOverlayPresenterState(room: Room) {
         connected: player.connected,
         status: player.status,
         voted: votesByPlayer.get(player.playerId) === "voted",
+        votedTargetName: voteTargetNameByVoter.get(player.playerId) || "-",
+        votesAgainst: votesAgainstByTarget.get(player.playerId) ?? 0,
         revealedThisRound: revealedThisRound.has(player.playerId),
       })),
+      control: {
+        ...base.control,
+        players: controlPlayers,
+        specialCatalog,
+        world: worldControl,
+      },
       actions: {
         canStartGame: false,
         canNextStep: view.phase === "reveal_discussion",
@@ -1344,7 +1647,9 @@ function buildOverlayPresenterState(room: Room) {
           view.phase === "reveal_discussion" &&
           (view.public.votesRemainingInRound ?? 0) > 0 &&
           (view.public.roundRevealedCount ?? 0) >= (view.public.roundTotalAlive ?? 0),
-        canEndVote: view.phase === "voting" && view.public.votePhase === "voteSpecialWindow",
+        canEndVote:
+          view.phase === "voting" &&
+          (view.public.votePhase === "voteSpecialWindow" || view.public.votePhase === "voting"),
         canSetOutcome: Boolean(view.postGame?.isActive && !view.postGame?.outcome),
         canKickPlayer: view.public.players.some(
           (player) => player.playerId !== room.controlId && player.status === "alive"
@@ -1388,6 +1693,7 @@ async function buildOverlayControlState(room: Room) {
     roomCode: room.code,
     categories,
     players,
+    deckCatalog: controlDeckCatalog,
     overrides: room.overlayOverrides ?? {},
     overlayState: overlayState ?? undefined,
     presenterModeEnabled: Boolean(room.settings.enablePresenterMode),
@@ -1517,14 +1823,13 @@ function sendGameView(room: Room, player: Player): void {
         roomPlayer && !roomPlayer.connected && roomPlayer.disconnectedAt
           ? Date.now() - roomPlayer.disconnectedAt
           : 0;
-      const totalAbsentMs = roomPlayer?.totalAbsentMs ?? 0;
       return {
         ...entry,
         connected: roomPlayer?.connected ?? false,
         disconnectedAt: roomPlayer?.disconnectedAt,
-        totalAbsentMs,
+        totalAbsentMs: roomPlayer?.totalAbsentMs ?? 0,
         currentOfflineMs,
-        kickRemainingMs: Math.max(0, DISCONNECT_GRACE_MS - (totalAbsentMs + currentOfflineMs)),
+        kickRemainingMs: Math.max(0, DISCONNECT_GRACE_MS - currentOfflineMs),
         leftBunker: roomPlayer?.leftBunker ?? entry.status === "left_bunker",
       };
     });
@@ -1705,6 +2010,40 @@ function removeLobbyPlayer(room: Room, playerId: string): boolean {
   return true;
 }
 
+function addLobbyBotPlayer(room: Room, preferredName?: string): Player | null {
+  if (room.phase !== "lobby") return null;
+  const maxPlayers = getEffectiveMaxPlayers(room);
+  if (room.players.size >= maxPlayers) return null;
+
+  const baseName = String(preferredName ?? "").trim() || "Бот";
+  const existingNames = new Set(
+    Array.from(room.players.values()).map((player) => String(player.name || "").trim().toLocaleLowerCase("ru-RU"))
+  );
+  let nextName = baseName;
+  let suffix = 2;
+  while (existingNames.has(nextName.toLocaleLowerCase("ru-RU"))) {
+    nextName = `${baseName} ${suffix}`;
+    suffix += 1;
+  }
+
+  const bot: Player = {
+    playerId: crypto.randomUUID(),
+    name: nextName,
+    token: crypto.randomUUID(),
+    connected: true,
+    totalAbsentMs: 0,
+    needsFullState: false,
+    needsFullGameView: false,
+  };
+
+  room.players.set(bot.playerId, bot);
+  room.playersByToken.set(bot.token, bot.playerId);
+  room.joinOrder.push(bot.playerId);
+  updateRulesetIfAuto(room);
+  logRoomLifecycle("joined", room.code, { player: bot.name, count: room.players.size, phase: room.phase });
+  return bot;
+}
+
 function transferHost(
   room: Room,
   reason: "disconnect_timeout" | "left_bunker" | "eliminated" | "manual",
@@ -1819,9 +2158,8 @@ function formatRemaining(ms: number): string {
 }
 
 function computeKickRemainingMs(player: Player, now = Date.now()): number {
-  const totalAbsentMs = player.totalAbsentMs ?? 0;
   const currentOfflineMs = player.disconnectedAt ? now - player.disconnectedAt : 0;
-  return Math.max(0, DISCONNECT_GRACE_MS - (totalAbsentMs + currentOfflineMs));
+  return Math.max(0, DISCONNECT_GRACE_MS - currentOfflineMs);
 }
 
 function findPlayerByToken(room: Room, token?: string): Player | undefined {
@@ -1874,11 +2212,14 @@ function attachPlayer(room: Room, payload: ClientHelloPayload, ws: WebSocket, ex
   }
   player.disconnectNotifiedMinutes = undefined;
   if (wasDisconnected) {
-    if (player.disconnectedAt) {
-      const delta = Math.max(0, Date.now() - player.disconnectedAt);
-      player.totalAbsentMs = (player.totalAbsentMs ?? 0) + delta;
-    }
+    // Grace timeout should apply to a single disconnection window, not accumulated history.
+    player.totalAbsentMs = 0;
     player.disconnectedAt = undefined;
+  }
+  if (room.hostId === player.playerId && room.hostTransferTimer) {
+    clearTimeout(room.hostTransferTimer);
+    room.hostTransferTimer = undefined;
+    broadcastEvent(room, buildSystemEvent(room, "info", `Хост ${player.name} вернулся. Передача хоста отменена.`));
   }
   player.ws = ws;
   player.connected = true;
@@ -1925,6 +2266,12 @@ function buildReconnectForbidden(): ServerMessage {
 
 async function main() {
   const assets = buildAssetCatalog(ASSETS_ROOT);
+  controlDeckCatalog = Object.fromEntries(
+    Object.entries(assets.decks).map(([deckName, cards]) => [
+      deckName,
+      cards.map((card) => ({ id: card.id, labelShort: card.labelShort })),
+    ])
+  );
   const scenarios = await loadScenarios();
   const availableScenarios = scenarios.filter(
     (scenario) => !(scenario.meta.devOnly && !DEV_SCENARIOS_ENABLED)
@@ -2106,7 +2453,8 @@ async function main() {
     | "SET_OUTCOME_SURVIVED"
     | "SET_OUTCOME_FAILED"
     | "SKIP_ROUND"
-    | "KICK_PLAYER";
+    | "KICK_PLAYER"
+    | "SCENARIO_ACTION";
 
   const startGameAsControl = (room: Room): { ok: boolean; message?: string } => {
     if (room.phase !== "lobby") {
@@ -2148,10 +2496,205 @@ async function main() {
     return { ok: true };
   };
 
+  const parseControlScenarioAction = (
+    typeRaw: string,
+    payloadRaw: Record<string, unknown>
+  ): ScenarioAction | { error: string } => {
+    const actionType = String(typeRaw ?? "").trim();
+    const payload = isRecord(payloadRaw) ? payloadRaw : {};
+    const requireNonEmpty = (value: unknown, message: string): string | { error: string } => {
+      const next = String(value ?? "").trim();
+      return next ? next : { error: message };
+    };
+    const toNumber = (value: unknown): number | null => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    switch (actionType) {
+      case "revealCard": {
+        const cardId = requireNonEmpty(payload.cardId, "Нужно указать cardId.");
+        if (typeof cardId !== "string") return cardId;
+        return { type: "revealCard", payload: { cardId } };
+      }
+      case "vote": {
+        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "Нужно выбрать цель голосования.");
+        if (typeof targetPlayerId !== "string") return targetPlayerId;
+        return { type: "vote", payload: { targetPlayerId } };
+      }
+      case "finalizeVoting":
+        return { type: "finalizeVoting", payload: {} };
+      case "applySpecial": {
+        const specialInstanceId = requireNonEmpty(
+          payload.specialInstanceId,
+          "Нужно выбрать specialInstanceId."
+        );
+        if (typeof specialInstanceId !== "string") return specialInstanceId;
+        const nestedPayload = isRecord(payload.payload) ? payload.payload : {};
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.specialInstanceId;
+        delete fallbackPayload.payload;
+        const effectivePayload =
+          Object.keys(nestedPayload).length > 0 ? nestedPayload : (fallbackPayload as Record<string, unknown>);
+        return {
+          type: "applySpecial",
+          payload: {
+            specialInstanceId,
+            payload: effectivePayload,
+          },
+        };
+      }
+      case "revealWorldThreat": {
+        const index = toNumber(payload.index);
+        if (index === null || !Number.isInteger(index) || index < 0) {
+          return { error: "Нужен корректный индекс угрозы (index)." };
+        }
+        return { type: "revealWorldThreat", payload: { index } };
+      }
+      case "setBunkerOutcome": {
+        const outcome = String(payload.outcome ?? "").trim();
+        if (outcome !== "survived" && outcome !== "failed") {
+          return { error: "Неверный исход. Допустимо: survived | failed." };
+        }
+        return { type: "setBunkerOutcome", payload: { outcome } };
+      }
+      case "devSkipRound":
+        return { type: "devSkipRound", payload: {} };
+      case "devKickPlayer": {
+        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "Нужно выбрать игрока для кика.");
+        if (typeof targetPlayerId !== "string") return targetPlayerId;
+        return { type: "devKickPlayer", payload: { targetPlayerId } };
+      }
+      case "markLeftBunker": {
+        const targetPlayerId = requireNonEmpty(
+          payload.targetPlayerId,
+          "Нужно выбрать игрока для перевода в \"вне бункера\"."
+        );
+        if (typeof targetPlayerId !== "string") return targetPlayerId;
+        return { type: "markLeftBunker", payload: { targetPlayerId } };
+      }
+      case "continueRound":
+        return { type: "continueRound", payload: {} };
+      case "devAddPlayer": {
+        const name = String(payload.name ?? "").trim();
+        return { type: "devAddPlayer", payload: name ? { name } : {} };
+      }
+      case "devRemovePlayer": {
+        const targetPlayerId = String(payload.targetPlayerId ?? "").trim();
+        return { type: "devRemovePlayer", payload: targetPlayerId ? { targetPlayerId } : {} };
+      }
+      case "adminReplacePlayerCard": {
+        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "Нужно выбрать игрока.");
+        if (typeof targetPlayerId !== "string") return targetPlayerId;
+        const cardInstanceId = requireNonEmpty(payload.cardInstanceId, "Нужно выбрать карту игрока.");
+        if (typeof cardInstanceId !== "string") return cardInstanceId;
+        const targetAreaRaw = String(payload.targetArea ?? "hand").trim().toLowerCase();
+        const targetArea = targetAreaRaw === "special" ? "special" : "hand";
+        const replacementModeRaw = String(payload.replacementMode ?? "random").trim().toLowerCase();
+        const replacementMode = replacementModeRaw === "specific" ? "specific" : "random";
+        const replacementCardId = String(payload.replacementCardId ?? "").trim();
+        return {
+          type: "adminReplacePlayerCard",
+          payload: {
+            targetPlayerId,
+            cardInstanceId,
+            targetArea,
+            replacementMode,
+            replacementCardId: replacementCardId || undefined,
+          },
+        };
+      }
+      case "adminSetWorldCardReveal": {
+        const kind = String(payload.kind ?? "").trim().toLowerCase();
+        if (kind !== "bunker" && kind !== "threat") {
+          return { error: "kind должен быть bunker или threat." };
+        }
+        const index = toNumber(payload.index);
+        if (index === null || !Number.isInteger(index) || index < 0) {
+          return { error: "Нужен корректный индекс карты мира (index)." };
+        }
+        return {
+          type: "adminSetWorldCardReveal",
+          payload: {
+            kind,
+            index,
+            revealed: Boolean(payload.revealed),
+          },
+        };
+      }
+      case "adminReplaceWorldCard": {
+        const kind = String(payload.kind ?? "").trim().toLowerCase();
+        if (kind !== "bunker" && kind !== "threat" && kind !== "disaster") {
+          return { error: "kind должен быть bunker, threat или disaster." };
+        }
+        const replacementModeRaw = String(payload.replacementMode ?? "random").trim().toLowerCase();
+        const replacementMode = replacementModeRaw === "specific" ? "specific" : "random";
+        const replacementCardId = String(payload.replacementCardId ?? "").trim();
+        const index = toNumber(payload.index);
+        if (kind !== "disaster" && (index === null || !Number.isInteger(index) || index < 0)) {
+          return { error: "Для bunker/threat нужен корректный index." };
+        }
+        return {
+          type: "adminReplaceWorldCard",
+          payload: {
+            kind,
+            index: kind === "disaster" ? undefined : index ?? undefined,
+            replacementMode,
+            replacementCardId: replacementCardId || undefined,
+          },
+        };
+      }
+      case "adminSetWorldCount": {
+        const kind = String(payload.kind ?? "").trim().toLowerCase();
+        if (kind !== "bunker" && kind !== "threat") {
+          return { error: "kind должен быть bunker или threat." };
+        }
+        const count = toNumber(payload.count);
+        if (count === null || !Number.isInteger(count) || count < 0) {
+          return { error: "Нужно корректное целое количество карт (count)." };
+        }
+        return { type: "adminSetWorldCount", payload: { kind, count } };
+      }
+      case "adminApplySpecial": {
+        const actorPlayerId = requireNonEmpty(payload.actorPlayerId, "Нужно выбрать игрока-источник.");
+        if (typeof actorPlayerId !== "string") return actorPlayerId;
+        const specialInstanceId = String(payload.specialInstanceId ?? "").trim();
+        const specialId = String(payload.specialId ?? "").trim();
+        if (!specialInstanceId && !specialId) {
+          return { error: "Нужно выбрать спецусловие (instanceId или specialId)." };
+        }
+        const nestedPayload = isRecord(payload.payload) ? payload.payload : {};
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.actorPlayerId;
+        delete fallbackPayload.specialInstanceId;
+        delete fallbackPayload.specialId;
+        delete fallbackPayload.payload;
+        const effectivePayload =
+          Object.keys(nestedPayload).length > 0 ? nestedPayload : (fallbackPayload as Record<string, unknown>);
+        return {
+          type: "adminApplySpecial",
+          payload: {
+            actorPlayerId,
+            specialInstanceId: specialInstanceId || undefined,
+            specialId: specialId || undefined,
+            payload: effectivePayload,
+          },
+        };
+      }
+      default:
+        return { error: `Неподдерживаемое сценарное действие: ${actionType}` };
+    }
+  };
+
   const runControlCommand = (
     room: Room,
     command: ControlCommand,
-    options?: { targetPlayerId?: string }
+    options?: {
+      targetPlayerId?: string;
+      actorPlayerId?: string;
+      scenarioActionType?: string;
+      scenarioPayload?: Record<string, unknown>;
+    }
   ): { ok: boolean; message?: string } => {
     if (command === "START_GAME") {
       return startGameAsControl(room);
@@ -2179,6 +2722,75 @@ async function main() {
       removeLobbyPlayer(room, targetPlayerId);
       if (rooms.has(room.code)) {
         broadcastRoomState(room);
+      }
+      return { ok: true };
+    }
+
+    if (command === "SCENARIO_ACTION") {
+      const actionType = String(options?.scenarioActionType ?? "").trim();
+      if (!actionType) {
+        return { ok: false, message: "Не указан тип сценарного действия." };
+      }
+      const parsedScenarioAction = parseControlScenarioAction(actionType, options?.scenarioPayload ?? {});
+      if ("error" in parsedScenarioAction) {
+        return { ok: false, message: parsedScenarioAction.error };
+      }
+
+      if (!room.session || room.phase !== "game") {
+        if (parsedScenarioAction.type === "devAddPlayer") {
+          const bot = addLobbyBotPlayer(room, parsedScenarioAction.payload.name);
+          if (!bot) {
+            return { ok: false, message: "Не удалось добавить бота (проверь лимит игроков)." };
+          }
+          broadcastRoomState(room);
+          return { ok: true };
+        }
+
+        if (
+          parsedScenarioAction.type === "devKickPlayer" ||
+          parsedScenarioAction.type === "devRemovePlayer"
+        ) {
+          const targetPlayerId = String(parsedScenarioAction.payload.targetPlayerId ?? "").trim();
+          if (!targetPlayerId) {
+            return { ok: false, message: "Нужно выбрать игрока." };
+          }
+          if (targetPlayerId === room.controlId) {
+            return { ok: false, message: "Нельзя удалить создателя комнаты (CONTROL)." };
+          }
+          const target = room.players.get(targetPlayerId);
+          if (!target) {
+            return { ok: false, message: "Игрок не найден." };
+          }
+          if (target.ws) {
+            try {
+              target.ws.close();
+            } catch {
+              // ignore
+            }
+          }
+          removeLobbyPlayer(room, targetPlayerId);
+          if (rooms.has(room.code)) {
+            broadcastRoomState(room);
+          }
+          return { ok: true };
+        }
+
+        return { ok: false, message: "Это действие доступно только после старта игры." };
+      }
+
+      const actorPlayerId =
+        parsedScenarioAction.type === "adminApplySpecial"
+          ? parsedScenarioAction.payload.actorPlayerId
+          : String(options?.actorPlayerId ?? "").trim() || room.hostId;
+      if (!room.players.has(actorPlayerId)) {
+        return { ok: false, message: "Выбранный игрок-исполнитель не найден в комнате." };
+      }
+      const result = room.session.handleAction(actorPlayerId, parsedScenarioAction);
+      if (result.error) {
+        return { ok: false, message: result.error };
+      }
+      if (result.stateChanged) {
+        broadcastGameViews(room);
       }
       return { ok: true };
     }
@@ -2248,13 +2860,20 @@ async function main() {
   };
 
   app.post(LINK_PATHS.overlayControlAction, (req, res) => {
-    const payload = isRecord(req.body) ? req.body : {};
-    const roomCode = String(payload.roomCode ?? "")
+    const requestPayload = isRecord(req.body) ? req.body : {};
+    const roomCode = String(requestPayload.roomCode ?? "")
       .trim()
       .toUpperCase();
-    const token = String(payload.token ?? "").trim();
-    const action = String(payload.action ?? "").trim().toUpperCase() as ControlCommand;
-    const targetPlayerId = String(payload.targetPlayerId ?? "").trim();
+    const token = String(requestPayload.token ?? "").trim();
+    const action = String(requestPayload.action ?? "").trim().toUpperCase() as ControlCommand;
+    const targetPlayerId = String(requestPayload.targetPlayerId ?? "").trim();
+    const actorPlayerId = String(requestPayload.actorPlayerId ?? "").trim();
+    const scenarioActionType = String(requestPayload.scenarioActionType ?? "").trim();
+    const scenarioPayload = isRecord(requestPayload.scenarioPayload)
+      ? requestPayload.scenarioPayload
+      : isRecord(requestPayload.payload)
+        ? requestPayload.payload
+        : {};
 
     if (!roomCode || !token || !action) {
       res.status(400).json({ ok: false, message: "roomCode, token and action are required" });
@@ -2277,7 +2896,12 @@ async function main() {
       return;
     }
 
-    const result = runControlCommand(room, action, { targetPlayerId });
+    const result = runControlCommand(room, action, {
+      targetPlayerId,
+      actorPlayerId,
+      scenarioActionType,
+      scenarioPayload,
+    });
     if (!result.ok) {
       res.status(400).json({ ok: false, message: result.message ?? "Action rejected" });
       return;
@@ -2318,6 +2942,8 @@ async function main() {
     socket.on("close", () => httpSockets.delete(socket));
   });
   const wss = new WebSocketServer({ server: httpServer });
+  roomCleanupTimer = setInterval(cleanupInactiveRooms, ROOM_CLEANUP_INTERVAL_MS);
+  unrefTimer(roomCleanupTimer);
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {
@@ -2340,6 +2966,10 @@ async function main() {
           player.disconnectTicker = undefined;
         }
       }
+    }
+    if (roomCleanupTimer) {
+      clearInterval(roomCleanupTimer);
+      roomCleanupTimer = undefined;
     }
 
     for (const ws of overlaySubscriptions.keys()) {
@@ -2442,6 +3072,7 @@ async function main() {
               scenarioMeta: scenarioModule.meta,
               scenarioModule,
               settings: { ...DEFAULT_SETTINGS },
+              disasterOptions: buildDisasterOptions(assets),
               ruleset: initialRuleset,
               rulesOverriddenByHost: false,
               rulesPresetCount: undefined,
@@ -2495,8 +3126,14 @@ async function main() {
             if (!existing) {
               existing = findPlayerByToken(room, payload.playerToken);
             }
+            if (!existing) {
+              existing = findPlayerBySessionId(room, payload.sessionId);
+            }
           } else {
             existing = findPlayerByToken(room, payload.playerToken);
+            if (!existing) {
+              existing = findPlayerBySessionId(room, payload.sessionId);
+            }
           }
 
           // Overlay Control may connect with the same control token while the creator
@@ -2737,6 +3374,10 @@ async function main() {
           room.settings = {
             ...message.payload,
             maxPlayers: nextMaxPlayers,
+            forcedDisasterId: normalizeForcedDisasterId(
+              message.payload.forcedDisasterId,
+              room.disasterOptions
+            ),
           };
           broadcastRoomState(room);
           return;

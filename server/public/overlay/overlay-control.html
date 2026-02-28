@@ -32,7 +32,7 @@
             <span>Выбранный игрок</span>
             <select id="playerSelect"></select>
           </label>
-          <div class="sidebar-player-actions">
+          <div id="sidebarPlayerActions" class="sidebar-player-actions">
             <button id="presenterKickPlayerBtn" type="button" class="btn btn--danger">Выгнать игрока</button>
             <p id="kickSelectedLabel" class="hint">Выбран: -</p>
           </div>
@@ -40,49 +40,320 @@
         </aside>
 
         <section class="editor">
-          <article class="panel" id="presenterPanel">
-            <h2>Управление игрой</h2>
-            <p id="presenterModeState" class="hint" hidden>Presenter mode: off (из state) = false</p>
-            <p id="presenterDisabled" class="hint">
-              Режим «Ведущий» выключен в настройках комнаты.
-            </p>
-            <div id="presenterContent" class="presenter" hidden>
-              <div class="presenter-meta">
-                <div><strong>Фаза комнаты:</strong> <span id="presenterRoomPhase">-</span></div>
-                <div><strong>Фаза игры:</strong> <span id="presenterGamePhase">-</span></div>
-                <div><strong>Раунд:</strong> <span id="presenterRound">-</span></div>
-                <div><strong>Фаза голосования:</strong> <span id="presenterVotePhase">-</span></div>
-              </div>
-              <div class="row">
-                <button id="presenterStartGameBtn" type="button" class="btn btn--primary">Начать игру</button>
-                <button id="presenterNextStepBtn" type="button" class="btn">Следующий шаг</button>
-                <button id="presenterSkipStepBtn" type="button" class="btn">Пропустить шаг</button>
-                <button id="presenterStartVoteBtn" type="button" class="btn">Начать голосование</button>
-                <button id="presenterEndVoteBtn" type="button" class="btn">Завершить голосование</button>
-                <button id="presenterSkipRoundBtn" type="button" class="btn">Пропустить раунд</button>
-              </div>
-              <div id="presenterOutcomeRow" class="row presenter-outcome" hidden>
-                <button id="presenterOutcomeSurvivedBtn" type="button" class="btn btn--primary">Выжил в бункере</button>
-                <button id="presenterOutcomeFailedBtn" type="button" class="btn btn--danger">Не выжил</button>
-                <span id="presenterOutcomeState" class="hint">Исход не выбран.</span>
-              </div>
-              <div class="table-wrap">
-                <table class="presenter-table">
-                  <thead>
-                    <tr>
-                      <th>Игрок</th>
-                      <th>Статус</th>
-                      <th>Голос</th>
-                      <th>Раскрыл</th>
-                    </tr>
-                  </thead>
-                  <tbody id="presenterPlayersBody"></tbody>
-                </table>
-              </div>
-            </div>
-          </article>
+          <div class="control-tabs" role="tablist" aria-label="Режим управления">
+            <button id="gameControlTabBtn" type="button" class="btn control-tab is-active" role="tab" aria-selected="true">
+              Контроль игры
+            </button>
+            <button id="obsControlTabBtn" type="button" class="btn control-tab" role="tab" aria-selected="false">
+              Контроль OBS
+            </button>
+          </div>
 
-          <article class="panel">
+          <section id="gameControlTab" class="tab-panel">
+            <article class="panel" id="presenterPanel">
+              <h2>Управление игрой</h2>
+              <p id="presenterModeState" class="hint" hidden>Presenter mode: off (из state) = false</p>
+              <p id="presenterDisabled" class="hint">
+                Режим «Ведущий» выключен в настройках комнаты.
+              </p>
+              <div id="presenterContent" class="presenter" hidden>
+                <div class="presenter-meta">
+                  <div><strong>Фаза комнаты:</strong> <span id="presenterRoomPhase">-</span></div>
+                  <div><strong>Фаза игры:</strong> <span id="presenterGamePhase">-</span></div>
+                  <div><strong>Раунд:</strong> <span id="presenterRound">-</span></div>
+                  <div><strong>Фаза голосования:</strong> <span id="presenterVotePhase">-</span></div>
+                </div>
+
+                <section class="host-block">
+                  <div class="host-block__head">
+                    <h3>Замена карты игрока</h3>
+                    <p class="hint">Выбери игрока, карту и тип замены: случайно или конкретной картой из той же колоды.</p>
+                  </div>
+                  <div class="host-grid host-grid--2">
+                    <label class="field">
+                      <span>Игрок</span>
+                      <select id="replaceTargetPlayerSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Карта игрока / спецусловие</span>
+                      <select id="replaceCardSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Режим замены</span>
+                      <select id="replaceModeSelect">
+                        <option value="random">Случайная из колоды</option>
+                        <option value="specific">Конкретная карта</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Конкретная карта</span>
+                      <select id="replaceSpecificCardSelect"></select>
+                    </label>
+                  </div>
+                  <div class="row">
+                    <button id="replaceExecuteBtn" type="button" class="btn btn--primary">Заменить карту</button>
+                    <span id="replaceHint" class="hint"></span>
+                  </div>
+                </section>
+
+                <section class="host-block">
+                  <div class="host-block__head">
+                    <h3>Голосование и раунд</h3>
+                    <p class="hint">Контроль шагов, голосования и итогового исхода игры.</p>
+                  </div>
+                  <div class="row">
+                    <button id="voteStartGameBtn" type="button" class="btn btn--primary">Начать игру</button>
+                    <button id="voteNextStepBtn" type="button" class="btn">Следующий шаг</button>
+                    <button id="voteSkipStepBtn" type="button" class="btn">Пропустить шаг</button>
+                    <button id="voteStartBtn" type="button" class="btn">Начать голосование</button>
+                    <button id="voteEndBtn" type="button" class="btn">Завершить голосование</button>
+                    <button id="voteSkipRoundBtn" type="button" class="btn">Пропустить раунд</button>
+                  </div>
+                  <div id="voteOutcomeRow" class="row presenter-outcome" hidden>
+                    <button id="voteOutcomeSurvivedBtn" type="button" class="btn btn--primary">Выжил в бункере</button>
+                    <button id="voteOutcomeFailedBtn" type="button" class="btn btn--danger">Не выжил</button>
+                    <span id="voteOutcomeState" class="hint">Исход не выбран.</span>
+                  </div>
+                </section>
+
+                <div class="table-wrap">
+                  <table class="presenter-table">
+                    <thead>
+                      <tr>
+                        <th>Игрок</th>
+                        <th>Статус</th>
+                        <th>Голосовал</th>
+                        <th>Цель голоса</th>
+                        <th>Голосов против</th>
+                        <th>Раскрыл</th>
+                      </tr>
+                    </thead>
+                    <tbody id="presenterPlayersBody"></tbody>
+                  </table>
+                </div>
+
+                <section class="host-block">
+                  <div class="host-block__head">
+                    <h3>Карты мира</h3>
+                    <p class="hint">Управляй угрозами и картами бункера: раскрытие, скрытие, замена и количество активных карт.</p>
+                  </div>
+                  <div class="world-admin-grid">
+                    <div class="world-admin-col">
+                      <h4>Видимость карты</h4>
+                      <label class="field">
+                        <span>Тип карты мира</span>
+                        <select id="worldKindSelect">
+                          <option value="threat">Угроза</option>
+                          <option value="bunker">Бункер</option>
+                          <option value="disaster">Катастрофа</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Карта</span>
+                        <select id="worldIndexSelect"></select>
+                      </label>
+                      <button id="worldToggleRevealBtn" type="button" class="btn">Раскрыть/скрыть карту</button>
+                    </div>
+
+                    <div class="world-admin-col">
+                      <h4>Замена карты</h4>
+                      <label class="field">
+                        <span>Режим замены</span>
+                        <select id="worldReplaceModeSelect">
+                          <option value="random">Случайная из колоды</option>
+                          <option value="specific">Конкретная карта</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Карта для замены</span>
+                        <select id="worldReplaceCardSelect"></select>
+                      </label>
+                      <button id="worldReplaceBtn" type="button" class="btn">Заменить карту мира</button>
+                    </div>
+
+                    <div class="world-admin-col">
+                      <h4>Количество карт</h4>
+                      <label class="field">
+                        <span>Активных карт</span>
+                        <input id="worldCountInput" type="number" min="0" step="1" />
+                      </label>
+                      <button id="worldSetCountBtn" type="button" class="btn">Изменить количество карт</button>
+                    </div>
+                  </div>
+                  <div class="row">
+                    <span id="worldHint" class="hint"></span>
+                  </div>
+                </section>
+
+                <section class="host-block">
+                  <div class="host-block__head">
+                    <h3>Применение спецусловий</h3>
+                    <p class="hint">Ведущий может применить спецусловие игрока или любую карту спецусловия из каталога.</p>
+                  </div>
+                  <div class="host-grid host-grid--2">
+                    <label class="field">
+                      <span>Игрок-источник</span>
+                      <select id="specialActorPlayerSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Режим</span>
+                      <select id="specialSourceModeSelect">
+                        <option value="owned">Из карт игрока</option>
+                        <option value="catalog">Любая карта спецусловий</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Спецусловие</span>
+                      <select id="specialPickerSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Целевой игрок (если нужен)</span>
+                      <select id="specialTargetPlayerSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Карта багажа цели (если нужна)</span>
+                      <select id="specialTargetCardSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Индекс карты мира/бункера (если нужен)</span>
+                      <select id="specialThreatIndexSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Категория (если нужна)</span>
+                      <select id="specialCategorySelect">
+                        <option value="">Не выбрано</option>
+                        <option value="profession">Профессия</option>
+                        <option value="health">Здоровье</option>
+                        <option value="hobby">Хобби</option>
+                        <option value="baggage">Багаж</option>
+                        <option value="biology">Биология</option>
+                        <option value="fact1">Факт №1</option>
+                        <option value="fact2">Факт №2</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Применить к себе (если поддерживается)</span>
+                      <select id="specialUseSelfSelect">
+                        <option value="">Авто</option>
+                        <option value="true">Да</option>
+                        <option value="false">Нет</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="field">
+                    <span>Описание карты</span>
+                    <textarea id="specialDescriptionText" rows="3" readonly></textarea>
+                  </label>
+                  <div class="row">
+                    <button id="specialApplyBtn" type="button" class="btn btn--primary">Применить спецусловие</button>
+                    <span id="specialHint" class="hint"></span>
+                  </div>
+                </section>
+
+                <section class="host-block">
+                  <div class="host-block__head">
+                    <h3>Dev функции</h3>
+                    <p class="hint">Тестовые действия для отладки комнаты и сценария.</p>
+                  </div>
+                  <div class="host-grid host-grid--2">
+                    <label class="field">
+                      <span>Имя бота</span>
+                      <input id="devBotNameInput" type="text" maxlength="24" placeholder="Тестовый игрок" />
+                    </label>
+                    <label class="field">
+                      <span>Игрок для действия</span>
+                      <select id="devTargetPlayerSelect"></select>
+                    </label>
+                  </div>
+                  <div class="row">
+                    <button id="devAddBotBtn" type="button" class="btn btn--primary">Добавить бота</button>
+                    <button id="devRemoveBotBtn" type="button" class="btn">Удалить выбранного</button>
+                    <button id="devKickBtn" type="button" class="btn btn--danger">Выгнать выбранного</button>
+                    <button id="devMarkLeftBtn" type="button" class="btn">Перевести вне бункера</button>
+                    <button id="devSkipRoundBtn" type="button" class="btn">Пропустить раунд</button>
+                    <span id="devHint" class="hint"></span>
+                  </div>
+                </section>
+
+                <details class="advanced presenter-editor">
+                  <summary>Расширенный режим (универсальные действия)</summary>
+                  <h3>Быстрый контроль стола</h3>
+                  <p class="hint">
+                    Выбери действие, затем цель/карту и нажми «Выполнить». Ниже показываются только нужные поля.
+                  </p>
+                  <div id="controlQuickActions" class="control-quick-actions"></div>
+                  <p id="controlGuide" class="hint control-guide">-</p>
+                  <div class="presenter-editor-grid">
+                    <label class="field">
+                      <span>Игрок-исполнитель</span>
+                      <select id="controlActorSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Действие</span>
+                      <select id="controlScenarioAction">
+                        <option value="revealCard">Раскрыть карту</option>
+                        <option value="applySpecial">Применить спецусловие</option>
+                        <option value="vote">Проголосовать</option>
+                        <option value="continueRound">Следующий шаг (continueRound)</option>
+                        <option value="finalizeVoting">Завершить голосование (finalizeVoting)</option>
+                        <option value="revealWorldThreat">Раскрыть угрозу мира</option>
+                        <option value="setBunkerOutcome">Поставить итог бункера</option>
+                        <option value="markLeftBunker">Перевести игрока во "вне бункера"</option>
+                        <option value="devKickPlayer">DEV: выгнать игрока</option>
+                        <option value="devSkipRound">DEV: пропустить раунд</option>
+                        <option value="devAddPlayer">DEV: добавить бота</option>
+                        <option value="devRemovePlayer">DEV: удалить бота</option>
+                      </select>
+                    </label>
+                    <label id="controlTargetRow" class="field">
+                      <span>Целевой игрок</span>
+                      <select id="controlTargetSelect"></select>
+                    </label>
+                    <label id="controlCardRow" class="field">
+                      <span>Карта игрока (или багаж-цель)</span>
+                      <select id="controlCardSelect"></select>
+                    </label>
+                    <label id="controlSpecialRow" class="field">
+                      <span>Спецусловие</span>
+                      <select id="controlSpecialSelect"></select>
+                    </label>
+                    <label id="controlThreatRow" class="field">
+                      <span>Индекс мира/бункера (опционально)</span>
+                      <select id="controlThreatIndex"></select>
+                    </label>
+                    <label id="controlOutcomeRow" class="field">
+                      <span>Исход бункера</span>
+                      <select id="controlOutcomeSelect">
+                        <option value="survived">Выжил</option>
+                        <option value="failed">Не выжил</option>
+                      </select>
+                    </label>
+                    <label id="controlDevNameRow" class="field">
+                      <span>Имя бота (опционально)</span>
+                      <input id="controlDevNameInput" type="text" maxlength="24" placeholder="Тестовый игрок" />
+                    </label>
+                  </div>
+                  <div id="controlCardPicker" class="control-pickers" hidden></div>
+                  <div id="controlSpecialPicker" class="control-pickers" hidden></div>
+                  <div id="controlThreatPicker" class="control-pickers" hidden></div>
+                  <details class="advanced">
+                    <summary>Advanced: payload JSON (опционально)</summary>
+                    <label class="field">
+                      <span>Дополнительный payload JSON</span>
+                      <textarea id="controlPayloadJson" rows="5" placeholder='{"targetPlayerId":"...","category":"baggage"}'></textarea>
+                    </label>
+                  </details>
+                  <div class="row">
+                    <button id="controlExecuteBtn" type="button" class="btn btn--primary">Выполнить действие</button>
+                    <span id="controlActionHint" class="hint"></span>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </section>
+
+          <section id="obsControlTab" class="tab-panel" hidden>
+            <article class="panel">
             <h2>Верхние блоки Overlay</h2>
             <p class="hint">
               Эти поля управляют текстом в верхней полосе OBS overlay. Если ручной текст выключен,
@@ -136,9 +407,9 @@
                 <span id="topThreatsMeta" class="meta">0/6 строк</span>
               </label>
             </div>
-          </article>
+            </article>
 
-          <article class="panel">
+            <article class="panel">
             <h2 id="playerEditorTitle">Игрок</h2>
             <p class="hint">
               Редактируйте только выбранного игрока. Поля ниже применяются к тому, что реально видит зритель на overlay.
@@ -198,9 +469,9 @@
                 <textarea id="playerCategoriesJson" rows="8" placeholder="{\n  \"profession\": \"...\"\n}"></textarea>
               </label>
             </details>
-          </article>
+            </article>
 
-          <article class="panel">
+            <article class="panel">
             <h2>Доп. тексты OBS</h2>
             <p class="hint">
               Это произвольные подписи поверх overlay (например: таймер, служебная строка, заметка ведущего).
@@ -222,7 +493,8 @@
                 <textarea id="extraTextsJson" rows="8"></textarea>
               </label>
             </details>
-          </article>
+            </article>
+          </section>
         </section>
       </section>
     </main>

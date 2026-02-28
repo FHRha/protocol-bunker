@@ -28,6 +28,7 @@ import type {
 } from "@bunker/shared";
 import { computeNeighbors, computeTargetScope, getTargetCandidates } from "@bunker/shared";
 import { getRulesetForPlayerCount } from "@bunker/shared";
+import { getThreatDeltaFromBunkerCards } from "./threat_modifier.js";
 import { rollWorldFromAssets } from "./world_deck.js";
 
 const CORE_DECKS = ["Профессия", "Здоровье", "Хобби", "Багаж", "Биология"] as const;
@@ -94,6 +95,8 @@ interface SpecialConditionDefinition {
   uiTargeting?: string;
 }
 
+type SpecialChoiceKind = "player" | "neighbor" | "category" | "bunker" | "special" | "none";
+
 interface SpecialConditionState {
   instanceId: string;
   definition: SpecialConditionDefinition;
@@ -109,6 +112,7 @@ interface CardState {
   labelShort: string;
   revealed: boolean;
   missing?: boolean;
+  publicBackCategory?: string;
 }
 
 interface PlayerState {
@@ -118,6 +122,12 @@ interface PlayerState {
   hand: CardState[];
   revealedThisRound: boolean;
   specialConditions: SpecialConditionState[];
+  specialCategoryProxyCards: Array<{
+    labelShort: string;
+    imgUrl?: string;
+    hidden?: boolean;
+    backCategory?: string;
+  }>;
   bannedAgainst: Set<string>;
   forcedWastedVoteNext: boolean;
   isBot: boolean;
@@ -167,9 +177,42 @@ const SPECIAL_DEFINITIONS = loadSpecialDefinitions();
 const IMPLEMENTED_SPECIALS = SPECIAL_DEFINITIONS.filter((item) => item.implemented);
 
 const buildSpecialImgUrl = (file?: string) => (file ? `/assets/decks/${file}` : undefined);
+const normalizeSpecialLookup = (value?: string): string =>
+  String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replace(/ё/g, "е")
+    .replace(/[\\/]/g, " ")
+    .replace(/\.(jpg|jpeg|png|webp)$/gi, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const toSpecialFileName = (value?: string): string => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const normalized = raw.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] ?? "";
+};
 
-const resolveChoiceKindFromTargeting = (definition: SpecialConditionDefinition): "player" | "neighbor" | "category" | "none" => {
+const resolveChoiceKindFromTargeting = (definition: SpecialConditionDefinition): SpecialChoiceKind => {
+  if (String(definition.effect.params?.target ?? "").toLowerCase() === "bunker_revealed") {
+    return "bunker";
+  }
+  if (
+    definition.effect.type === "replaceBunkerCard" ||
+    definition.effect.type === "discardBunkerCard" ||
+    definition.effect.type === "stealBunkerCardToExiled" ||
+    definition.effect.type === "replaceRevealedCard" ||
+    definition.effect.type === "discardRevealedAndDealHidden"
+  ) {
+    return "bunker";
+  }
   const targeting = (definition.uiTargeting ?? "").toLowerCase();
+  if (targeting.includes("choose special") || targeting.includes("special") || targeting.includes("особ")) {
+    return "special";
+  }
+  if (targeting.includes("bunker") || targeting.includes("бункер")) return "bunker";
   if (
     targeting.includes("neighbor") ||
     targeting.includes("сосед") ||
@@ -186,11 +229,12 @@ const resolveChoiceKindFromTargeting = (definition: SpecialConditionDefinition):
   return "player";
 };
 
-const resolveChoiceKind = (definition: SpecialConditionDefinition): "player" | "neighbor" | "category" | "none" =>
+const resolveChoiceKind = (definition: SpecialConditionDefinition): SpecialChoiceKind =>
   resolveChoiceKindFromTargeting(definition);
 
 const resolveTargetScope = (definition: SpecialConditionDefinition): SpecialTargetScope | null => {
-  if (resolveChoiceKindFromTargeting(definition) === "category") return null;
+  const choiceKind = resolveChoiceKindFromTargeting(definition);
+  if (choiceKind === "category" || choiceKind === "special" || choiceKind === "bunker") return null;
   return computeTargetScope(definition.uiTargeting, definition.text);
 };
 
@@ -199,20 +243,33 @@ const allowsSelfTarget = (definition: SpecialConditionDefinition): boolean => {
   return scope === "self" || scope === "any_including_self";
 };
 
-const DEV_CHOICE_BASE =
-  IMPLEMENTED_SPECIALS.find((item) => item.effect.type === "forceRevealCategoryForAll") ??
-  IMPLEMENTED_SPECIALS.find((item) => resolveChoiceKind(item) !== "none");
+const DEV_CHOICE_EFFECT_TYPE = "devChooseSpecial";
+const DEV_CHOICE_TITLE = "Тест особого условия (DEV)";
+
+const DEV_SPECIAL_OPTIONS = (() => {
+  const unique = new Map<string, { id: string; title: string }>();
+  for (const item of IMPLEMENTED_SPECIALS) {
+    if (!item.id || item.effect.type === DEV_CHOICE_EFFECT_TYPE) continue;
+    if (unique.has(item.id)) continue;
+    unique.set(item.id, { id: item.id, title: item.title });
+  }
+  return Array.from(unique.values());
+})();
 
 const buildDevChoiceDefinition = (playerId: string): SpecialConditionDefinition | null => {
-  if (!DEV_CHOICE_BASE) return null;
-  const isCategoryChoice = DEV_CHOICE_BASE.effect.type === "forceRevealCategoryForAll";
+  if (DEV_SPECIAL_OPTIONS.length === 0) return null;
   return {
-    ...DEV_CHOICE_BASE,
     id: `dev-choice-${playerId}`,
-    title: `${DEV_CHOICE_BASE.title} (DEV)`,
+    title: DEV_CHOICE_TITLE,
+    text: "Выберите любое особое условие для теста. После применения карта DEV снова доступна.",
+    trigger: "active",
+    effect: {
+      type: DEV_CHOICE_EFFECT_TYPE,
+      params: { specialOptions: DEV_SPECIAL_OPTIONS },
+    },
     implemented: true,
-    requires: isCategoryChoice ? [] : DEV_CHOICE_BASE.requires,
-    uiTargeting: isCategoryChoice ? "choose category" : DEV_CHOICE_BASE.uiTargeting,
+    requires: [],
+    uiTargeting: "choose special",
   };
 };
 
@@ -271,6 +328,9 @@ export const scenario: ScenarioModule = {
     const settings = ctx.settings;
     const ruleset: GameRuleset = ctx.ruleset ?? getRulesetForPlayerCount(ctx.players.length);
     const continuePermission = settings.continuePermission;
+    const getAutomationMode = () => settings.automationMode ?? "semi";
+    const isAutoAutomation = () => getAutomationMode() === "auto";
+    const isManualAutomation = () => getAutomationMode() === "manual";
     const players = new Map<string, PlayerState>();
     const playerOrder = ctx.players.map((player) => player.playerId);
 
@@ -292,7 +352,34 @@ export const scenario: ScenarioModule = {
     let currentTurnPlayerId: string | null = null;
     let lastRevealerId: string | null = null;
     const finalThreats: string[] = [];
-    const world: WorldState30 = rollWorldFromAssets(ctx.assets, rng, ctx.players.length);
+    const world: WorldState30 = rollWorldFromAssets(
+      ctx.assets,
+      rng,
+      ctx.players.length,
+      ctx.settings.forcedDisasterId
+    );
+    const bunkerDeckAssets = (() => {
+      for (const [deckName, cards] of Object.entries(ctx.assets.decks)) {
+        if (deckName.toLocaleLowerCase("ru-RU").includes("бункер")) {
+          return cards;
+        }
+      }
+      return [] as AssetCard[];
+    })();
+    const initialBunkerIds = new Set(world.bunker.map((card) => card.id).filter((id): id is string => Boolean(id)));
+    const bunkerReplacementPool: WorldFacedCard[] =
+      bunkerDeckAssets.length > 0
+        ? bunkerDeckAssets
+            .filter((card) => !initialBunkerIds.has(card.id))
+            .map((card) => ({
+              kind: "bunker",
+              id: card.id,
+              title: card.labelShort,
+              description: card.labelShort,
+              imageId: card.id,
+              isRevealed: true,
+            }))
+        : world.bunker.map((card) => ({ ...card, isRevealed: true }));
     let worldEvent: WorldEvent | null = null;
 
     const makeCardInstanceId = (playerId: string) => {
@@ -360,22 +447,14 @@ export const scenario: ScenarioModule = {
         });
       }
 
-      const specialDefinition = drawSpecialFromPool() ?? buildMissingSpecialDefinition();
-      const specialInstance: SpecialConditionState = {
+      const devChoiceDefinition = buildDevChoiceDefinition(playerId);
+      const primarySpecialDefinition = devChoiceDefinition ?? buildMissingSpecialDefinition();
+      const primarySpecial: SpecialConditionState = {
         instanceId: makeSpecialInstanceId(playerId),
-        definition: specialDefinition,
+        definition: primarySpecialDefinition,
         revealedPublic: DEV_SHOW_ALL_PUBLIC ? true : false,
         used: false,
       };
-      const devChoiceDefinition = buildDevChoiceDefinition(playerId);
-      const devChoiceInstance = devChoiceDefinition
-        ? ({
-            instanceId: makeSpecialInstanceId(playerId),
-            definition: devChoiceDefinition,
-            revealedPublic: DEV_SHOW_ALL_PUBLIC ? true : false,
-            used: false,
-          } satisfies SpecialConditionState)
-        : null;
 
       return {
         playerId,
@@ -383,7 +462,8 @@ export const scenario: ScenarioModule = {
         status: "alive",
         hand,
         revealedThisRound: false,
-        specialConditions: devChoiceInstance ? [specialInstance, devChoiceInstance] : [specialInstance],
+        specialConditions: [primarySpecial],
+        specialCategoryProxyCards: [],
         bannedAgainst: new Set(),
         forcedWastedVoteNext: false,
         isBot,
@@ -467,7 +547,11 @@ export const scenario: ScenarioModule = {
       if (votingState.doubleAgainstTarget === targetId) {
         votingState.doubleAgainstTarget = undefined;
       }
-      if (votingState.votes.size >= alivePlayers().length && votePhase === "voting") {
+      if (
+        !isManualAutomation() &&
+        votingState.votes.size >= alivePlayers().length &&
+        votePhase === "voting"
+      ) {
         enterVoteSpecialWindow();
       }
     };
@@ -572,7 +656,7 @@ export const scenario: ScenarioModule = {
           isValid: true,
         });
       }
-      if (votingState.votes.size >= alivePlayers().length) {
+      if (!isManualAutomation() && votingState.votes.size >= alivePlayers().length) {
         enterVoteSpecialWindow();
       }
     };
@@ -662,7 +746,11 @@ export const scenario: ScenarioModule = {
       if (votingState.doubleAgainstTarget === targetId) {
         votingState.doubleAgainstTarget = undefined;
       }
-      if (votePhase === "voting" && votingState.votes.size >= alivePlayers().length) {
+      if (
+        !isManualAutomation() &&
+        votePhase === "voting" &&
+        votingState.votes.size >= alivePlayers().length
+      ) {
         enterVoteSpecialWindow();
       }
     };
@@ -786,12 +874,34 @@ export const scenario: ScenarioModule = {
       };
     };
 
-    const buildWorldView = (): WorldState30 => ({
-      disaster: world.disaster,
-      bunker: world.bunker.map((card) => (card.isRevealed ? card : maskWorldCard(card))),
-      threats: world.threats.map((card) => (card.isRevealed ? card : maskWorldCard(card))),
-      counts: world.counts,
-    });
+    const buildWorldView = (): WorldState30 => {
+      if (DEV_SHOW_ALL_PUBLIC) {
+        return {
+          disaster: world.disaster,
+          bunker: world.bunker.map((card) => ({ ...card, isRevealed: true })),
+          threats: world.threats.map((card) => ({ ...card, isRevealed: true })),
+          counts: world.counts,
+        };
+      }
+      return {
+        disaster: world.disaster,
+        bunker: world.bunker.map((card) => (card.isRevealed ? card : maskWorldCard(card))),
+        threats: world.threats.map((card) => (card.isRevealed ? card : maskWorldCard(card))),
+        counts: world.counts,
+      };
+    };
+
+    const getThreatModifierFromBunkerCards = () => {
+      const { delta, reasons } = getThreatDeltaFromBunkerCards(world.bunker);
+      const baseCount = world.counts.threats;
+      const finalCount = Math.max(0, Math.min(world.threats.length, baseCount + delta));
+      return {
+        delta,
+        reasons,
+        baseCount,
+        finalCount,
+      };
+    };
 
     const revealNextBunkerCard = (roundNumber: number) => {
       const index = world.bunker.findIndex((card) => !card.isRevealed);
@@ -799,6 +909,55 @@ export const scenario: ScenarioModule = {
       world.bunker[index].isRevealed = true;
       world.bunker[index].revealedAtRound = roundNumber;
       worldEvent = { type: "bunker_revealed", index, round: roundNumber };
+    };
+
+    const isBunkerCardPubliclyRevealed = (card: WorldFacedCard | undefined): boolean =>
+      Boolean(card && (card.isRevealed || DEV_SHOW_ALL_PUBLIC));
+
+    const getRevealedBunkerIndices = () =>
+      world.bunker
+        .map((card, index) => (isBunkerCardPubliclyRevealed(card) ? index : -1))
+        .filter((index) => index >= 0);
+
+    const getRandomRevealedBunkerIndex = (): number | null => {
+      const revealedIndices = getRevealedBunkerIndices();
+      if (revealedIndices.length === 0) return null;
+      return revealedIndices[Math.floor(rng() * revealedIndices.length)] ?? null;
+    };
+
+    const resolveBunkerIndex = (
+      payload: Record<string, unknown>,
+      { allowRandom = false }: { allowRandom?: boolean } = {}
+    ): { index: number } | { error: string } => {
+      const rawIndex = payload.bunkerIndex;
+      if (rawIndex === undefined || rawIndex === null || rawIndex === "") {
+        if (!allowRandom) return { error: "Нужно выбрать карту бункера." };
+        const randomIndex = getRandomRevealedBunkerIndex();
+        if (randomIndex === null) return { error: "Нет раскрытых карт бункера." };
+        return { index: randomIndex };
+      }
+
+      const index = Number(rawIndex);
+      if (!Number.isInteger(index)) return { error: "Некорректная карта бункера." };
+      if (index < 0 || index >= world.bunker.length) return { error: "Некорректная карта бункера." };
+      if (!isBunkerCardPubliclyRevealed(world.bunker[index])) {
+        return { error: "Можно выбрать только раскрытую карту бункера." };
+      }
+      return { index };
+    };
+
+    const pickBunkerReplacementCard = (excludeIds: Set<string>): WorldFacedCard | null => {
+      if (bunkerReplacementPool.length === 0) return null;
+      const candidateIndices = bunkerReplacementPool
+        .map((card, index) => (!excludeIds.has(card.id) ? index : -1))
+        .filter((index) => index >= 0);
+      const sourceIndices =
+        candidateIndices.length > 0 ? candidateIndices : bunkerReplacementPool.map((_, index) => index);
+      const pickedIndex = sourceIndices[Math.floor(rng() * sourceIndices.length)];
+      if (pickedIndex === undefined) return null;
+      const [picked] = bunkerReplacementPool.splice(pickedIndex, 1);
+      if (!picked) return null;
+      return { ...picked, isRevealed: true };
     };
 
     const startRevealPhase = (nextRound: number) => {
@@ -854,7 +1013,7 @@ export const scenario: ScenarioModule = {
       votePhase = null;
       const roundComplete = isRoundComplete();
       const shouldVote = roundComplete && votesRemainingInRound > 0;
-      if (shouldVote && settings.enablePreVoteDiscussionTimer) {
+      if (shouldVote && settings.enablePreVoteDiscussionTimer && isAutoAutomation()) {
         scheduleTimer("pre_vote", settings.preVoteDiscussionSeconds, () => {
           if (phase !== "reveal_discussion") return;
           advanceAfterDiscussion();
@@ -862,7 +1021,7 @@ export const scenario: ScenarioModule = {
         });
         return;
       }
-      if (settings.enableRevealDiscussionTimer) {
+      if (settings.enableRevealDiscussionTimer && isAutoAutomation()) {
         scheduleTimer("reveal_discussion", settings.revealDiscussionSeconds, () => {
           if (phase !== "reveal_discussion") return;
           advanceAfterDiscussion();
@@ -896,7 +1055,8 @@ export const scenario: ScenarioModule = {
       if (phase !== "ended") {
         return { error: "Угрозы раскрываются в конце игры." };
       }
-      if (index < 0 || index >= world.threats.length) {
+      const threatModifier = getThreatModifierFromBunkerCards();
+      if (index < 0 || index >= threatModifier.finalCount) {
         return { error: "Некорректная карта угроз." };
       }
       if (settings.finalThreatReveal === "host" && actorId !== ctx.hostId) {
@@ -920,6 +1080,229 @@ export const scenario: ScenarioModule = {
         player.revealedThisRound = true;
       }
       advanceAfterDiscussion();
+      return { stateChanged: true };
+    };
+
+    const pickDeckCard = (
+      deckName: string,
+      replacementMode: "random" | "specific",
+      replacementCardId?: string
+    ): { card?: AssetCard; error?: string } => {
+      const deck = ctx.assets.decks[deckName] ?? [];
+      if (deck.length === 0) return { error: `Колода "${deckName}" недоступна.` };
+      if (replacementMode === "specific") {
+        const requested = String(replacementCardId ?? "").trim();
+        if (!requested) return { error: "Не выбрана конкретная карта для замены." };
+        const selected = deck.find((card) => card.id === requested);
+        if (!selected) return { error: "Выбранная карта не найдена в колоде." };
+        return { card: selected };
+      }
+      const selected = deck[Math.floor(rng() * deck.length)] ?? null;
+      if (!selected) return { error: "Не удалось выбрать карту из колоды." };
+      return { card: selected };
+    };
+
+    const adminReplacePlayerCard = (
+      actorId: string,
+      payload: {
+        targetPlayerId: string;
+        cardInstanceId: string;
+        targetArea?: "hand" | "special";
+        replacementMode: "random" | "specific";
+        replacementCardId?: string;
+      }
+    ): ScenarioActionResult => {
+      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять карты игроков." };
+      const target = players.get(payload.targetPlayerId);
+      if (!target) return { error: "Игрок не найден." };
+      const targetArea = payload.targetArea === "special" ? "special" : "hand";
+
+      if (targetArea === "special") {
+        const special = target.specialConditions.find(
+          (entry) => entry.instanceId === payload.cardInstanceId
+        );
+        if (!special) return { error: "Особое условие игрока не найдено." };
+        const definition =
+          payload.replacementMode === "specific"
+            ? findSpecialDefinitionForAdmin(String(payload.replacementCardId ?? ""))
+            : IMPLEMENTED_SPECIALS[Math.floor(rng() * IMPLEMENTED_SPECIALS.length)] ?? null;
+        if (!definition) return { error: "Не удалось выбрать замену особого условия." };
+        if (!definition.implemented) return { error: "Выбранное особое условие ещё не реализовано." };
+        special.definition = definition;
+        special.used = false;
+        emitEvent("info", `Ведущий заменил особое условие игрока ${target.name}.`);
+        return { stateChanged: true };
+      }
+
+      const card = target.hand.find((entry) => entry.instanceId === payload.cardInstanceId);
+      if (!card) return { error: "Карта игрока не найдена." };
+      const picked = pickDeckCard(card.deck, payload.replacementMode, payload.replacementCardId);
+      if (!picked.card) return { error: picked.error ?? "Не удалось выбрать замену карты." };
+      card.id = picked.card.id;
+      card.labelShort = picked.card.labelShort;
+      card.missing = false;
+      emitEvent("info", `Ведущий заменил карту игрока ${target.name} (${card.deck}).`);
+      return { stateChanged: true };
+    };
+
+    const detectWorldDeckName = (kind: "bunker" | "threat" | "disaster"): string | null => {
+      const entries = Object.entries(ctx.assets.decks ?? {});
+      if (entries.length === 0) return null;
+      const worldIds =
+        kind === "bunker"
+          ? new Set(world.bunker.map((card) => card.id))
+          : kind === "threat"
+            ? new Set(world.threats.map((card) => card.id))
+            : new Set([world.disaster.id]);
+      let bestDeck: string | null = null;
+      let bestScore = -1;
+      for (const [deckName, cards] of entries) {
+        let score = 0;
+        for (const card of cards) {
+          if (worldIds.has(card.id)) score += 1;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          bestDeck = deckName;
+        }
+      }
+      if (bestDeck) return bestDeck;
+      return entries[0]?.[0] ?? null;
+    };
+
+    const adminSetWorldCardReveal = (
+      actorId: string,
+      payload: { kind: "bunker" | "threat"; index: number; revealed: boolean }
+    ): ScenarioActionResult => {
+      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять карты мира." };
+      const index = Number(payload.index);
+      if (!Number.isInteger(index) || index < 0) return { error: "Некорректный индекс карты мира." };
+      const list = payload.kind === "bunker" ? world.bunker : world.threats;
+      const target = list[index];
+      if (!target) return { error: "Карта мира не найдена." };
+      target.isRevealed = Boolean(payload.revealed);
+      emitEvent("info", `Ведущий ${target.isRevealed ? "раскрыл" : "скрыл"} карту мира (${payload.kind}).`);
+      return { stateChanged: true };
+    };
+
+    const adminReplaceWorldCard = (
+      actorId: string,
+      payload: {
+        kind: "bunker" | "threat" | "disaster";
+        index?: number;
+        replacementMode: "random" | "specific";
+        replacementCardId?: string;
+      }
+    ): ScenarioActionResult => {
+      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять карты мира." };
+      const deckName = detectWorldDeckName(payload.kind);
+      if (!deckName) return { error: "Не удалось определить колоду для карт мира." };
+      const picked = pickDeckCard(deckName, payload.replacementMode, payload.replacementCardId);
+      if (!picked.card) return { error: picked.error ?? "Не удалось выбрать карту мира." };
+
+      if (payload.kind === "disaster") {
+        world.disaster.id = picked.card.id;
+        world.disaster.title = picked.card.labelShort;
+        world.disaster.description = picked.card.labelShort;
+        world.disaster.imageId = picked.card.id;
+      } else {
+        const index = Number(payload.index);
+        if (!Number.isInteger(index) || index < 0) return { error: "Некорректный индекс карты мира." };
+        const list = payload.kind === "bunker" ? world.bunker : world.threats;
+        const target = list[index];
+        if (!target) return { error: "Карта мира не найдена." };
+        target.id = picked.card.id;
+        target.title = picked.card.labelShort;
+        target.description = picked.card.labelShort;
+        target.imageId = picked.card.id;
+      }
+      emitEvent("info", `Ведущий заменил карту мира (${payload.kind}).`);
+      return { stateChanged: true };
+    };
+
+    const adminSetWorldCount = (
+      actorId: string,
+      payload: { kind: "bunker" | "threat"; count: number }
+    ): ScenarioActionResult => {
+      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять количество карт мира." };
+      const count = Number(payload.count);
+      if (!Number.isInteger(count) || count < 0) return { error: "Некорректное количество карт." };
+      if (payload.kind === "bunker") {
+        world.counts.bunker = Math.max(0, Math.min(world.bunker.length, count));
+      } else {
+        world.counts.threats = Math.max(0, Math.min(world.threats.length, count));
+      }
+      emitEvent("info", `Ведущий обновил количество карт мира (${payload.kind}: ${count}).`);
+      return { stateChanged: true };
+    };
+
+    const findSpecialDefinitionForAdmin = (specialIdRaw: string) => {
+      const lookup = String(specialIdRaw ?? "").trim();
+      if (!lookup) return null;
+      const normalized = normalizeSpecialLookup(lookup);
+      const byId = SPECIAL_DEFINITIONS.find(
+        (definition) =>
+          normalizeSpecialLookup(definition.id) === normalized ||
+          normalizeSpecialLookup(toSpecialFileName(definition.id)) === normalized
+      );
+      if (byId) return byId;
+      const byFile = SPECIAL_DEFINITIONS.find(
+        (definition) =>
+          normalizeSpecialLookup(definition.file) === normalized ||
+          normalizeSpecialLookup(toSpecialFileName(definition.file)) === normalized
+      );
+      if (byFile) return byFile;
+      const byTitle = SPECIAL_DEFINITIONS.find(
+        (definition) => normalizeSpecialLookup(definition.title) === normalized
+      );
+      return byTitle ?? null;
+    };
+
+    const adminApplySpecial = (
+      actorId: string,
+      payload: {
+        actorPlayerId: string;
+        specialInstanceId?: string;
+        specialId?: string;
+        payload?: Record<string, unknown>;
+      }
+    ): ScenarioActionResult => {
+      if (actorId !== ctx.hostId) return { error: "Только ведущий может применять спецусловия вручную." };
+      const sourcePlayer = players.get(payload.actorPlayerId);
+      if (!sourcePlayer) return { error: "Игрок-источник не найден." };
+      const effectivePayload = (payload.payload ?? {}) as Record<string, unknown>;
+      const specialInstanceId = String(payload.specialInstanceId ?? "").trim();
+      if (specialInstanceId) {
+        const special = sourcePlayer.specialConditions.find((item) => item.instanceId === specialInstanceId);
+        const result = applySpecial(sourcePlayer, specialInstanceId, effectivePayload);
+        if (result.error) return result;
+        emitEvent(
+          "info",
+          `Ведущий применил спецусловие игрока ${sourcePlayer.name}${special ? `: ${special.definition.title}` : ""}.`
+        );
+        return result.stateChanged ? { stateChanged: true } : result;
+      }
+
+      const specialId = String(payload.specialId ?? "").trim();
+      if (!specialId) return { error: "Нужно выбрать спецусловие." };
+      const definition = findSpecialDefinitionForAdmin(specialId);
+      if (!definition) return { error: "Спецусловие не найдено в каталоге." };
+      if (!definition.implemented) return { error: "Выбранное спецусловие ещё не реализовано." };
+
+      const tempSpecial: SpecialConditionState = {
+        instanceId: `admin-special-${sourcePlayer.playerId}-${Date.now()}`,
+        definition,
+        used: false,
+        revealedPublic: true,
+      };
+      const result = applySpecialEffect(sourcePlayer, tempSpecial, effectivePayload);
+      if (result.error) return result;
+      emitEvent(
+        "info",
+        sourcePlayer.playerId === ctx.hostId
+          ? `Ведущий применил спецусловие из каталога: "${definition.title}".`
+          : `Ведущий применил спецусловие из каталога "${definition.title}" от имени ${sourcePlayer.name}.`
+      );
       return { stateChanged: true };
     };
 
@@ -1091,7 +1474,7 @@ export const scenario: ScenarioModule = {
       votePhase = "voteSpecialWindow";
       emitEvent("info", "Сбор голосов завершён. Окно спецусловий.");
       clearVoteWindowTimer();
-      if (settings.enablePostVoteDiscussionTimer) {
+      if (settings.enablePostVoteDiscussionTimer && isAutoAutomation()) {
         scheduleTimer("post_vote", settings.postVoteDiscussionSeconds, () => {
           if (phase === "voting" && votePhase === "voteSpecialWindow") {
             finalizeVotingResolution();
@@ -1226,6 +1609,26 @@ export const scenario: ScenarioModule = {
       return { stateChanged: true };
     };
 
+    const isDevChoiceSpecial = (special: SpecialConditionState): boolean =>
+      special.definition.id.startsWith("dev-choice-");
+
+    const buildDevSpecialFromTemplate = (
+      currentSpecial: SpecialConditionState,
+      template: SpecialConditionDefinition
+    ): SpecialConditionDefinition => ({
+      ...template,
+      id: currentSpecial.definition.id,
+      title: `${template.title} (DEV)`,
+      trigger: "active",
+      implemented: true,
+      requires: template.requires ? [...template.requires] : undefined,
+      effect: {
+        type: template.effect.type,
+        params: template.effect.params ? { ...template.effect.params } : undefined,
+      },
+      uiTargeting: template.uiTargeting,
+    });
+
     const applySpecial = (
       player: PlayerState,
       specialInstanceId: string,
@@ -1284,7 +1687,23 @@ export const scenario: ScenarioModule = {
         emitEvent("info", `${player.name} применяет особое условие: ${special.definition.title}.`);
       }
 
-      return applySpecialEffect(player, special, effectivePayload);
+      const effectTypeBeforeApply = special.definition.effect.type;
+      const result = applySpecialEffect(player, special, effectivePayload);
+
+      if (
+        result.stateChanged &&
+        isDevChoiceSpecial(special) &&
+        effectTypeBeforeApply !== DEV_CHOICE_EFFECT_TYPE
+      ) {
+        const chooser = buildDevChoiceDefinition(player.playerId);
+        if (chooser) {
+          special.definition = chooser;
+          special.used = false;
+          special.revealedPublic = DEV_SHOW_ALL_PUBLIC ? true : special.revealedPublic;
+        }
+      }
+
+      return result;
     };
 
     const validateRequires = (player: PlayerState, special: SpecialConditionState, payload: Record<string, unknown>) => {
@@ -1398,6 +1817,19 @@ export const scenario: ScenarioModule = {
       }
 
       switch (effectType) {
+        case DEV_CHOICE_EFFECT_TYPE: {
+          const selectedId = String(payload.specialId ?? "").trim();
+          if (!selectedId) return { error: "Нужно выбрать особое условие." };
+
+          const selectedDefinition = IMPLEMENTED_SPECIALS.find((item) => item.id === selectedId);
+          if (!selectedDefinition) return { error: "Выбранное особое условие не найдено." };
+
+          special.definition = buildDevSpecialFromTemplate(special, selectedDefinition);
+          special.used = false;
+          special.revealedPublic = DEV_SHOW_ALL_PUBLIC ? true : special.revealedPublic;
+          emitEvent("info", `${player.name} выбрал для DEV-карты: ${selectedDefinition.title}.`);
+          return { stateChanged: true };
+        }
         case "banVoteAgainst": {
           if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
           const targetId = String(payload.targetPlayerId ?? "");
@@ -1554,6 +1986,75 @@ export const scenario: ScenarioModule = {
           emitEvent("info", `${player.name} перераздаёт раскрытые карты категории ${deckName}.`);
           return { stateChanged: true };
         }
+        case "replaceBunkerCard": {
+          const resolved = resolveBunkerIndex(payload);
+          if ("error" in resolved) return { error: resolved.error };
+          const target = world.bunker[resolved.index];
+          if (!isBunkerCardPubliclyRevealed(target)) {
+            return { error: "Можно выбрать только раскрытую карту бункера." };
+          }
+
+          const occupiedIds = new Set(
+            world.bunker.map((card) => card.id).filter((id): id is string => Boolean(id))
+          );
+          const replacement = pickBunkerReplacementCard(occupiedIds);
+          if (!replacement) return { error: "Нет доступных карт бункера для замены." };
+
+          target.id = replacement.id;
+          target.title = replacement.title;
+          target.description = replacement.description;
+          target.text = replacement.text;
+          target.imageId = replacement.imageId;
+          target.isRevealed = true;
+          target.revealedBy = player.playerId;
+          target.revealedAtRound = target.revealedAtRound ?? round;
+
+          markSpecialUsed();
+          emitEvent("info", `${player.name} заменяет карту бункера.`);
+          return { stateChanged: true };
+        }
+        case "discardBunkerCard": {
+          const resolved = resolveBunkerIndex(payload, { allowRandom: true });
+          if ("error" in resolved) return { error: resolved.error };
+          const target = world.bunker[resolved.index];
+          if (!isBunkerCardPubliclyRevealed(target)) {
+            return { error: "Можно выбрать только раскрытую карту бункера." };
+          }
+
+          target.id = `bunker-discarded-${Date.now()}-${Math.floor(rng() * 1_000_000)}`;
+          target.title = "Карта бункера потеряна";
+          target.description = "Карта бункера была сброшена спецусловием.";
+          target.text = undefined;
+          target.imageId = undefined;
+          target.isRevealed = true;
+          target.revealedBy = player.playerId;
+          target.revealedAtRound = target.revealedAtRound ?? round;
+
+          markSpecialUsed();
+          emitEvent("info", `Спецусловие "${def.title}" сбрасывает карту бункера.`);
+          return { stateChanged: true };
+        }
+        case "stealBunkerCardToExiled": {
+          const resolved = resolveBunkerIndex(payload, { allowRandom: true });
+          if ("error" in resolved) return { error: resolved.error };
+          const target = world.bunker[resolved.index];
+          if (!isBunkerCardPubliclyRevealed(target)) {
+            return { error: "Можно выбрать только раскрытую карту бункера." };
+          }
+
+          target.id = `bunker-stolen-${Date.now()}-${Math.floor(rng() * 1_000_000)}`;
+          target.title = "Карта бункера украдена";
+          target.description = "Карта бункера была забрана изгнанным игроком.";
+          target.text = undefined;
+          target.imageId = undefined;
+          target.isRevealed = true;
+          target.revealedBy = player.playerId;
+          target.revealedAtRound = target.revealedAtRound ?? round;
+
+          markSpecialUsed();
+          emitEvent("info", `Спецусловие "${def.title}" убирает карту бункера из стола.`);
+          return { stateChanged: true };
+        }
         case "forceRevealCategoryForAll": {
           const category = String(payload.category ?? "");
           const deckName = CATEGORY_KEY_TO_DECK[category] ?? category;
@@ -1583,22 +2084,48 @@ export const scenario: ScenarioModule = {
 
           const targetBaggage = getAnyCardsByCategory(target, "Багаж");
           if (targetBaggage.length === 0) return { error: "У цели нет багажа." };
+          const requestedBaggageCardId = String(payload.baggageCardId ?? "");
+          const stolenCard =
+            (requestedBaggageCardId
+              ? targetBaggage.find((card) => card.instanceId === requestedBaggageCardId)
+              : targetBaggage[0]) ?? null;
+          if (!stolenCard) return { error: "Нужно выбрать конкретную карту багажа." };
 
           const giveCount = Number(def.effect.params?.giveSpecialCount ?? 1);
           if (specialPool.length < giveCount) {
             return { error: "В колоде особых условий больше нет карт." };
           }
 
-          const stolenCard = targetBaggage[0];
           target.hand = target.hand.filter((card) => card !== stolenCard);
           player.hand.push({ ...stolenCard, instanceId: makeCardInstanceId(player.playerId) });
+
+          const specialAssetId = def.file ? `decks/${def.file.replace(/\\/g, "/")}` : "";
+          target.hand.push({
+            instanceId: makeCardInstanceId(target.playerId),
+            id: specialAssetId,
+            deck: "Багаж",
+            labelShort: def.title,
+            revealed: false,
+            missing: !specialAssetId,
+            publicBackCategory: SPECIAL_CATEGORY,
+          });
 
           for (let i = 0; i < giveCount; i += 1) {
             const error = addSpecialToPlayer(target);
             if (error) return { error };
           }
 
-          markSpecialUsed();
+          player.specialConditions = player.specialConditions.filter((item) => item.instanceId !== special.instanceId);
+          const stolenWasVisible = DEV_SHOW_ALL_PUBLIC || stolenCard.revealed;
+          player.specialCategoryProxyCards = [
+            {
+              labelShort: stolenCard.labelShort,
+              imgUrl: stolenWasVisible && stolenCard.id ? `/assets/${stolenCard.id}` : undefined,
+              hidden: !stolenWasVisible,
+              backCategory: "Багаж",
+            },
+          ];
+
           emitEvent("info", `${player.name} забирает багаж у ${target.name}.`);
           return { stateChanged: true };
         }
@@ -1641,13 +2168,20 @@ export const scenario: ScenarioModule = {
       if (votingState.votes.size < aliveCount) {
         return { stateChanged: true };
       }
-
+      if (isManualAutomation()) {
+        emitEvent("info", "Все голоса собраны. Ведущий решает, когда завершить сбор.");
+        return { stateChanged: true };
+      }
       enterVoteSpecialWindow();
       return { stateChanged: true };
     };
 
     const finalizeVotingWindow = (): ScenarioActionResult => {
       if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+      if (votePhase === "voting") {
+        enterVoteSpecialWindow();
+        return { stateChanged: true };
+      }
       if (votePhase !== "voteSpecialWindow") return { error: "Окно спецусловий ещё не открыто." };
       clearVoteWindowTimer();
       return finalizeVotingResolution();
@@ -1681,10 +2215,22 @@ export const scenario: ScenarioModule = {
             .map((condition) => ({
               labelShort: condition.definition.title,
               imgUrl: buildSpecialImgUrl(condition.definition.file),
-            }));
+              instanceId: condition.instanceId,
+              hidden: false,
+              backCategory: SPECIAL_CATEGORY,
+            }))
+            .concat(
+              player.specialCategoryProxyCards.map((card, index) => ({
+                labelShort: card.labelShort,
+                imgUrl: card.imgUrl,
+                instanceId: `proxy-special-${player.playerId}-${index}`,
+                hidden: card.hidden ?? false,
+                backCategory: card.backCategory ?? SPECIAL_CATEGORY,
+              }))
+            );
           return {
             category,
-            status: cards.length > 0 ? "revealed" : "hidden",
+            status: cards.some((card) => !card.hidden) ? "revealed" : "hidden",
             cards,
           };
         }
@@ -1701,6 +2247,9 @@ export const scenario: ScenarioModule = {
         const cards = visibleCards.map((card) => ({
           labelShort: card.labelShort,
           imgUrl: card.id ? `/assets/${card.id}` : undefined,
+          instanceId: card.instanceId,
+          hidden: false,
+          backCategory: category,
         }));
         return {
           category,
@@ -1805,6 +2354,7 @@ export const scenario: ScenarioModule = {
             ],
             revealedThisRound: false,
             specialConditions: [],
+            specialCategoryProxyCards: [],
             bannedAgainst: new Set(),
             forcedWastedVoteNext: false,
             isBot: false,
@@ -1870,8 +2420,22 @@ export const scenario: ScenarioModule = {
               noTalkUntilVoting: roundRules.noTalkUntilVoting,
               forcedRevealCategory: roundRules.forcedRevealCategory,
             },
+            threatModifier: getThreatModifierFromBunkerCards(),
           },
         };
+      },
+      getSpecialCatalog() {
+        return SPECIAL_DEFINITIONS.map((definition) => ({
+          id: definition.id,
+          title: definition.title,
+          text: definition.text,
+          implemented: definition.implemented,
+          choiceKind: resolveChoiceKind(definition),
+          targetScope: getTargetScope(definition) ?? undefined,
+          allowSelfTarget: allowsSelfTarget(definition),
+          effectType: definition.effect.type,
+          requires: definition.requires ? [...definition.requires] : undefined,
+        }));
       },
       handleAction(playerId: string, action: ScenarioAction): ScenarioActionResult {
         const player = players.get(playerId);
@@ -1892,6 +2456,21 @@ export const scenario: ScenarioModule = {
         if (action.type === "devSkipRound") {
           return devSkipRound(playerId);
         }
+        if (action.type === "adminReplacePlayerCard") {
+          return adminReplacePlayerCard(playerId, action.payload);
+        }
+        if (action.type === "adminSetWorldCardReveal") {
+          return adminSetWorldCardReveal(playerId, action.payload);
+        }
+        if (action.type === "adminReplaceWorldCard") {
+          return adminReplaceWorldCard(playerId, action.payload);
+        }
+        if (action.type === "adminSetWorldCount") {
+          return adminSetWorldCount(playerId, action.payload);
+        }
+        if (action.type === "adminApplySpecial") {
+          return adminApplySpecial(playerId, action.payload);
+        }
         if (player.status !== "alive") return { error: "Вы исключены из игры." };
         if (phase === "ended") return { error: "Игра уже завершена." };
 
@@ -1910,6 +2489,6 @@ export const scenario: ScenarioModule = {
             return { error: "Неизвестное действие." };
         }
       },
-    };
+    } as ScenarioSession;
   },
 };

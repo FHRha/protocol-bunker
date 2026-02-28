@@ -186,6 +186,34 @@ const pickFromAssets = (
   };
 };
 
+const pickFromAssetsById = (
+  assets: AssetCatalog,
+  deckName: string,
+  kind: WorldCard["kind"],
+  cardId: string
+): WorldCard | null => {
+  const deck = assets.decks[deckName];
+  if (!deck || deck.length === 0) return null;
+  const card = deck.find((entry) => entry.id === cardId);
+  if (!card) return null;
+  const mappedDisasterText =
+    kind === "disaster"
+      ? lookupDisasterText(
+          card.labelShort,
+          formatLabelShort(card.labelShort),
+          card.id.split("/").pop()?.replace(/\.[a-z0-9]{2,4}$/i, "")
+        )
+      : undefined;
+  return {
+    kind,
+    id: card.id,
+    title: card.labelShort,
+    description: card.labelShort,
+    ...(mappedDisasterText ? { text: mappedDisasterText } : {}),
+    imageId: card.id,
+  };
+};
+
 const withDisasterText = (card: WorldCard): WorldCard => {
   if (card.kind !== "disaster") return card;
   const mappedText = lookupDisasterText(card.title, card.description);
@@ -247,10 +275,16 @@ const toFaced = (card: WorldCard, revealed: boolean): WorldFacedCard => ({
 export const rollWorldFromAssets = (
   assets: AssetCatalog,
   rng: () => number,
-  playerCount: number
+  playerCount: number,
+  forcedDisasterId?: string
 ): WorldState30 => {
   const counts = getWorldCounts(playerCount);
-  const pickedDisaster = pickFromAssets(assets, "Катастрофа", "disaster", rng) ?? pick(rng, FALLBACK_DISASTER);
+  const forcedDisaster =
+    forcedDisasterId && forcedDisasterId !== "random"
+      ? pickFromAssetsById(assets, "Катастрофа", "disaster", forcedDisasterId)
+      : null;
+  const pickedDisaster =
+    forcedDisaster ?? pickFromAssets(assets, "Катастрофа", "disaster", rng) ?? pick(rng, FALLBACK_DISASTER);
   const disaster = withDisasterText(pickedDisaster);
   const bunkerCards = drawManyFromAssets(
     assets,

@@ -439,6 +439,7 @@ function isPortableBaseReusable() {
 function buildStartBat() {
   return `@echo off
 setlocal
+chcp 65001 >nul
 cd /d "%~dp0"
 if not exist "logs" mkdir "logs"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-portable.ps1"
@@ -453,6 +454,10 @@ endlocal & exit /b %EXITCODE%
 
 function buildStartPs1() {
   return `$ErrorActionPreference = "Stop"
+
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 $portableRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appRoot = Join-Path $portableRoot "app"

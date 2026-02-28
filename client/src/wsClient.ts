@@ -5,8 +5,12 @@ export type MessageHandler = (message: ServerMessage) => void;
 export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
 export type StatusHandler = (status: ConnectionStatus, error?: string | null) => void;
 
-const PING_INTERVAL_MS = 15000;
-const PONG_TIMEOUT_MS = 8000;
+const PING_INTERVAL_MS = 20000;
+const PONG_TIMEOUT_MS = 20000;
+const MAX_MISSED_PONGS = 4;
+const RECONNECT_BASE_DELAY_MS = 500;
+const RECONNECT_MAX_DELAY_MS = 10000;
+const RECONNECT_STABLE_RESET_MS = 20000;
 
 export class BunkerClient {
   private ws: WebSocket | null = null;
@@ -20,6 +24,8 @@ export class BunkerClient {
   private manualClose = false;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimeout: ReturnType<typeof setTimeout> | null = null;
+  private stableReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private missedPongs = 0;
 
   constructor(private url: string) {}
 
@@ -40,18 +46,31 @@ export class BunkerClient {
       clearTimeout(this.pongTimeout);
       this.pongTimeout = null;
     }
+    this.missedPongs = 0;
+  }
+
+  private clearStableReconnectTimer() {
+    if (this.stableReconnectTimer) {
+      clearTimeout(this.stableReconnectTimer);
+      this.stableReconnectTimer = null;
+    }
   }
 
   private scheduleReconnect() {
     if (this.manualClose) return;
     if (this.reconnectTimer) return;
     this.reconnectAttempt += 1;
-    const base = Math.min(250 * 2 ** (this.reconnectAttempt - 1), 5000);
+    const base = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** (this.reconnectAttempt - 1),
+      RECONNECT_MAX_DELAY_MS
+    );
     const jitter = base * (0.8 + Math.random() * 0.4);
     this.setStatus("reconnecting");
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      void this.connect(true);
+      void this.connect(true).catch(() => {
+        // Reconnect loop is driven by socket close events.
+      });
     }, jitter);
   }
 
@@ -64,6 +83,11 @@ export class BunkerClient {
         clearTimeout(this.pongTimeout);
       }
       this.pongTimeout = setTimeout(() => {
+        this.pongTimeout = null;
+        this.missedPongs += 1;
+        const limit =
+          typeof document !== "undefined" && document.hidden ? MAX_MISSED_PONGS + 1 : MAX_MISSED_PONGS;
+        if (this.missedPongs < limit) return;
         try {
           this.ws?.close();
         } catch {
@@ -82,36 +106,63 @@ export class BunkerClient {
     this.manualClose = false;
     this.setStatus(isReconnect ? "reconnecting" : "connecting");
 
-    this.ws = new WebSocket(this.url);
+    const socket = new WebSocket(this.url);
+    this.ws = socket;
     this.connecting = new Promise((resolve, reject) => {
-      if (!this.ws) return;
-      this.ws.onopen = () => {
-        this.reconnectAttempt = 0;
-        this.setStatus("connected", null);
-        this.startHeartbeat();
-        this.connecting = null;
+      let settled = false;
+      const safeResolve = () => {
+        if (settled) return;
+        settled = true;
         resolve();
       };
-      this.ws.onerror = () => {
+      const safeReject = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
+        this.missedPongs = 0;
+        this.setStatus("connected", null);
+        this.startHeartbeat();
+        this.clearStableReconnectTimer();
+        this.stableReconnectTimer = setTimeout(() => {
+          this.reconnectAttempt = 0;
+        }, RECONNECT_STABLE_RESET_MS);
+        this.connecting = null;
+        safeResolve();
+      };
+
+      socket.onerror = () => {
+        if (this.ws !== socket) return;
         this.lastError = "WebSocket connection failed";
         this.connecting = null;
         try {
-          this.ws?.close();
+          socket.close();
         } catch {
           // ignore
         }
-        reject(new Error("WebSocket connection failed"));
+        safeReject(new Error("WebSocket connection failed"));
       };
-      this.ws.onclose = () => {
+
+      socket.onclose = () => {
+        if (this.ws === socket) {
+          this.ws = null;
+        }
         this.clearHeartbeat();
+        this.clearStableReconnectTimer();
         this.connecting = null;
+        safeReject(new Error("WebSocket closed"));
         if (this.manualClose) {
           this.setStatus("disconnected");
           return;
         }
         this.scheduleReconnect();
       };
-      this.ws.onmessage = (event) => {
+
+      socket.onmessage = (event) => {
+        if (this.ws !== socket) return;
         let parsed: unknown;
         try {
           parsed = JSON.parse(event.data);
@@ -130,6 +181,7 @@ export class BunkerClient {
             clearTimeout(this.pongTimeout);
             this.pongTimeout = null;
           }
+          this.missedPongs = 0;
           return;
         }
         this.listeners.forEach((listener) => listener(result.data));
@@ -152,10 +204,13 @@ export class BunkerClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearStableReconnectTimer();
     this.clearHeartbeat();
-    if (!this.ws) return;
-    this.ws.close();
+    const socket = this.ws;
     this.ws = null;
+    if (socket) {
+      socket.close();
+    }
     this.setStatus("disconnected");
   }
 

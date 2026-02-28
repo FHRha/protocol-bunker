@@ -42,12 +42,14 @@ const makeContext = (players: Array<{ playerId: string; name: string }>): Scenar
     preVoteDiscussionSeconds: 30,
     enablePostVoteDiscussionTimer: false,
     postVoteDiscussionSeconds: 30,
+    automationMode: "auto",
     continuePermission: "host_only",
     revealTimeoutAction: "random_card",
     revealsBeforeVoting: 2,
     specialUsage: "anytime",
     maxPlayers: 12,
     finalThreatReveal: "host",
+    forcedDisasterId: "random",
   },
 });
 

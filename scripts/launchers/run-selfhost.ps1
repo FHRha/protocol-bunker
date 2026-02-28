@@ -1,5 +1,9 @@
 ﻿$ErrorActionPreference = "Stop"
 
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\\..")
 Set-Location -Path $repoRoot
 
@@ -255,3 +259,4 @@ try {
   Read-Host "Press Enter to exit"
   exit 1
 }
+

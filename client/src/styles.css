@@ -1139,7 +1139,7 @@ button.ghost {
   height: 100%;
   display: grid;
   grid-template-columns: minmax(320px, 360px) 1fr;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 10px;
 }
 
@@ -1151,6 +1151,77 @@ button.ghost {
   padding: 8px 12px;
   grid-column: 1;
   grid-row: 1;
+}
+
+.host-console {
+  grid-column: 1;
+  grid-row: 2;
+  padding: 10px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.host-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.host-console-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.host-console-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.host-console-kick {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.host-console-kick select {
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.host-console-votes {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.host-console-vote-column {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--bg-soft);
+  display: grid;
+  gap: 6px;
+  min-height: 90px;
+}
+
+.host-console-vote-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.host-console-vote-list {
+  display: grid;
+  gap: 4px;
+}
+
+.host-console-vote-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
 }
 
 .game-status-bar .status-title {
@@ -1279,6 +1350,20 @@ button.ghost {
   .vote-modal-layout {
     grid-template-columns: 1fr;
   }
+
+  .host-console-votes {
+    grid-template-columns: 1fr;
+  }
+
+  .host-console-kick {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .host-console-kick select {
+    max-width: none;
+    min-width: 0;
+  }
 }
 
 .game-main {
@@ -1297,7 +1382,19 @@ button.ghost {
 
 .dossier {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 3;
+}
+
+.dossier--dev-scroll {
+  overflow-y: auto;
+  padding-right: 6px;
+  overscroll-behavior: contain;
+}
+
+.dossier--dev-scroll .dossier-mini-grid {
+  overflow: visible;
+  flex: 0 0 auto;
+  min-height: auto;
 }
 
 @media (min-width: 1251px) and (max-height: 900px) {
@@ -1309,7 +1406,7 @@ button.ghost {
 
 .board {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   gap: 6px;
   padding: 12px;
 }
@@ -1495,11 +1592,12 @@ button.ghost {
   grid-template-columns: minmax(300px, 1.35fr) minmax(320px, 1.5fr) minmax(300px, 1.35fr);
   gap: 18px;
   width: 100%;
-  height: 100%;
+  height: auto;
+  min-height: 100%;
   overflow: visible;
   align-items: stretch;
   justify-items: center;
-  align-content: center;
+  align-content: start;
   position: relative;
 }
 
@@ -1510,10 +1608,10 @@ button.ghost {
 .world-column {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   min-height: 0;
-  height: 100%;
+  height: auto;
   overflow: visible;
 }
 
@@ -1521,7 +1619,7 @@ button.ghost {
   display: grid;
   grid-template-columns: repeat(2, minmax(140px, 1fr));
   gap: 12px;
-  align-content: center;
+  align-content: start;
   justify-items: center;
   width: 100%;
 }
@@ -2363,7 +2461,7 @@ button.ghost {
 @media (max-width: 1200px) {
   .game-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto auto 1fr;
   }
 
   .game-status-bar {
@@ -2371,14 +2469,19 @@ button.ghost {
     grid-row: 1;
   }
 
-  .dossier {
+  .host-console {
     grid-column: 1;
     grid-row: 2;
   }
 
-  .board {
+  .dossier {
     grid-column: 1;
     grid-row: 3;
+  }
+
+  .board {
+    grid-column: 1;
+    grid-row: 4;
   }
 }
 
@@ -2668,7 +2771,7 @@ button.ghost {
 
   .game-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     height: auto;
     min-height: 100dvh;
   }
@@ -2678,9 +2781,14 @@ button.ghost {
     grid-row: 1;
   }
 
-  .board {
+  .host-console {
     grid-column: 1;
     grid-row: 2;
+  }
+
+  .board {
+    grid-column: 1;
+    grid-row: 3;
     padding: 10px;
     height: auto;
     overflow: visible;
@@ -3435,9 +3543,10 @@ button.ghost {
 
 .modal.world-modal .modal-body {
   max-height: min(88vh, 940px);
-  height: 100%;
+  height: auto;
   padding-right: 0;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .modal-header {

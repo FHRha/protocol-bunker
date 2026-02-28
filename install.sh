@@ -39,8 +39,8 @@ ARCH=""            # x64 | arm64 (empty => auto-detect)
 SERVICE_SCOPE="auto"      # auto | system | user
 EFFECTIVE_SERVICE_SCOPE="" # resolved service scope
 TARGET_ARCH=""     # normalized arch used for assets
-VERSION_TAG=""     # canonical version for asset names (e.g. v0.1.3)
-RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.1.3 or v0.1.3)
+VERSION_TAG=""     # canonical version for asset names (e.g. v0.2.0)
+RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.2.0 or v0.2.0)
 
 usage() {
   cat <<EOF
@@ -51,7 +51,7 @@ Usage:
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.1.3
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.2.0
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --arch arm64
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --service-scope system --autostart
@@ -65,7 +65,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version)
       shift
-      [ $# -gt 0 ] || err "--version requires a value like v0.1.3"
+      [ $# -gt 0 ] || err "--version requires a value like v0.2.0"
       VERSION="$1"
       ;;
     --edition)
@@ -117,7 +117,7 @@ json_latest_tag() {
 normalize_version_tag() {
   local value="$1"
   if [ -z "$value" ]; then
-    err "Version is empty. Use format like v0.1.3 or 0.1.3"
+    err "Version is empty. Use format like v0.2.0 or 0.2.0"
   fi
 
   if [[ "$value" == v* ]]; then
@@ -130,7 +130,7 @@ normalize_version_tag() {
     return
   fi
 
-  err "Invalid version format: $value (expected v0.1.3 or 0.1.3)"
+  err "Invalid version format: $value (expected v0.2.0 or 0.2.0)"
 }
 
 resolve_release_tag_by_candidates() {

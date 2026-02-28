@@ -389,6 +389,17 @@ export default function LobbyPage({
     copiedKey === key ? ru.copiedButton : ru.copyButton;
 
   const settings = draft ?? roomState.settings;
+  const disasterOptions = roomState.disasterOptions ?? [];
+  const supportsForcedDisaster = disasterOptions.length > 0;
+  const disasterTitleById = new Map(disasterOptions.map((option) => [option.id, option.title]));
+  const normalizedForcedDisasterId =
+    settings.forcedDisasterId === "random" || disasterTitleById.has(settings.forcedDisasterId)
+      ? settings.forcedDisasterId
+      : "random";
+  const forcedDisasterTitle =
+    normalizedForcedDisasterId === "random"
+      ? ru.settingsForcedDisasterRandom
+      : disasterTitleById.get(normalizedForcedDisasterId) ?? normalizedForcedDisasterId;
   const isClassic = roomState.scenarioMeta.id === "classic";
   const ruleset = roomState.ruleset;
   const rulesMode: "auto" | "manual" = ruleset.rulesetMode === "auto" ? "auto" : "manual";
@@ -496,6 +507,11 @@ export default function LobbyPage({
   const updateField = <K extends keyof GameSettings>(key: K, value: GameSettings[K]) => {
     if (!draft) return;
     applySettings({ ...draft, [key]: value });
+  };
+
+  const updateAutomationMode = (mode: GameSettings["automationMode"]) => {
+    if (!draft) return;
+    applySettings({ ...draft, automationMode: mode });
   };
 
   return (
@@ -688,8 +704,23 @@ export default function LobbyPage({
                       />
                     </div>
                   </label>
-
                   <div className="settings-section-title">{ru.settingsOtherBlock}</div>
+                  <label className="formRow">
+                    <span className="settingsLabelWithTip">
+                      <span>{ru.settingsAutomationMode}</span>
+                      <InfoTip text={ru.settingsAutomationModeHint} />
+                    </span>
+                    <select
+                      value={settings.automationMode}
+                      onChange={(event) =>
+                        updateAutomationMode(event.target.value as GameSettings["automationMode"])
+                      }
+                    >
+                      <option value="auto">{ru.settingsAutomationAuto}</option>
+                      <option value="semi">{ru.settingsAutomationSemi}</option>
+                      <option value="manual">{ru.settingsAutomationManual}</option>
+                    </select>
+                  </label>
                   <div className="formRow settingsRow--overlayControl">
                     <span className="settingsLabel settingsLabelWithTip">
                       <span>{ru.settingsPresenterMode}</span>
@@ -770,6 +801,22 @@ export default function LobbyPage({
                       <option value="anyone">{ru.settingsThreatAnyone}</option>
                     </select>
                   </label>
+                  {supportsForcedDisaster ? (
+                    <label className="formRow">
+                      <span>{ru.settingsForcedDisaster}</span>
+                      <select
+                        value={normalizedForcedDisasterId}
+                        onChange={(event) => updateField("forcedDisasterId", event.target.value)}
+                      >
+                        <option value="random">{ru.settingsForcedDisasterRandom}</option>
+                        {disasterOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   <label className="formRow">
                     <span>{ru.settingsMaxPlayers}</span>
                     <div className="settingsMaxPlayersControl">
@@ -792,6 +839,14 @@ export default function LobbyPage({
                 </fieldset>
               ) : (
                 <div className="settings-readonly compact">
+                  <div>
+                    {ru.settingsAutomationMode}:{" "}
+                    {settings.automationMode === "manual"
+                      ? ru.settingsAutomationManual
+                      : settings.automationMode === "semi"
+                        ? ru.settingsAutomationSemi
+                        : ru.settingsAutomationAuto}
+                  </div>
                   <div>
                     {ru.settingsPresenterMode}: {settings.enablePresenterMode ? ru.settingsOn : ru.settingsOff}
                   </div>
@@ -827,6 +882,11 @@ export default function LobbyPage({
                     {ru.settingsFinalThreatReveal}:{" "}
                     {settings.finalThreatReveal === "anyone" ? ru.settingsThreatAnyone : ru.settingsThreatHost}
                   </div>
+                  {supportsForcedDisaster ? (
+                    <div>
+                      {ru.settingsForcedDisaster}: {forcedDisasterTitle}
+                    </div>
+                  ) : null}
                   <div>
                     {ru.settingsMaxPlayers}: {settings.maxPlayers}
                   </div>
@@ -1292,4 +1352,3 @@ export default function LobbyPage({
     </div>
   );
 }
-

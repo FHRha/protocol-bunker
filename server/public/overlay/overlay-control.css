@@ -223,6 +223,30 @@ textarea {
   gap: 12px;
 }
 
+.control-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.control-tab {
+  min-width: 170px;
+}
+
+.control-tab.is-active {
+  border-color: #2e8f6f;
+  background: #1f4d44;
+}
+
+.tab-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.tab-panel[hidden] {
+  display: none !important;
+}
+
 .presenter {
   display: grid;
   gap: 10px;
@@ -408,6 +432,183 @@ textarea {
   align-items: center;
 }
 
+.presenter-editor {
+  display: grid;
+  gap: 10px;
+  border-top: 1px dashed #324767;
+  padding-top: 10px;
+}
+
+.host-block {
+  border: 1px solid #304662;
+  border-radius: 10px;
+  background: #0f1a2b;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.host-block__head {
+  display: grid;
+  gap: 4px;
+}
+
+.host-block__head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #d6e4fb;
+}
+
+.host-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.host-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.world-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.world-admin-col {
+  border: 1px solid #2f4568;
+  border-radius: 10px;
+  background: #0d1626;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.world-admin-col h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #d6e4fb;
+}
+
+.presenter-editor h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #d6e4fb;
+}
+
+.presenter-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.control-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.control-quick-btn {
+  border: 1px solid #3a4f73;
+  background: #101b2d;
+  border-radius: 10px;
+  color: #dce8ff;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+}
+
+.control-quick-btn:hover {
+  background: #16253d;
+}
+
+.control-quick-btn.is-active {
+  border-color: #2e8f6f;
+  background: #153035;
+}
+
+.control-quick-btn__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.control-quick-btn__hint {
+  font-size: 11px;
+  color: #9cb3d8;
+  line-height: 1.3;
+}
+
+.control-guide {
+  padding: 6px 8px;
+  border: 1px dashed #2f4568;
+  border-radius: 8px;
+  background: #0f1a2b;
+}
+
+.control-pickers {
+  border: 1px solid #304662;
+  border-radius: 10px;
+  background: #0f1726;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.control-pickers__title {
+  font-size: 12px;
+  color: #9cb3d8;
+}
+
+.control-pickers__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.picker-card {
+  border: 1px solid #324968;
+  background: #111d31;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+  color: #e6f0ff;
+}
+
+.picker-card:hover {
+  background: #172741;
+}
+
+.picker-card.is-active {
+  border-color: #2e8f6f;
+  box-shadow: 0 0 0 1px #2e8f6f inset;
+}
+
+.picker-card__img {
+  height: 86px;
+  background: #0d1523 center / cover no-repeat;
+  border-bottom: 1px solid #2f4668;
+}
+
+.picker-card__body {
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.picker-card__title {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.picker-card__meta {
+  font-size: 11px;
+  color: #95abd0;
+}
+
 .advanced {
   border-top: 1px dashed #324767;
   padding-top: 8px;
@@ -416,6 +617,10 @@ textarea {
 .advanced summary {
   cursor: pointer;
   color: #c7d7f2;
+}
+
+details.presenter-editor > summary {
+  font-weight: 600;
 }
 
 .extra-list {
@@ -478,7 +683,11 @@ textarea {
   .top-grid,
   .top-grid--preview,
   .extra-card__grid,
-  .presenter-meta {
+  .presenter-meta,
+  .presenter-editor-grid,
+  .control-quick-actions,
+  .host-grid--2,
+  .world-admin-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -51,6 +51,7 @@
 
   const playerSelect = $("playerSelect");
   const playersList = $("playersList");
+  const sidebarPlayerActions = $("sidebarPlayerActions");
   const kickSelectedLabel = $("kickSelectedLabel");
   const playerEditorTitle = $("playerEditorTitle");
   const categoriesGrid = $("categoriesGrid");
@@ -91,6 +92,10 @@
   const syncExtraTextsJsonBtn = $("syncExtraTextsJsonBtn");
   const applyExtraTextsJsonBtn = $("applyExtraTextsJsonBtn");
   const extraTextsJson = $("extraTextsJson");
+  const gameControlTabBtn = $("gameControlTabBtn");
+  const obsControlTabBtn = $("obsControlTabBtn");
+  const gameControlTab = $("gameControlTab");
+  const obsControlTab = $("obsControlTab");
   const presenterPanel = $("presenterPanel");
   const presenterModeState = $("presenterModeState");
   const presenterDisabled = $("presenterDisabled");
@@ -100,21 +105,77 @@
   const presenterRound = $("presenterRound");
   const presenterVotePhase = $("presenterVotePhase");
   const presenterPlayersBody = $("presenterPlayersBody");
-  const presenterStartGameBtn = $("presenterStartGameBtn");
-  const presenterNextStepBtn = $("presenterNextStepBtn");
-  const presenterSkipStepBtn = $("presenterSkipStepBtn");
-  const presenterStartVoteBtn = $("presenterStartVoteBtn");
-  const presenterEndVoteBtn = $("presenterEndVoteBtn");
-  const presenterSkipRoundBtn = $("presenterSkipRoundBtn");
-  const presenterOutcomeRow = $("presenterOutcomeRow");
-  const presenterOutcomeSurvivedBtn = $("presenterOutcomeSurvivedBtn");
-  const presenterOutcomeFailedBtn = $("presenterOutcomeFailedBtn");
-  const presenterOutcomeState = $("presenterOutcomeState");
   const presenterKickPlayerBtn = $("presenterKickPlayerBtn");
+  const replaceTargetPlayerSelect = $("replaceTargetPlayerSelect");
+  const replaceCardSelect = $("replaceCardSelect");
+  const replaceModeSelect = $("replaceModeSelect");
+  const replaceSpecificCardSelect = $("replaceSpecificCardSelect");
+  const replaceExecuteBtn = $("replaceExecuteBtn");
+  const replaceHint = $("replaceHint");
+  const voteStartGameBtn = $("voteStartGameBtn");
+  const voteNextStepBtn = $("voteNextStepBtn");
+  const voteSkipStepBtn = $("voteSkipStepBtn");
+  const voteStartBtn = $("voteStartBtn");
+  const voteEndBtn = $("voteEndBtn");
+  const voteSkipRoundBtn = $("voteSkipRoundBtn");
+  const voteOutcomeRow = $("voteOutcomeRow");
+  const voteOutcomeSurvivedBtn = $("voteOutcomeSurvivedBtn");
+  const voteOutcomeFailedBtn = $("voteOutcomeFailedBtn");
+  const voteOutcomeState = $("voteOutcomeState");
+  const worldKindSelect = $("worldKindSelect");
+  const worldIndexSelect = $("worldIndexSelect");
+  const worldToggleRevealBtn = $("worldToggleRevealBtn");
+  const worldReplaceModeSelect = $("worldReplaceModeSelect");
+  const worldReplaceCardSelect = $("worldReplaceCardSelect");
+  const worldCountInput = $("worldCountInput");
+  const worldReplaceBtn = $("worldReplaceBtn");
+  const worldSetCountBtn = $("worldSetCountBtn");
+  const worldHint = $("worldHint");
+  const specialActorPlayerSelect = $("specialActorPlayerSelect");
+  const specialSourceModeSelect = $("specialSourceModeSelect");
+  const specialPickerSelect = $("specialPickerSelect");
+  const specialTargetPlayerSelect = $("specialTargetPlayerSelect");
+  const specialTargetCardSelect = $("specialTargetCardSelect");
+  const specialThreatIndexSelect = $("specialThreatIndexSelect");
+  const specialCategorySelect = $("specialCategorySelect");
+  const specialUseSelfSelect = $("specialUseSelfSelect");
+  const specialDescriptionText = $("specialDescriptionText");
+  const specialApplyBtn = $("specialApplyBtn");
+  const specialHint = $("specialHint");
+  const devBotNameInput = $("devBotNameInput");
+  const devTargetPlayerSelect = $("devTargetPlayerSelect");
+  const devAddBotBtn = $("devAddBotBtn");
+  const devRemoveBotBtn = $("devRemoveBotBtn");
+  const devKickBtn = $("devKickBtn");
+  const devMarkLeftBtn = $("devMarkLeftBtn");
+  const devSkipRoundBtn = $("devSkipRoundBtn");
+  const devHint = $("devHint");
+  const controlActorSelect = $("controlActorSelect");
+  const controlScenarioAction = $("controlScenarioAction");
+  const controlTargetRow = $("controlTargetRow");
+  const controlTargetSelect = $("controlTargetSelect");
+  const controlCardRow = $("controlCardRow");
+  const controlCardSelect = $("controlCardSelect");
+  const controlSpecialRow = $("controlSpecialRow");
+  const controlSpecialSelect = $("controlSpecialSelect");
+  const controlThreatRow = $("controlThreatRow");
+  const controlThreatIndex = $("controlThreatIndex");
+  const controlOutcomeRow = $("controlOutcomeRow");
+  const controlOutcomeSelect = $("controlOutcomeSelect");
+  const controlDevNameRow = $("controlDevNameRow");
+  const controlDevNameInput = $("controlDevNameInput");
+  const controlPayloadJson = $("controlPayloadJson");
+  const controlExecuteBtn = $("controlExecuteBtn");
+  const controlActionHint = $("controlActionHint");
+  const controlQuickActions = $("controlQuickActions");
+  const controlGuide = $("controlGuide");
+  const controlCardPicker = $("controlCardPicker");
+  const controlSpecialPicker = $("controlSpecialPicker");
+  const controlThreatPicker = $("controlThreatPicker");
 
   if (
     !roomLabel || !controlConnection || !urlParamsDebug || !statusEl || !dirtyBadge || !saveBtn || !reloadBtn || !resetPlayerBtn ||
-    !playerSelect || !playersList || !kickSelectedLabel || !playerEditorTitle || !categoriesGrid || !categoriesAllowedKeys ||
+    !playerSelect || !playersList || !sidebarPlayerActions || !kickSelectedLabel || !playerEditorTitle || !categoriesGrid || !categoriesAllowedKeys ||
     !playerCategoriesJson || !insertCategoriesTemplateBtn || !applyCategoriesJsonBtn ||
     !topCurrentBunker || !topCurrentCatastrophe || !topCurrentThreats || !topBaseCatastrophe || !topCatastropheSource || !topBunkerLines ||
     !topCatastropheText || !topThreatsLines || !topBunkerMeta || !topCatastropheMeta || !topThreatsMeta ||
@@ -123,12 +184,27 @@
     !traitSexInput || !traitAgeInput || !traitOrientInput || !currentPlayerName || !currentTraitSex ||
     !currentTraitAge || !currentTraitOrient || !extraTextsList || !addExtraTextBtn ||
     !syncExtraTextsJsonBtn || !applyExtraTextsJsonBtn || !extraTextsJson ||
+    !gameControlTabBtn || !obsControlTabBtn || !gameControlTab || !obsControlTab ||
     !presenterPanel || !presenterModeState || !presenterDisabled || !presenterContent || !presenterRoomPhase ||
     !presenterGamePhase || !presenterRound || !presenterVotePhase || !presenterPlayersBody ||
-    !presenterStartGameBtn || !presenterNextStepBtn || !presenterSkipStepBtn ||
-    !presenterStartVoteBtn || !presenterEndVoteBtn || !presenterSkipRoundBtn ||
-    !presenterOutcomeRow || !presenterOutcomeSurvivedBtn || !presenterOutcomeFailedBtn || !presenterOutcomeState ||
-    !presenterKickPlayerBtn
+    !presenterKickPlayerBtn ||
+    !replaceTargetPlayerSelect || !replaceCardSelect || !replaceModeSelect || !replaceSpecificCardSelect ||
+    !replaceExecuteBtn || !replaceHint ||
+    !voteStartGameBtn || !voteNextStepBtn || !voteSkipStepBtn || !voteStartBtn || !voteEndBtn ||
+    !voteSkipRoundBtn || !voteOutcomeRow || !voteOutcomeSurvivedBtn || !voteOutcomeFailedBtn || !voteOutcomeState ||
+    !worldKindSelect || !worldIndexSelect || !worldToggleRevealBtn || !worldReplaceModeSelect ||
+    !worldReplaceCardSelect || !worldCountInput || !worldReplaceBtn || !worldSetCountBtn || !worldHint ||
+    !specialActorPlayerSelect || !specialSourceModeSelect || !specialPickerSelect || !specialTargetPlayerSelect ||
+    !specialTargetCardSelect || !specialThreatIndexSelect || !specialCategorySelect || !specialUseSelfSelect ||
+    !specialDescriptionText || !specialApplyBtn || !specialHint ||
+    !devBotNameInput || !devTargetPlayerSelect || !devAddBotBtn || !devRemoveBotBtn || !devKickBtn ||
+    !devMarkLeftBtn || !devSkipRoundBtn || !devHint ||
+    !controlActorSelect || !controlScenarioAction || !controlTargetRow || !controlTargetSelect ||
+    !controlCardRow || !controlCardSelect || !controlSpecialRow || !controlSpecialSelect ||
+    !controlThreatRow || !controlThreatIndex || !controlOutcomeRow || !controlOutcomeSelect ||
+    !controlDevNameRow || !controlDevNameInput || !controlPayloadJson || !controlExecuteBtn ||
+    !controlActionHint || !controlQuickActions || !controlGuide ||
+    !controlCardPicker || !controlSpecialPicker || !controlThreatPicker
   ) {
     return;
   }
@@ -197,8 +273,23 @@
   let categoryDefs = [...DEFAULT_CATEGORIES];
   let presenterState = null;
   let presenterModeFromState = null;
+  let controlDeckCatalog = {};
+  let specialCatalogCache = [];
+  let presenterActionState = {
+    commandsReady: false,
+    canStartGame: false,
+    canNextStep: false,
+    canSkipStep: false,
+    canStartVote: false,
+    canEndVote: false,
+    canSkipRound: false,
+    canSetOutcome: false,
+    postGameActive: false,
+    postGameOutcome: "",
+  };
   let latestRoomState = null;
   let latestGameView = null;
+  let controlActorPlayerId = "";
   let wsSocket = null;
   let wsPlayerId = "";
   let wsRoomReady = false;
@@ -207,6 +298,69 @@
   let reconnectAttempt = 0;
   let isRealtimeConnected = false;
   let controlRole = "";
+
+  const CONTROL_ACTION_META = {
+    revealCard: {
+      title: "Раскрыть карту",
+      hint: "Выбери игрока и карту из его досье.",
+      guide: "Используй для ручного контроля раскрытий вместо хода игрока.",
+    },
+    applySpecial: {
+      title: "Применить спецусловие",
+      hint: "Выбери спецусловие игрока и, при необходимости, цель.",
+      guide: "Для сложных спецкарт можно дописать payload JSON в Advanced.",
+    },
+    vote: {
+      title: "Проголосовать",
+      hint: "Игрок-исполнитель голосует в выбранную цель.",
+      guide: "Работает только в активной фазе голосования.",
+    },
+    continueRound: {
+      title: "Следующий шаг",
+      hint: "Эквивалент continueRound от имени игрока.",
+      guide: "Переход между шагами раунда без кликов в основной UI.",
+    },
+    finalizeVoting: {
+      title: "Завершить голосование",
+      hint: "Принудительно закрывает окно голосования.",
+      guide: "Выполняется от ведущего.",
+    },
+    revealWorldThreat: {
+      title: "Раскрыть угрозу",
+      hint: "Выбери индекс угрозы мира.",
+      guide: "Удобно для ручного режима и стрим-контроля.",
+    },
+    setBunkerOutcome: {
+      title: "Итог бункера",
+      hint: "Выбери исход пост-игры.",
+      guide: "Используется в фазе финального исхода.",
+    },
+    markLeftBunker: {
+      title: "Во вне бункера",
+      hint: "Переводит выбранного игрока в статус left_bunker.",
+      guide: "Полезно для ручной модерации стола.",
+    },
+    devKickPlayer: {
+      title: "DEV: выгнать игрока",
+      hint: "DEV-команда исключения игрока.",
+      guide: "Только для тестов и отладки сценариев.",
+    },
+    devSkipRound: {
+      title: "DEV: пропустить раунд",
+      hint: "Быстрый пропуск раунда.",
+      guide: "Только для тестов.",
+    },
+    devAddPlayer: {
+      title: "DEV: добавить бота",
+      hint: "Добавляет бота в текущую комнату.",
+      guide: "Имя можно задать ниже.",
+    },
+    devRemovePlayer: {
+      title: "DEV: удалить бота",
+      hint: "Удаляет выбранного бота/игрока (DEV).",
+      guide: "Только для тестовых сценариев.",
+    },
+  };
   renderConnectionStatus();
 
   const isRecord = (v) => Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -290,6 +444,7 @@
       SET_OUTCOME_FAILED: "Не выжил",
       SKIP_ROUND: "Пропустить раунд",
       KICK_PLAYER: "Выгнать игрока",
+      SCENARIO_ACTION: "Сценарное действие",
     };
     return map[String(action)] || String(action || "команда");
   }
@@ -298,6 +453,17 @@
     const connectedText = isRealtimeConnected && wsRoomReady ? "да" : "нет";
     const roleText = controlRole || "-";
     controlConnection.textContent = `Подключено: ${connectedText} • Роль: ${roleText} • Комната: ${connectedRoomCode || roomCode || "-"}`;
+  }
+
+  function switchControlTab(tab) {
+    const isGameTab = tab === "game";
+    gameControlTab.hidden = !isGameTab;
+    obsControlTab.hidden = isGameTab;
+    sidebarPlayerActions.hidden = !isGameTab;
+    gameControlTabBtn.classList.toggle("is-active", isGameTab);
+    obsControlTabBtn.classList.toggle("is-active", !isGameTab);
+    gameControlTabBtn.setAttribute("aria-selected", isGameTab ? "true" : "false");
+    obsControlTabBtn.setAttribute("aria-selected", isGameTab ? "false" : "true");
   }
 
   function mergeTopLevel(base, patch) {
@@ -1129,6 +1295,902 @@
     syncExtraTextsJson();
   }
 
+  function getPresenterControlPlayers() {
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    if (!presenter) return [];
+    const control = isRecord(presenter.control) ? presenter.control : {};
+    const playersDetailed = Array.isArray(control.players) ? control.players : [];
+    if (playersDetailed.length > 0) return playersDetailed;
+    const playersFallback = Array.isArray(presenter.players) ? presenter.players : [];
+    return playersFallback.map((player) => ({
+      playerId: String(player.playerId || ""),
+      name: String(player.name || player.playerId || "Игрок"),
+      status: String(player.status || "alive"),
+      hand: [],
+      specialConditions: [],
+    }));
+  }
+
+  function getPresenterControlWorld() {
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    if (!presenter) return null;
+    const control = isRecord(presenter.control) ? presenter.control : {};
+    return isRecord(control.world) ? control.world : null;
+  }
+
+  function getDeckCards(deckName) {
+    const key = String(deckName || "").trim();
+    if (!key || !isRecord(controlDeckCatalog) || !Array.isArray(controlDeckCatalog[key])) return [];
+    return controlDeckCatalog[key]
+      .filter((entry) => isRecord(entry) && String(entry.id || "").trim())
+      .map((entry) => ({
+        id: String(entry.id),
+        labelShort: String(entry.labelShort || entry.id),
+        text: String(entry.text || entry.description || ""),
+      }));
+  }
+
+  function getPresenterSpecialCatalog() {
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    const control = presenter && isRecord(presenter.control) ? presenter.control : null;
+    const rawCatalog = control && Array.isArray(control.specialCatalog) ? control.specialCatalog : [];
+    return rawCatalog
+      .filter((entry) => isRecord(entry))
+      .map((entry) => ({
+        id: String(entry.id || "").trim(),
+        title: String(entry.title || entry.id || "").trim(),
+        text: String(entry.text || "").trim(),
+        implemented: entry.implemented !== false,
+        choiceKind: String(entry.choiceKind || "").trim(),
+        targetScope: String(entry.targetScope || "").trim(),
+        allowSelfTarget: Boolean(entry.allowSelfTarget),
+        effectType: String(entry.effectType || "").trim(),
+        requires: Array.isArray(entry.requires)
+          ? entry.requires.map((item) => String(item || "").trim()).filter(Boolean)
+          : [],
+      }))
+      .filter((entry) => entry.id && entry.title);
+  }
+
+  function findDeckNameByCardId(cardId) {
+    const requested = String(cardId || "").trim();
+    if (!requested || !isRecord(controlDeckCatalog)) return "";
+    for (const [deckName, cards] of Object.entries(controlDeckCatalog)) {
+      if (!Array.isArray(cards)) continue;
+      if (cards.some((card) => isRecord(card) && String(card.id || "") === requested)) {
+        return deckName;
+      }
+    }
+    return "";
+  }
+
+  function detectWorldDeckName(kind, world) {
+    if (!isRecord(world)) return "";
+    if (kind === "disaster") {
+      return findDeckNameByCardId(String(world.disaster?.imageId || ""));
+    }
+    const list = kind === "bunker" ? world.bunker : world.threats;
+    if (!Array.isArray(list) || list.length === 0) return "";
+    for (const card of list) {
+      const found = findDeckNameByCardId(String(card?.imageId || ""));
+      if (found) return found;
+    }
+    return "";
+  }
+
+  function getCommandsReady() {
+    return isRealtimeConnected && wsRoomReady && controlRole === "CONTROL";
+  }
+
+  function renderCardReplaceBlock() {
+    const players = getPresenterControlPlayers();
+    const options = players.map((player) => ({
+      value: String(player.playerId),
+      label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+    }));
+    const preferredPlayer = String(replaceTargetPlayerSelect.value || selectedPlayerId || options[0]?.value || "");
+    fillSelectOptions(replaceTargetPlayerSelect, options, preferredPlayer);
+    const targetPlayerId = String(replaceTargetPlayerSelect.value || "");
+    const target = players.find((player) => String(player.playerId) === targetPlayerId) || null;
+    const hand = Array.isArray(target?.hand) ? target.hand : [];
+    const specials = Array.isArray(target?.specialConditions) ? target.specialConditions : [];
+    const combinedCards = [
+      ...hand.map((card) => ({
+        area: "hand",
+        instanceId: String(card.instanceId || ""),
+        label: `${String(card.deck || "-")} • ${String(card.labelShort || card.instanceId || "карта")} ${card.revealed ? "(открыта)" : "(скрыта)"}`,
+        deck: String(card.deck || ""),
+      })),
+      ...specials.map((special) => ({
+        area: "special",
+        instanceId: String(special.instanceId || ""),
+        label: `Особое • ${String(special.title || special.instanceId || "спецусловие")}${special.used ? " (исп.)" : ""}`,
+        deck: "Особые условия",
+      })),
+    ].filter((entry) => entry.instanceId);
+
+    fillSelectOptions(
+      replaceCardSelect,
+      combinedCards.map((entry) => ({
+        value: `${entry.area}:${entry.instanceId}`,
+        label: entry.label,
+      })),
+      String(replaceCardSelect.value || "")
+    );
+
+    const selectedRaw = String(replaceCardSelect.value || "");
+    const splitIndex = selectedRaw.indexOf(":");
+    const selectedArea =
+      splitIndex > 0 ? String(selectedRaw.slice(0, splitIndex)).trim().toLowerCase() : "hand";
+    const selectedInstanceId =
+      splitIndex > 0 ? String(selectedRaw.slice(splitIndex + 1)).trim() : selectedRaw.trim();
+    const selectedCard = hand.find((card) => String(card.instanceId) === selectedInstanceId) || null;
+    const selectedSpecial =
+      selectedArea === "special"
+        ? specials.find((special) => String(special.instanceId) === selectedInstanceId) || null
+        : null;
+    const presenterSpecialCatalog = getPresenterSpecialCatalog();
+    const deckCards =
+      selectedArea === "special"
+        ? presenterSpecialCatalog
+            .filter((entry) => entry.implemented)
+            .map((entry) => ({ id: entry.id, labelShort: entry.title }))
+        : getDeckCards(selectedCard?.deck || "");
+    fillSelectOptions(
+      replaceSpecificCardSelect,
+      deckCards.map((card) => ({
+        value: card.id,
+        label: card.labelShort,
+      })),
+      String(replaceSpecificCardSelect.value || "")
+    );
+    const isSpecific = String(replaceModeSelect.value || "random") === "specific";
+    replaceSpecificCardSelect.disabled = !isSpecific || deckCards.length === 0;
+    const commandsReady = getCommandsReady();
+    const hasSelection = selectedArea === "special" ? Boolean(selectedSpecial) : Boolean(selectedCard);
+    replaceExecuteBtn.disabled = !commandsReady || !hasSelection;
+    const modeText = isSpecific ? "конкретная карта" : "случайная карта";
+    replaceHint.textContent = hasSelection
+      ? `Игрок: ${fixMojibake(String(target?.name || targetPlayerId), "Игрок")} • Источник: ${
+          selectedArea === "special"
+            ? "особое условие"
+            : `карта (${String(selectedCard?.deck || "-")})`
+        } • Режим: ${modeText}.`
+      : "Сначала выбери карту игрока для замены.";
+  }
+
+  function renderVotingBlock() {
+    const state = presenterActionState;
+    voteOutcomeRow.hidden = !state.postGameActive;
+    voteOutcomeState.textContent =
+      state.postGameOutcome === "survived"
+        ? "Исход: Выжил в бункере."
+        : state.postGameOutcome === "failed"
+          ? "Исход: Не выжил."
+          : "Исход не выбран.";
+    voteStartGameBtn.disabled = !state.commandsReady || !state.canStartGame;
+    voteNextStepBtn.disabled = !state.commandsReady || !state.canNextStep;
+    voteSkipStepBtn.disabled = !state.commandsReady || !state.canSkipStep;
+    voteStartBtn.disabled = !state.commandsReady || !state.canStartVote;
+    voteEndBtn.disabled = !state.commandsReady || !state.canEndVote;
+    voteSkipRoundBtn.disabled = !state.commandsReady || !state.canSkipRound;
+    voteOutcomeSurvivedBtn.disabled = !state.commandsReady || !state.canSetOutcome;
+    voteOutcomeFailedBtn.disabled = !state.commandsReady || !state.canSetOutcome;
+  }
+
+  function renderWorldBlock() {
+    const world = getPresenterControlWorld();
+    const kind = String(worldKindSelect.value || "threat");
+    const list =
+      kind === "disaster"
+        ? [{ index: 0, title: String(world?.disaster?.title || "Катастрофа"), isRevealed: true, imageId: String(world?.disaster?.imageId || "") }]
+        : Array.isArray(world?.[kind === "bunker" ? "bunker" : "threats"])
+          ? world[kind === "bunker" ? "bunker" : "threats"]
+          : [];
+    fillSelectOptions(
+      worldIndexSelect,
+      list.map((card) => ({
+        value: String(card.index ?? 0),
+        label: `#${Number(card.index ?? 0) + 1} • ${String(card.title || "Карта")}`,
+      })),
+      String(worldIndexSelect.value || "")
+    );
+    worldIndexSelect.disabled = kind === "disaster";
+
+    const deckName = detectWorldDeckName(kind, world);
+    const deckCards = getDeckCards(deckName);
+    fillSelectOptions(
+      worldReplaceCardSelect,
+      deckCards.map((card) => ({ value: card.id, label: card.labelShort })),
+      String(worldReplaceCardSelect.value || "")
+    );
+    const isSpecific = String(worldReplaceModeSelect.value || "random") === "specific";
+    worldReplaceCardSelect.disabled = !isSpecific || deckCards.length === 0;
+    const selectedIndex = Number(worldIndexSelect.value);
+    const selectedCard =
+      kind === "disaster"
+        ? list[0] || null
+        : list.find((card) => Number(card.index) === selectedIndex) || null;
+
+    const maxCount =
+      kind === "bunker"
+        ? Array.isArray(world?.bunker) ? world.bunker.length : 0
+        : kind === "threat"
+          ? Array.isArray(world?.threats) ? world.threats.length : 0
+          : 0;
+    worldCountInput.disabled = kind === "disaster";
+    if (kind !== "disaster") {
+      worldCountInput.max = String(maxCount);
+      const currentCount =
+        kind === "bunker"
+          ? Number(world?.counts?.bunker ?? world?.bunker?.length ?? 0)
+          : Number(world?.counts?.threats ?? world?.threats?.length ?? 0);
+      worldCountInput.value = String(currentCount);
+    } else {
+      worldCountInput.value = "";
+    }
+
+    const commandsReady = getCommandsReady();
+    const isRevealAvailable = kind !== "disaster" && Boolean(selectedCard);
+    worldToggleRevealBtn.disabled = !commandsReady || !isRevealAvailable;
+    worldToggleRevealBtn.textContent =
+      selectedCard && selectedCard.isRevealed ? "Скрыть карту" : "Раскрыть карту";
+    worldReplaceBtn.disabled = !commandsReady || list.length === 0;
+    worldSetCountBtn.disabled = !commandsReady || kind === "disaster";
+    const revealStateText =
+      selectedCard && kind !== "disaster"
+        ? selectedCard.isRevealed
+          ? "Карта сейчас раскрыта."
+          : "Карта сейчас скрыта."
+        : "Выбери карту мира.";
+    worldHint.textContent = deckName
+      ? `${revealStateText} Колода мира: ${deckName}.`
+      : `${revealStateText} Колода мира определяется автоматически по текущим картам.`;
+  }
+
+  function buildSpecialCatalog(players) {
+    const catalog = [];
+    const seenOwned = new Set();
+    for (const player of players) {
+      const specials = Array.isArray(player.specialConditions) ? player.specialConditions : [];
+      for (const special of specials) {
+        const instanceId = String(special.instanceId || "").trim();
+        if (!instanceId || seenOwned.has(instanceId)) continue;
+        seenOwned.add(instanceId);
+        const scope = String(special.targetScope || special.choiceKind || "");
+        const text = String(special.text || "").trim();
+        catalog.push({
+          mode: "owned",
+          value: instanceId,
+          actorPlayerId: String(player.playerId || ""),
+          title: String(special.title || instanceId),
+          text: text || "Описание отсутствует.",
+          scope,
+          choiceKind: String(special.choiceKind || "").trim(),
+          targetScope: String(special.targetScope || "").trim(),
+          allowSelfTarget: Boolean(special.allowSelfTarget),
+          effectType: String(special.effectType || "").trim(),
+          requires: Array.isArray(special.requires)
+            ? special.requires.map((item) => String(item || "").trim()).filter(Boolean)
+            : [],
+          used: Boolean(special.used),
+          implemented: Boolean(special.implemented),
+        });
+      }
+    }
+    const fromScenarioCatalog = getPresenterSpecialCatalog().map((entry) => ({
+      mode: "catalog",
+      value: entry.id,
+      actorPlayerId: "",
+      title: entry.title,
+      text: entry.text || "Описание отсутствует.",
+      scope: String(entry.targetScope || entry.choiceKind || "").trim(),
+      choiceKind: String(entry.choiceKind || "").trim(),
+      targetScope: String(entry.targetScope || "").trim(),
+      allowSelfTarget: Boolean(entry.allowSelfTarget),
+      effectType: String(entry.effectType || "").trim(),
+      requires: Array.isArray(entry.requires) ? entry.requires : [],
+      used: false,
+      implemented: entry.implemented !== false,
+    }));
+    catalog.push(...fromScenarioCatalog);
+    if (fromScenarioCatalog.length === 0) {
+      const fallbackDeck = getDeckCards("Особые условия").map((card) => ({
+        mode: "catalog",
+        value: card.labelShort,
+        actorPlayerId: "",
+        title: card.labelShort,
+        text: String(card.text || "").trim() || "Описание карты недоступно для текущего сценария.",
+        scope: "",
+        choiceKind: "",
+        targetScope: "",
+        allowSelfTarget: false,
+        effectType: "",
+        requires: [],
+        used: false,
+        implemented: true,
+      }));
+      catalog.push(...fallbackDeck);
+    }
+    return catalog;
+  }
+
+  function getSpecialFieldRequirements(entry) {
+    const mode = String(specialSourceModeSelect.value || "owned");
+    if (!entry) {
+      return {
+        showActor: mode !== "catalog",
+        needTargetPlayer: false,
+        needBaggageCard: false,
+        needBunkerIndex: false,
+        needCategory: false,
+        needUseSelf: false,
+      };
+    }
+    const choiceKind = String(entry.choiceKind || "").trim().toLowerCase();
+    const targetScope = String(entry.targetScope || "").trim().toLowerCase();
+    const effectType = String(entry.effectType || "").trim().toLowerCase();
+    const requires = Array.isArray(entry.requires)
+      ? entry.requires.map((item) => String(item || "").trim().toLowerCase())
+      : [];
+    const requiresText = requires.join(" ");
+
+    const needTargetPlayer =
+      choiceKind === "player" ||
+      targetScope === "player" ||
+      targetScope === "others" ||
+      targetScope === "alive_others" ||
+      targetScope === "neighbors" ||
+      requiresText.includes("target") ||
+      requiresText.includes("neighbor");
+
+    const needBaggageCard =
+      effectType.includes("baggage") || requires.includes("targethasbaggage");
+    const needBunkerIndex =
+      choiceKind === "bunker" ||
+      effectType.includes("bunker") ||
+      effectType.includes("revealedcard");
+    const needCategory =
+      choiceKind === "category" ||
+      effectType.includes("category") ||
+      effectType.includes("revealedcategory");
+    const needUseSelf =
+      Boolean(entry.allowSelfTarget) ||
+      targetScope === "player" ||
+      choiceKind === "player";
+
+    return {
+      showActor: mode !== "catalog",
+      needTargetPlayer,
+      needBaggageCard,
+      needBunkerIndex,
+      needCategory,
+      needUseSelf,
+    };
+  }
+
+  function applySpecialFieldVisibility({
+    showActor,
+    needTargetPlayer,
+    needBaggageCard,
+    needBunkerIndex,
+    needCategory,
+    needUseSelf,
+  }) {
+    const actorField = specialActorPlayerSelect.closest("label.field");
+    const targetPlayerField = specialTargetPlayerSelect.closest("label.field");
+    const targetCardField = specialTargetCardSelect.closest("label.field");
+    const bunkerIndexField = specialThreatIndexSelect.closest("label.field");
+    const categoryField = specialCategorySelect.closest("label.field");
+    const useSelfField = specialUseSelfSelect.closest("label.field");
+
+    if (actorField) actorField.hidden = !showActor;
+    if (targetPlayerField) targetPlayerField.hidden = !needTargetPlayer;
+    if (targetCardField) targetCardField.hidden = !needBaggageCard;
+    if (bunkerIndexField) bunkerIndexField.hidden = !needBunkerIndex;
+    if (categoryField) categoryField.hidden = !needCategory;
+    if (useSelfField) useSelfField.hidden = !needUseSelf;
+
+    specialActorPlayerSelect.disabled = !showActor;
+    specialTargetPlayerSelect.disabled = !needTargetPlayer;
+    specialTargetCardSelect.disabled = !needBaggageCard;
+    specialThreatIndexSelect.disabled = !needBunkerIndex;
+    specialCategorySelect.disabled = !needCategory;
+    specialUseSelfSelect.disabled = !needUseSelf;
+  }
+
+  function renderSpecialBlock() {
+    const players = getPresenterControlPlayers();
+    const mode = String(specialSourceModeSelect.value || "owned");
+    const hostId = String(presenterState?.hostId || "");
+    const preferredActor =
+      mode === "catalog"
+        ? String(hostId || specialActorPlayerSelect.value || selectedPlayerId || "")
+        : String(specialActorPlayerSelect.value || selectedPlayerId || "");
+    fillSelectOptions(
+      specialActorPlayerSelect,
+      players.map((player) => ({
+        value: String(player.playerId),
+        label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+      })),
+      preferredActor
+    );
+    if (mode === "catalog" && hostId) {
+      specialActorPlayerSelect.value = hostId;
+    }
+    fillSelectOptions(
+      specialTargetPlayerSelect,
+      players.map((player) => ({
+        value: String(player.playerId),
+        label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+      })),
+      String(specialTargetPlayerSelect.value || selectedPlayerId || "")
+    );
+
+    const targetPlayerId = String(specialTargetPlayerSelect.value || "");
+    const targetPlayer = players.find((player) => String(player.playerId) === targetPlayerId) || null;
+    const targetCards = Array.isArray(targetPlayer?.hand)
+      ? targetPlayer.hand.filter((card) => String(card.deck || "") === "Багаж")
+      : [];
+    fillSelectOptions(
+      specialTargetCardSelect,
+      targetCards.map((card) => ({
+        value: String(card.instanceId || ""),
+        label: `${String(card.labelShort || card.instanceId || "багаж")} ${card.revealed ? "(открыт)" : "(скрыт)"}`,
+      })),
+      String(specialTargetCardSelect.value || "")
+    );
+
+    const world = getPresenterControlWorld();
+    fillSelectOptions(
+      specialThreatIndexSelect,
+      Array.isArray(world?.bunker)
+        ? world.bunker.map((card) => ({
+            value: String(card.index),
+            label: `#${Number(card.index) + 1} • ${String(card.title || "Карта бункера")}`,
+          }))
+        : [],
+      String(specialThreatIndexSelect.value || "")
+    );
+
+    specialCatalogCache = buildSpecialCatalog(players);
+    const actorPlayerId = String(specialActorPlayerSelect.value || "");
+    const availableSpecials = specialCatalogCache.filter((entry) =>
+      mode === "owned" ? entry.mode === "owned" && entry.actorPlayerId === actorPlayerId : entry.mode === "catalog"
+    );
+    fillSelectOptions(
+      specialPickerSelect,
+      availableSpecials.map((entry) => ({
+        value: String(entry.value),
+        label:
+          mode === "owned"
+            ? `${String(entry.title)}${entry.used ? " (исп.)" : ""}`
+            : String(entry.title),
+      })),
+      String(specialPickerSelect.value || "")
+    );
+    const picked = availableSpecials.find((entry) => String(entry.value) === String(specialPickerSelect.value || ""));
+    const requirements = getSpecialFieldRequirements(picked);
+    applySpecialFieldVisibility(requirements);
+    specialDescriptionText.value = String(picked?.text || "Описание карты недоступно.");
+    const commandsReady = getCommandsReady();
+    specialApplyBtn.disabled = !commandsReady || !picked;
+    const sourceHint =
+      mode === "owned"
+        ? "карта выбранного игрока"
+        : "каталог (от лица ведущего)";
+    const fieldsHint = [];
+    if (requirements.needTargetPlayer) fieldsHint.push("цель");
+    if (requirements.needBaggageCard) fieldsHint.push("багаж цели");
+    if (requirements.needBunkerIndex) fieldsHint.push("индекс карты бункера");
+    if (requirements.needCategory) fieldsHint.push("категория");
+    specialHint.textContent = picked
+      ? `Источник: ${sourceHint}${picked.scope ? ` • Цель: ${picked.scope}` : ""}${
+          fieldsHint.length ? ` • Параметры: ${fieldsHint.join(", ")}` : ""
+        }.`
+      : "Выбери спецусловие для применения.";
+  }
+
+  function renderDevBlock() {
+    const players = getPresenterControlPlayers();
+    const controlId = String(presenterState?.controlId || "");
+    const preferredTarget = String(devTargetPlayerSelect.value || selectedPlayerId || "");
+    fillSelectOptions(
+      devTargetPlayerSelect,
+      players.map((player) => ({
+        value: String(player.playerId),
+        label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+      })),
+      preferredTarget
+    );
+    if (String(devTargetPlayerSelect.value || "") === controlId) {
+      const fallback = players.find((player) => String(player.playerId) !== controlId);
+      if (fallback) {
+        devTargetPlayerSelect.value = String(fallback.playerId);
+      }
+    }
+    const commandsReady = getCommandsReady();
+    devAddBotBtn.disabled = !commandsReady;
+    devRemoveBotBtn.disabled = !commandsReady;
+    devKickBtn.disabled = !commandsReady;
+    devMarkLeftBtn.disabled = !commandsReady;
+    devSkipRoundBtn.disabled = !commandsReady;
+    const selected = String(devTargetPlayerSelect.value || "").trim();
+    devHint.textContent = selected ? `Выбранный игрок: ${selected}` : "Выбери игрока для dev-команд.";
+  }
+
+  function renderHostBlocks() {
+    renderCardReplaceBlock();
+    renderVotingBlock();
+    renderWorldBlock();
+    renderSpecialBlock();
+    renderDevBlock();
+  }
+
+  function fillSelectOptions(select, entries, keepValue = "") {
+    const current = keepValue || String(select.value || "");
+    select.textContent = "";
+    if (!entries || entries.length === 0) {
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "Нет доступных вариантов";
+      select.append(emptyOption);
+      select.selectedIndex = 0;
+      return;
+    }
+    let hasCurrent = false;
+    for (const entry of entries) {
+      const option = document.createElement("option");
+      option.value = String(entry.value ?? "");
+      option.textContent = String(entry.label ?? entry.value ?? "");
+      if (option.value === current) {
+        option.selected = true;
+        hasCurrent = true;
+      }
+      select.append(option);
+    }
+    if (!hasCurrent && select.options.length > 0) {
+      select.selectedIndex = 0;
+    }
+  }
+
+  function getScenarioActionConfig(actionType) {
+    const config = {
+      revealCard: { needsTarget: false, needsCard: true, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "actor", picker: "card" },
+      applySpecial: { needsTarget: true, needsCard: true, needsSpecial: true, needsThreat: true, needsOutcome: false, needsDevName: false, actorMode: "actor", picker: "special" },
+      vote: { needsTarget: true, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "actor", picker: null },
+      continueRound: { needsTarget: false, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "actor", picker: null },
+      finalizeVoting: { needsTarget: false, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "host", picker: null },
+      revealWorldThreat: { needsTarget: false, needsCard: false, needsSpecial: false, needsThreat: true, needsOutcome: false, needsDevName: false, actorMode: "host", picker: "threat" },
+      setBunkerOutcome: { needsTarget: false, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: true, needsDevName: false, actorMode: "host", picker: null },
+      markLeftBunker: { needsTarget: true, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "host", picker: null },
+      devKickPlayer: { needsTarget: true, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "host", picker: null },
+      devSkipRound: { needsTarget: false, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "host", picker: null },
+      devAddPlayer: { needsTarget: false, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: true, actorMode: "host", picker: null },
+      devRemovePlayer: { needsTarget: true, needsCard: false, needsSpecial: false, needsThreat: false, needsOutcome: false, needsDevName: false, actorMode: "host", picker: null },
+    };
+    return config[actionType] || config.revealCard;
+  }
+
+  function resolveAssetPreviewUrl(rawId, fallbackImgUrl = "") {
+    const id = String(rawId || "").trim();
+    if (id) {
+      if (id.startsWith("http://") || id.startsWith("https://")) return id;
+      if (id.startsWith("/")) return id;
+      return `/assets/${id}`;
+    }
+    const imgUrl = String(fallbackImgUrl || "").trim();
+    if (!imgUrl) return "";
+    if (imgUrl.startsWith("http://") || imgUrl.startsWith("https://") || imgUrl.startsWith("/")) return imgUrl;
+    return `/assets/${imgUrl}`;
+  }
+
+  function renderQuickActions(activeActionType) {
+    const options = Array.from(controlScenarioAction.options || []);
+    controlQuickActions.textContent = "";
+    for (const option of options) {
+      const actionType = String(option.value || "");
+      if (!actionType) continue;
+      const meta = CONTROL_ACTION_META[actionType] || {
+        title: String(option.textContent || actionType),
+        hint: "",
+        guide: "",
+      };
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `control-quick-btn${actionType === activeActionType ? " is-active" : ""}`;
+      btn.dataset.actionType = actionType;
+
+      const title = document.createElement("span");
+      title.className = "control-quick-btn__title";
+      title.textContent = meta.title;
+      const hint = document.createElement("span");
+      hint.className = "control-quick-btn__hint";
+      hint.textContent = meta.hint;
+      btn.append(title, hint);
+      controlQuickActions.append(btn);
+    }
+  }
+
+  function buildPickerCard(title, metaText, imageUrl, isActive) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `picker-card${isActive ? " is-active" : ""}`;
+    const img = document.createElement("div");
+    img.className = "picker-card__img";
+    if (imageUrl) img.style.backgroundImage = `url("${imageUrl}")`;
+    const body = document.createElement("div");
+    body.className = "picker-card__body";
+    const titleEl = document.createElement("div");
+    titleEl.className = "picker-card__title";
+    titleEl.textContent = title;
+    const metaEl = document.createElement("div");
+    metaEl.className = "picker-card__meta";
+    metaEl.textContent = metaText;
+    body.append(titleEl, metaEl);
+    btn.append(img, body);
+    return btn;
+  }
+
+  function renderCardPicker(actorCards, selectedCardId, isVisible) {
+    controlCardPicker.hidden = !isVisible;
+    controlCardPicker.textContent = "";
+    if (!isVisible) return;
+    const title = document.createElement("div");
+    title.className = "control-pickers__title";
+    title.textContent = "Быстрый выбор карты";
+    controlCardPicker.append(title);
+    const grid = document.createElement("div");
+    grid.className = "control-pickers__grid";
+    for (const card of actorCards) {
+      const cardId = String(card.instanceId || "");
+      const imageUrl = resolveAssetPreviewUrl(card.id);
+      const btn = buildPickerCard(
+        `${String(card.deck || "-")} • ${String(card.labelShort || cardId || "Карта")}`,
+        card.revealed ? "Открыта" : "Скрыта",
+        imageUrl,
+        cardId === selectedCardId
+      );
+      btn.dataset.cardId = cardId;
+      grid.append(btn);
+    }
+    if (grid.children.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "hint";
+      empty.textContent = "У выбранного игрока нет доступных карт.";
+      controlCardPicker.append(empty);
+      return;
+    }
+    controlCardPicker.append(grid);
+  }
+
+  function renderSpecialPicker(actorSpecials, selectedSpecialId, isVisible) {
+    controlSpecialPicker.hidden = !isVisible;
+    controlSpecialPicker.textContent = "";
+    if (!isVisible) return;
+    const title = document.createElement("div");
+    title.className = "control-pickers__title";
+    title.textContent = "Быстрый выбор спецусловия";
+    controlSpecialPicker.append(title);
+    const grid = document.createElement("div");
+    grid.className = "control-pickers__grid";
+    for (const special of actorSpecials) {
+      const specialId = String(special.instanceId || "");
+      const imageUrl = resolveAssetPreviewUrl("", special.imgUrl);
+      const metaText = special.used ? "Уже использовано" : "Готово к применению";
+      const btn = buildPickerCard(
+        String(special.title || specialId || "Спецусловие"),
+        metaText,
+        imageUrl,
+        specialId === selectedSpecialId
+      );
+      btn.dataset.specialId = specialId;
+      grid.append(btn);
+    }
+    if (grid.children.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "hint";
+      empty.textContent = "У выбранного игрока нет спецусловий.";
+      controlSpecialPicker.append(empty);
+      return;
+    }
+    controlSpecialPicker.append(grid);
+  }
+
+  function renderThreatPicker(world, selectedThreatIndex, isVisible, actionType = "") {
+    controlThreatPicker.hidden = !isVisible;
+    controlThreatPicker.textContent = "";
+    if (!isVisible) return;
+    const title = document.createElement("div");
+    title.className = "control-pickers__title";
+    title.textContent =
+      actionType === "applySpecial"
+        ? "Быстрый выбор карты бункера (индекс)"
+        : "Быстрый выбор угрозы";
+    controlThreatPicker.append(title);
+    const sourceCards =
+      actionType === "applySpecial"
+        ? (Array.isArray(world?.bunker) ? world.bunker : [])
+        : (Array.isArray(world?.threats) ? world.threats : []);
+    const grid = document.createElement("div");
+    grid.className = "control-pickers__grid";
+    for (const worldCard of sourceCards) {
+      const indexText = String(worldCard.index);
+      const imageUrl = resolveAssetPreviewUrl(worldCard.imageId);
+      const btn = buildPickerCard(
+        `#${Number(worldCard.index) + 1} • ${String(worldCard.title || "Карта")}`,
+        worldCard.isRevealed ? "Открыта" : "Скрыта",
+        imageUrl,
+        indexText === selectedThreatIndex
+      );
+      btn.dataset.threatIndex = indexText;
+      grid.append(btn);
+    }
+    if (grid.children.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "hint";
+      empty.textContent = "Угрозы недоступны в текущем состоянии.";
+      controlThreatPicker.append(empty);
+      return;
+    }
+    controlThreatPicker.append(grid);
+  }
+
+  function renderScenarioActionEditor() {
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    const players = getPresenterControlPlayers();
+    const world = getPresenterControlWorld();
+    const hostId = String(presenter?.hostId || "");
+
+    if (!controlActorPlayerId || !players.some((player) => String(player.playerId) === controlActorPlayerId)) {
+      controlActorPlayerId =
+        selectedPlayerId && players.some((player) => String(player.playerId) === selectedPlayerId)
+          ? selectedPlayerId
+          : String(players[0]?.playerId || hostId || "");
+    }
+
+    fillSelectOptions(
+      controlActorSelect,
+      players.map((player) => ({
+        value: String(player.playerId),
+        label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+      })),
+      controlActorPlayerId
+    );
+    controlActorPlayerId = String(controlActorSelect.value || controlActorPlayerId || "");
+
+    const actor = players.find((player) => String(player.playerId) === controlActorPlayerId) || null;
+    const actorCards = Array.isArray(actor?.hand) ? actor.hand : [];
+    const actorSpecials = Array.isArray(actor?.specialConditions) ? actor.specialConditions : [];
+
+    fillSelectOptions(
+      controlTargetSelect,
+      players.map((player) => ({
+        value: String(player.playerId),
+        label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+      })),
+      String(controlTargetSelect.value || selectedPlayerId || "")
+    );
+    fillSelectOptions(
+      controlCardSelect,
+      actorCards.map((card) => ({
+        value: String(card.instanceId || ""),
+        label: `${String(card.deck || "-")} • ${String(card.labelShort || card.instanceId || "карта")} ${card.revealed ? "(открыта)" : "(скрыта)"}`,
+      })),
+      String(controlCardSelect.value || "")
+    );
+    fillSelectOptions(
+      controlSpecialSelect,
+      actorSpecials.map((special) => ({
+        value: String(special.instanceId || ""),
+        label: `${String(special.title || special.instanceId || "спецусловие")} ${special.used ? "(исп.)" : ""}`,
+      })),
+      String(controlSpecialSelect.value || "")
+    );
+    fillSelectOptions(
+      controlThreatIndex,
+      Array.isArray(world?.threats)
+        ? world.threats.map((threat) => ({
+            value: String(threat.index),
+            label: `#${threat.index + 1} • ${String(threat.title || "Угроза")} ${threat.isRevealed ? "(открыта)" : "(скрыта)"}`,
+          }))
+        : [],
+      String(controlThreatIndex.value || "")
+    );
+
+    const actionType = String(controlScenarioAction.value || "revealCard");
+    const config = getScenarioActionConfig(actionType);
+    const meta = CONTROL_ACTION_META[actionType];
+    renderQuickActions(actionType);
+    controlTargetRow.hidden = !config.needsTarget;
+    controlCardRow.hidden = !config.needsCard;
+    controlSpecialRow.hidden = !config.needsSpecial;
+    controlThreatRow.hidden = !config.needsThreat;
+    controlOutcomeRow.hidden = !config.needsOutcome;
+    controlDevNameRow.hidden = !config.needsDevName;
+
+    renderCardPicker(actorCards, String(controlCardSelect.value || ""), Boolean(config.needsCard));
+    renderSpecialPicker(actorSpecials, String(controlSpecialSelect.value || ""), Boolean(config.needsSpecial));
+    renderThreatPicker(world, String(controlThreatIndex.value || ""), Boolean(config.needsThreat), actionType);
+
+    const actorName = actor ? fixMojibake(String(actor.name || actor.playerId || "Игрок"), "Игрок") : "-";
+    const actorLabel = config.actorMode === "host" ? "ведущий (host)" : actorName;
+    const shortHint = meta?.hint ? ` ${meta.hint}` : "";
+    controlActionHint.textContent = `Действие будет отправлено как: ${actorLabel}.${shortHint}`;
+    controlGuide.textContent = meta?.guide || "Выбери действие, затем параметры ниже.";
+  }
+
+  function buildScenarioControlRequest() {
+    const actionType = String(controlScenarioAction.value || "").trim();
+    if (!actionType) throw new Error("Выберите сценарное действие.");
+    const config = getScenarioActionConfig(actionType);
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    const hostId = String(presenter?.hostId || "");
+    const actorPlayerId =
+      config.actorMode === "host"
+        ? hostId
+        : String(controlActorSelect.value || controlActorPlayerId || hostId || "");
+    if (!actorPlayerId) throw new Error("Не удалось определить игрока-исполнителя.");
+
+    const payload = {};
+    if (actionType === "revealCard") {
+      const cardId = String(controlCardSelect.value || "").trim();
+      if (!cardId) throw new Error("Выберите карту для раскрытия.");
+      payload.cardId = cardId;
+    } else if (actionType === "applySpecial") {
+      const specialInstanceId = String(controlSpecialSelect.value || "").trim();
+      if (!specialInstanceId) throw new Error("Выберите спецусловие.");
+      payload.specialInstanceId = specialInstanceId;
+      const specialPayload = {};
+      const targetPlayerId = String(controlTargetSelect.value || "").trim();
+      if (targetPlayerId) specialPayload.targetPlayerId = targetPlayerId;
+      const cardId = String(controlCardSelect.value || "").trim();
+      if (cardId) specialPayload.baggageCardId = cardId;
+      const threatOrBunkerIndex = Number(controlThreatIndex.value);
+      if (Number.isInteger(threatOrBunkerIndex) && threatOrBunkerIndex >= 0) {
+        specialPayload.bunkerIndex = threatOrBunkerIndex;
+      }
+      payload.payload = specialPayload;
+    } else if (actionType === "vote") {
+      const targetPlayerId = String(controlTargetSelect.value || "").trim();
+      if (!targetPlayerId) throw new Error("Выберите цель голосования.");
+      payload.targetPlayerId = targetPlayerId;
+    } else if (actionType === "revealWorldThreat") {
+      const index = Number(controlThreatIndex.value);
+      if (!Number.isInteger(index) || index < 0) throw new Error("Выберите корректный индекс угрозы.");
+      payload.index = index;
+    } else if (actionType === "setBunkerOutcome") {
+      payload.outcome = String(controlOutcomeSelect.value || "survived");
+    } else if (actionType === "markLeftBunker" || actionType === "devKickPlayer" || actionType === "devRemovePlayer") {
+      const targetPlayerId = String(controlTargetSelect.value || "").trim();
+      if (!targetPlayerId) throw new Error("Выберите целевого игрока.");
+      payload.targetPlayerId = targetPlayerId;
+    } else if (actionType === "devAddPlayer") {
+      const name = String(controlDevNameInput.value || "").trim();
+      if (name) payload.name = name;
+    }
+
+    const rawJson = String(controlPayloadJson.value || "").trim();
+    if (rawJson) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        throw new Error("payload JSON: неверный формат.");
+      }
+      if (!isRecord(parsed)) {
+        throw new Error("payload JSON должен быть объектом.");
+      }
+      Object.assign(payload, parsed);
+    }
+
+    return {
+      actorPlayerId,
+      scenarioActionType: actionType,
+      scenarioPayload: payload,
+    };
+  }
+
   function renderPresenter() {
     const presenter = isRecord(presenterState) ? presenterState : null;
     const enabled = presenterModeFromState == null ? Boolean(presenter?.enabled) : Boolean(presenterModeFromState);
@@ -1137,9 +2199,24 @@
     presenterDisabled.hidden = enabled;
     presenterContent.hidden = !enabled;
     if (!enabled) {
+      presenterActionState = {
+        commandsReady: false,
+        canStartGame: false,
+        canNextStep: false,
+        canSkipStep: false,
+        canStartVote: false,
+        canEndVote: false,
+        canSkipRound: false,
+        canSetOutcome: false,
+        postGameActive: false,
+        postGameOutcome: "",
+      };
       presenterKickPlayerBtn.disabled = true;
       presenterKickPlayerBtn.title = "Режим «Ведущий» выключен.";
-      presenterOutcomeRow.hidden = true;
+      renderScenarioActionEditor();
+      renderHostBlocks();
+      controlExecuteBtn.disabled = true;
+      controlActionHint.textContent = "Режим «Ведущий» выключен.";
       return;
     }
 
@@ -1150,23 +2227,20 @@
 
     const actions = isRecord(presenter.actions) ? presenter.actions : {};
     const commandsReady = isRealtimeConnected && wsRoomReady && controlRole === "CONTROL";
-    presenterStartGameBtn.disabled = !commandsReady || actions.canStartGame !== true;
-    presenterNextStepBtn.disabled = !commandsReady || actions.canNextStep !== true;
-    presenterSkipStepBtn.disabled = !commandsReady || actions.canSkipStep !== true;
-    presenterSkipRoundBtn.disabled = !commandsReady || actions.canSkipRound !== true;
-    presenterStartVoteBtn.disabled = !commandsReady || actions.canStartVote !== true;
-    presenterEndVoteBtn.disabled = !commandsReady || actions.canEndVote !== true;
     const canSetOutcome = actions.canSetOutcome === true;
-    presenterOutcomeSurvivedBtn.disabled = !commandsReady || !canSetOutcome;
-    presenterOutcomeFailedBtn.disabled = !commandsReady || !canSetOutcome;
-    presenterOutcomeRow.hidden = presenter.postGameActive !== true;
     const postGameOutcome = String(presenter.postGameOutcome || "");
-    presenterOutcomeState.textContent =
-      postGameOutcome === "survived"
-        ? "Исход: Выжил в бункере."
-        : postGameOutcome === "failed"
-          ? "Исход: Не выжил."
-          : "Исход не выбран.";
+    presenterActionState = {
+      commandsReady,
+      canStartGame: actions.canStartGame === true,
+      canNextStep: actions.canNextStep === true,
+      canSkipStep: actions.canSkipStep === true,
+      canStartVote: actions.canStartVote === true,
+      canEndVote: actions.canEndVote === true,
+      canSkipRound: actions.canSkipRound === true,
+      canSetOutcome,
+      postGameActive: presenter.postGameActive === true,
+      postGameOutcome,
+    };
 
     presenterPlayersBody.textContent = "";
     const players = Array.isArray(presenter.players) ? presenter.players : [];
@@ -1186,6 +2260,7 @@
         : selectedPlayer.playerId === presenter.controlId
           ? "Нельзя выгнать создателя комнаты."
           : "Выбранного игрока сейчас нельзя выгнать.";
+    controlExecuteBtn.disabled = !commandsReady;
     for (const player of players) {
       const row = document.createElement("tr");
 
@@ -1203,12 +2278,22 @@
       votedCell.textContent = player.voted ? "Да" : "Нет";
       row.append(votedCell);
 
+      const voteTargetCell = document.createElement("td");
+      voteTargetCell.textContent = fixMojibake(String(player.votedTargetName || "-"), "-");
+      row.append(voteTargetCell);
+
+      const votesAgainstCell = document.createElement("td");
+      votesAgainstCell.textContent = String(player.votesAgainst ?? 0);
+      row.append(votesAgainstCell);
+
       const revealedCell = document.createElement("td");
       revealedCell.textContent = player.revealedThisRound ? "Да" : "Нет";
       row.append(revealedCell);
 
       presenterPlayersBody.append(row);
     }
+    renderScenarioActionEditor();
+    renderHostBlocks();
   }
 
   function mapControlActionToWs(action) {
@@ -1250,13 +2335,17 @@
       throw new Error("Панель не подключена к комнате как CONTROL.");
     }
     const wsMapped = mapControlActionToWs(action);
+    const actionLabel =
+      action === "SCENARIO_ACTION" && extraPayload && extraPayload.scenarioActionType
+        ? `Сценарное действие: ${String(extraPayload.scenarioActionType)}`
+        : commandLabel(action);
     if (wsMapped) {
       sendWsCommand(wsMapped.type, wsMapped.payload);
-      setStatus(`Команда отправлена: ${commandLabel(action)}.`);
+      setStatus(`Команда отправлена: ${actionLabel}.`);
       return;
     }
 
-    setStatus(`Выполняю: ${commandLabel(action)}...`);
+    setStatus(`Выполняю: ${actionLabel}...`);
     const res = await fetch("/overlay-control/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1281,7 +2370,20 @@
       presenterState = data.presenter;
     }
     renderPresenter();
-    setStatus(`Команда выполнена: ${commandLabel(action)}.`);
+    setStatus(`Команда выполнена: ${actionLabel}.`);
+  }
+
+  async function sendScenarioActionAsHost(actionType, payload = {}) {
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    const actorPlayerId = String(presenter?.hostId || "");
+    if (!actorPlayerId) {
+      throw new Error("Не удалось определить ведущего для действия.");
+    }
+    await sendControlAction("SCENARIO_ACTION", {
+      actorPlayerId,
+      scenarioActionType: String(actionType || ""),
+      scenarioPayload: isRecord(payload) ? payload : {},
+    });
   }
 
   function renderAll() {
@@ -1472,6 +2574,7 @@
         .filter((item) => item?.key)
         .map((item) => ({ key: String(item.key), label: String(item.label || item.key) }));
     }
+    controlDeckCatalog = isRecord(data.deckCatalog) ? data.deckCatalog : {};
     presenterState = isRecord(data.presenter) ? data.presenter : null;
     setLatestOverlayState(data.overlayState);
     updatePlayersFromControlState(data.players, data.overlayState?.players);
@@ -1690,50 +2793,13 @@
     saveState().catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка сохранения", true));
   });
 
+  gameControlTabBtn.addEventListener("click", () => switchControlTab("game"));
+  obsControlTabBtn.addEventListener("click", () => switchControlTab("obs"));
+
   reloadBtn.addEventListener("click", () => {
     reloadStateWithConfirm().catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка загрузки", true));
   });
 
-  presenterStartGameBtn.addEventListener("click", () => {
-    sendControlAction("START_GAME").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterNextStepBtn.addEventListener("click", () => {
-    sendControlAction("NEXT_STEP").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterSkipStepBtn.addEventListener("click", () => {
-    sendControlAction("SKIP_STEP").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterStartVoteBtn.addEventListener("click", () => {
-    sendControlAction("START_VOTE").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterEndVoteBtn.addEventListener("click", () => {
-    sendControlAction("END_VOTE").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterSkipRoundBtn.addEventListener("click", () => {
-    sendControlAction("SKIP_ROUND").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterOutcomeSurvivedBtn.addEventListener("click", () => {
-    sendControlAction("SET_OUTCOME_SURVIVED").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
-  presenterOutcomeFailedBtn.addEventListener("click", () => {
-    sendControlAction("SET_OUTCOME_FAILED").catch((error) =>
-      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
-    );
-  });
   presenterKickPlayerBtn.addEventListener("click", () => {
     const player = getSelectedPlayer();
     if (!player) {
@@ -1742,6 +2808,334 @@
     }
     sendControlAction("KICK_PLAYER", { targetPlayerId: player.playerId }).catch((error) =>
       setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+
+  replaceTargetPlayerSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  replaceCardSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  replaceModeSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  replaceExecuteBtn.addEventListener("click", () => {
+    const targetPlayerId = String(replaceTargetPlayerSelect.value || "").trim();
+    const selectedRaw = String(replaceCardSelect.value || "").trim();
+    const splitIndex = selectedRaw.indexOf(":");
+    const targetArea =
+      splitIndex > 0 ? String(selectedRaw.slice(0, splitIndex)).trim().toLowerCase() : "hand";
+    const cardInstanceId =
+      splitIndex > 0 ? String(selectedRaw.slice(splitIndex + 1)).trim() : selectedRaw;
+    const replacementMode = String(replaceModeSelect.value || "random").trim().toLowerCase() === "specific" ? "specific" : "random";
+    const replacementCardId = String(replaceSpecificCardSelect.value || "").trim();
+    if (!targetPlayerId || !cardInstanceId) {
+      setStatus("Для замены нужно выбрать игрока и карту.", true);
+      return;
+    }
+    const payload = {
+      targetPlayerId,
+      cardInstanceId,
+      targetArea: targetArea === "special" ? "special" : "hand",
+      replacementMode,
+      replacementCardId: replacementMode === "specific" ? replacementCardId || undefined : undefined,
+    };
+    sendScenarioActionAsHost("adminReplacePlayerCard", payload)
+      .then(() => setStatus("Карта игрока заменена."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка замены карты.", true));
+  });
+
+  voteStartGameBtn.addEventListener("click", () => {
+    sendControlAction("START_GAME").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteNextStepBtn.addEventListener("click", () => {
+    sendControlAction("NEXT_STEP").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteSkipStepBtn.addEventListener("click", () => {
+    sendControlAction("SKIP_STEP").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteStartBtn.addEventListener("click", () => {
+    sendControlAction("START_VOTE").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteEndBtn.addEventListener("click", () => {
+    sendControlAction("END_VOTE").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteSkipRoundBtn.addEventListener("click", () => {
+    sendControlAction("SKIP_ROUND").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteOutcomeSurvivedBtn.addEventListener("click", () => {
+    sendControlAction("SET_OUTCOME_SURVIVED").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  voteOutcomeFailedBtn.addEventListener("click", () => {
+    sendControlAction("SET_OUTCOME_FAILED").catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+
+  worldKindSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  worldIndexSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  worldReplaceModeSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  worldToggleRevealBtn.addEventListener("click", () => {
+    const kind = String(worldKindSelect.value || "").trim().toLowerCase();
+    if (kind !== "bunker" && kind !== "threat") {
+      setStatus("Раскрытие/скрытие доступно только для bunker/threat.", true);
+      return;
+    }
+    const index = Number(worldIndexSelect.value);
+    if (!Number.isInteger(index) || index < 0) {
+      setStatus("Выбери корректный индекс карты мира.", true);
+      return;
+    }
+    const world = getPresenterControlWorld();
+    const list = kind === "bunker" ? world?.bunker : world?.threats;
+    const card = Array.isArray(list) ? list.find((entry) => Number(entry.index) === index) : null;
+    const revealed = !Boolean(card?.isRevealed);
+    sendScenarioActionAsHost("adminSetWorldCardReveal", { kind, index, revealed })
+      .then(() => setStatus("Состояние карты мира обновлено."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка изменения карты мира.", true));
+  });
+  worldReplaceBtn.addEventListener("click", () => {
+    const kind = String(worldKindSelect.value || "").trim().toLowerCase();
+    if (kind !== "bunker" && kind !== "threat" && kind !== "disaster") {
+      setStatus("Некорректный тип карты мира.", true);
+      return;
+    }
+    const replacementMode = String(worldReplaceModeSelect.value || "random").trim().toLowerCase() === "specific" ? "specific" : "random";
+    const payload = {
+      kind,
+      index: kind === "disaster" ? undefined : Number(worldIndexSelect.value),
+      replacementMode,
+      replacementCardId: replacementMode === "specific" ? String(worldReplaceCardSelect.value || "").trim() || undefined : undefined,
+    };
+    sendScenarioActionAsHost("adminReplaceWorldCard", payload)
+      .then(() => setStatus("Карта мира заменена."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка замены карты мира.", true));
+  });
+  worldSetCountBtn.addEventListener("click", () => {
+    const kind = String(worldKindSelect.value || "").trim().toLowerCase();
+    if (kind !== "bunker" && kind !== "threat") {
+      setStatus("Количество можно менять только для bunker/threat.", true);
+      return;
+    }
+    const count = Number(worldCountInput.value);
+    if (!Number.isInteger(count) || count < 0) {
+      setStatus("Введите корректное целое количество карт.", true);
+      return;
+    }
+    sendScenarioActionAsHost("adminSetWorldCount", { kind, count })
+      .then(() => setStatus("Количество карт мира обновлено."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка изменения количества карт.", true));
+  });
+
+  specialActorPlayerSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  specialSourceModeSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  specialPickerSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  specialTargetPlayerSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  specialApplyBtn.addEventListener("click", () => {
+    const mode = String(specialSourceModeSelect.value || "owned");
+    const hostId = String(presenterState?.hostId || "").trim();
+    const actorPlayerId =
+      mode === "catalog"
+        ? String(hostId || specialActorPlayerSelect.value || "").trim()
+        : String(specialActorPlayerSelect.value || "").trim();
+    if (!actorPlayerId) {
+      setStatus("Выбери игрока-источник для спецусловия.", true);
+      return;
+    }
+    const specialValue = String(specialPickerSelect.value || "").trim();
+    if (!specialValue) {
+      setStatus("Выбери спецусловие.", true);
+      return;
+    }
+    const pickedEntry = specialCatalogCache.find(
+      (entry) => entry.mode === mode && String(entry.value) === specialValue
+    );
+    const requirements = getSpecialFieldRequirements(pickedEntry);
+    const payload = {};
+    if (requirements.needTargetPlayer) {
+      const targetPlayerId = String(specialTargetPlayerSelect.value || "").trim();
+      if (targetPlayerId) payload.targetPlayerId = targetPlayerId;
+    }
+    if (requirements.needBaggageCard) {
+      const baggageCardId = String(specialTargetCardSelect.value || "").trim();
+      if (baggageCardId) payload.baggageCardId = baggageCardId;
+    }
+    if (requirements.needBunkerIndex) {
+      const bunkerIndex = Number(specialThreatIndexSelect.value);
+      if (Number.isInteger(bunkerIndex) && bunkerIndex >= 0) payload.bunkerIndex = bunkerIndex;
+    }
+    if (requirements.needCategory) {
+      const category = String(specialCategorySelect.value || "").trim();
+      if (category) payload.category = category;
+    }
+    if (requirements.needUseSelf) {
+      const useSelfValue = String(specialUseSelfSelect.value || "").trim();
+      if (useSelfValue === "true") payload.useSelf = true;
+      if (useSelfValue === "false") payload.useSelf = false;
+    }
+
+    const scenarioPayload =
+      mode === "owned"
+        ? {
+            actorPlayerId,
+            specialInstanceId: specialValue,
+            payload,
+          }
+        : {
+            actorPlayerId,
+            specialId: specialValue,
+            payload,
+          };
+    sendScenarioActionAsHost("adminApplySpecial", scenarioPayload)
+      .then(() =>
+        setStatus(
+          mode === "catalog"
+            ? "Спецусловие из каталога применено от лица ведущего."
+            : "Спецусловие игрока применено ведущим."
+        )
+      )
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка применения спецусловия.", true));
+  });
+
+  devTargetPlayerSelect.addEventListener("change", () => {
+    renderHostBlocks();
+  });
+  devAddBotBtn.addEventListener("click", () => {
+    const name = String(devBotNameInput.value || "").trim();
+    sendScenarioActionAsHost("devAddPlayer", name ? { name } : {})
+      .then(() => setStatus("Бот добавлен."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка добавления бота.", true));
+  });
+  devRemoveBotBtn.addEventListener("click", () => {
+    const targetPlayerId = String(devTargetPlayerSelect.value || "").trim();
+    if (!targetPlayerId) {
+      setStatus("Выбери игрока для удаления.", true);
+      return;
+    }
+    sendControlAction("KICK_PLAYER", { targetPlayerId })
+      .then(() => setStatus("Игрок удалён (dev)."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка удаления игрока.", true));
+  });
+  devKickBtn.addEventListener("click", () => {
+    const targetPlayerId = String(devTargetPlayerSelect.value || "").trim();
+    if (!targetPlayerId) {
+      setStatus("Выбери игрока для исключения.", true);
+      return;
+    }
+    sendControlAction("KICK_PLAYER", { targetPlayerId })
+      .then(() => setStatus("Игрок исключён (dev)."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка исключения игрока.", true));
+  });
+  devMarkLeftBtn.addEventListener("click", () => {
+    const targetPlayerId = String(devTargetPlayerSelect.value || "").trim();
+    if (!targetPlayerId) {
+      setStatus("Выбери игрока для перевода вне бункера.", true);
+      return;
+    }
+    sendScenarioActionAsHost("markLeftBunker", { targetPlayerId })
+      .then(() => setStatus("Игрок переведён во вне бункера."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка изменения статуса игрока.", true));
+  });
+  devSkipRoundBtn.addEventListener("click", () => {
+    sendScenarioActionAsHost("devSkipRound", {})
+      .then(() => setStatus("Раунд пропущен (dev)."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Ошибка dev-команды.", true));
+  });
+
+  controlActorSelect.addEventListener("change", () => {
+    controlActorPlayerId = String(controlActorSelect.value || "");
+    renderScenarioActionEditor();
+  });
+  controlScenarioAction.addEventListener("change", () => {
+    renderScenarioActionEditor();
+  });
+  controlTargetSelect.addEventListener("change", () => {
+    renderScenarioActionEditor();
+  });
+  controlCardSelect.addEventListener("change", () => {
+    renderScenarioActionEditor();
+  });
+  controlSpecialSelect.addEventListener("change", () => {
+    renderScenarioActionEditor();
+  });
+  controlThreatIndex.addEventListener("change", () => {
+    renderScenarioActionEditor();
+  });
+  controlOutcomeSelect.addEventListener("change", () => {
+    renderScenarioActionEditor();
+  });
+  controlQuickActions.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action-type]");
+    if (!button) return;
+    const actionType = String(button.dataset.actionType || "").trim();
+    if (!actionType) return;
+    controlScenarioAction.value = actionType;
+    renderScenarioActionEditor();
+  });
+  controlCardPicker.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-card-id]");
+    if (!button) return;
+    const cardId = String(button.dataset.cardId || "").trim();
+    if (!cardId) return;
+    controlCardSelect.value = cardId;
+    renderScenarioActionEditor();
+  });
+  controlSpecialPicker.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-special-id]");
+    if (!button) return;
+    const specialId = String(button.dataset.specialId || "").trim();
+    if (!specialId) return;
+    controlSpecialSelect.value = specialId;
+    renderScenarioActionEditor();
+  });
+  controlThreatPicker.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-threat-index]");
+    if (!button) return;
+    const threatIndex = String(button.dataset.threatIndex || "").trim();
+    if (!threatIndex) return;
+    controlThreatIndex.value = threatIndex;
+    renderScenarioActionEditor();
+  });
+
+  controlExecuteBtn.addEventListener("click", () => {
+    let request;
+    try {
+      request = buildScenarioControlRequest();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Неверные параметры действия.", true);
+      return;
+    }
+    sendControlAction("SCENARIO_ACTION", request).catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка сценарного действия.", true)
     );
   });
 
@@ -1939,6 +3333,7 @@
   });
 
   setStatus("Подключение к комнате...");
+  switchControlTab("game");
   loadState()
     .then(() => connectRealtime())
     .catch((error) => {

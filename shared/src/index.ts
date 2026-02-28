@@ -24,6 +24,7 @@ export type ContinuePermission = "host_only" | "revealer_only" | "anyone";
 export type RevealTimeoutAction = "random_card" | "skip_player";
 export type SpecialUsageMode = "anytime" | "only_during_voting";
 export type FinalThreatReveal = "host" | "anyone";
+export type AutomationMode = "auto" | "semi" | "manual";
 export type SpecialTargetScope = "neighbors" | "any_alive" | "self" | "any_including_self";
 export type WorldCardKind = "bunker" | "disaster" | "threat";
 export type PostGameOutcome = "survived" | "failed";
@@ -210,6 +211,7 @@ export interface GameSettings {
   preVoteDiscussionSeconds: number;
   enablePostVoteDiscussionTimer: boolean;
   postVoteDiscussionSeconds: number;
+  automationMode: AutomationMode;
   enablePresenterMode: boolean;
   continuePermission: ContinuePermission;
   revealTimeoutAction: RevealTimeoutAction;
@@ -217,6 +219,7 @@ export interface GameSettings {
   specialUsage: SpecialUsageMode;
   maxPlayers: number;
   finalThreatReveal: FinalThreatReveal;
+  forcedDisasterId: string;
 }
 
 export interface ScenarioMeta {
@@ -256,7 +259,8 @@ export interface SpecialConditionInstance {
   used: boolean;
   imgUrl?: string;
   needsChoice?: boolean;
-  choiceKind?: "player" | "neighbor" | "category" | "none";
+  choiceKind?: "player" | "neighbor" | "category" | "bunker" | "special" | "none";
+  pendingActivation?: boolean;
   allowSelfTarget?: boolean;
   targetScope?: SpecialTargetScope;
 }
@@ -270,6 +274,9 @@ export interface PublicSpecialConditionView {
 export interface PublicCategoryCard {
   labelShort: string;
   imgUrl?: string;
+  instanceId?: string;
+  hidden?: boolean;
+  backCategory?: string;
 }
 
 export interface YouCategoryCard {
@@ -302,6 +309,7 @@ export interface RoomState {
   rulesPresetCount?: number;
   world?: WorldState30;
   isDev?: boolean;
+  disasterOptions?: Array<{ id: string; title: string }>;
 }
 
 export interface StatePatchPayload {
@@ -399,6 +407,7 @@ export interface GameView {
     votePhase?: VotePhase | null;
     votesPublic?: VotePublic[];
     votingProgress?: VotingProgress;
+    disallowedVoteTargetIdsForYou?: string[];
     threatModifier?: ThreatModifierView;
     canOpenVotingModal?: boolean;
     canContinue?: boolean;
@@ -457,16 +466,72 @@ export type ScenarioAction =
   | { type: "markLeftBunker"; payload: { targetPlayerId: string } }
   | { type: "continueRound"; payload: {} }
   | { type: "devAddPlayer"; payload: { name?: string } }
-  | { type: "devRemovePlayer"; payload: { targetPlayerId?: string } };
+  | { type: "devRemovePlayer"; payload: { targetPlayerId?: string } }
+  | {
+      type: "adminReplacePlayerCard";
+      payload: {
+        targetPlayerId: string;
+        cardInstanceId: string;
+        targetArea?: "hand" | "special";
+        replacementMode: "random" | "specific";
+        replacementCardId?: string;
+      };
+    }
+  | {
+      type: "adminSetWorldCardReveal";
+      payload: {
+        kind: "bunker" | "threat";
+        index: number;
+        revealed: boolean;
+      };
+    }
+  | {
+      type: "adminReplaceWorldCard";
+      payload: {
+        kind: "bunker" | "threat" | "disaster";
+        index?: number;
+        replacementMode: "random" | "specific";
+        replacementCardId?: string;
+      };
+    }
+  | {
+      type: "adminSetWorldCount";
+      payload: {
+        kind: "bunker" | "threat";
+        count: number;
+      };
+    }
+  | {
+      type: "adminApplySpecial";
+      payload: {
+        actorPlayerId: string;
+        specialInstanceId?: string;
+        specialId?: string;
+        payload?: Record<string, unknown>;
+      };
+    };
 
 export interface ScenarioActionResult {
   error?: string;
   stateChanged?: boolean;
 }
 
+export interface ControlSpecialCatalogEntry {
+  id: string;
+  title: string;
+  text: string;
+  implemented?: boolean;
+  choiceKind?: "player" | "neighbor" | "category" | "bunker" | "special" | "none";
+  targetScope?: SpecialTargetScope;
+  allowSelfTarget?: boolean;
+  effectType?: string;
+  requires?: string[];
+}
+
 export interface ScenarioSession {
   getGameView(playerId: string): GameView;
   handleAction(playerId: string, action: ScenarioAction): ScenarioActionResult;
+  getSpecialCatalog?(): ControlSpecialCatalogEntry[];
 }
 
 export interface ScenarioModule {
@@ -677,6 +742,7 @@ export const GameSettingsSchema = z.object({
   preVoteDiscussionSeconds: z.number().int().min(5).max(600),
   enablePostVoteDiscussionTimer: z.boolean(),
   postVoteDiscussionSeconds: z.number().int().min(5).max(600),
+  automationMode: z.union([z.literal("auto"), z.literal("semi"), z.literal("manual")]),
   enablePresenterMode: z.boolean(),
   continuePermission: z.union([
     z.literal("host_only"),
@@ -688,6 +754,7 @@ export const GameSettingsSchema = z.object({
   specialUsage: z.union([z.literal("anytime"), z.literal("only_during_voting")]),
   maxPlayers: z.number().int().min(2),
   finalThreatReveal: z.union([z.literal("host"), z.literal("anyone")]),
+  forcedDisasterId: z.string().min(1).max(256),
 });
 
 export const CardRefSchema = z.object({
@@ -726,7 +793,17 @@ export const SpecialConditionInstanceSchema = z.object({
   used: z.boolean(),
   imgUrl: z.string().optional(),
   needsChoice: z.boolean().optional(),
-  choiceKind: z.union([z.literal("player"), z.literal("neighbor"), z.literal("category"), z.literal("none")]).optional(),
+  choiceKind: z
+    .union([
+      z.literal("player"),
+      z.literal("neighbor"),
+      z.literal("category"),
+      z.literal("bunker"),
+      z.literal("special"),
+      z.literal("none"),
+    ])
+    .optional(),
+  pendingActivation: z.boolean().optional(),
   allowSelfTarget: z.boolean().optional(),
   targetScope: z
     .union([
@@ -741,6 +818,9 @@ export const SpecialConditionInstanceSchema = z.object({
 export const PublicCategoryCardSchema = z.object({
   labelShort: z.string(),
   imgUrl: z.string().optional(),
+  instanceId: z.string().optional(),
+  hidden: z.boolean().optional(),
+  backCategory: z.string().optional(),
 });
 
 export const YouCategoryCardSchema = z.object({
@@ -758,6 +838,11 @@ export const PublicCategorySlotSchema = z.object({
 export const YouCategorySlotSchema = z.object({
   category: z.string(),
   cards: z.array(YouCategoryCardSchema),
+});
+
+export const DisasterOptionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
 });
 
 export const PublicPlayerViewSchema = z.object({
@@ -790,6 +875,7 @@ export const RoomStateSchema = z.object({
   rulesPresetCount: z.number().int().min(4).max(16).optional(),
   world: WorldState30Schema.optional(),
   isDev: z.boolean().optional(),
+  disasterOptions: z.array(DisasterOptionSchema).optional(),
 });
 
 export const VotingViewSchema = z.object({
@@ -875,6 +961,7 @@ export const GameViewSchema = z.object({
     votePhase: VotePhaseSchema.nullable().optional(),
     votesPublic: z.array(VotePublicSchema).optional(),
     votingProgress: VotingProgressSchema.optional(),
+    disallowedVoteTargetIdsForYou: z.array(z.string()).optional(),
     threatModifier: ThreatModifierViewSchema.optional(),
     canOpenVotingModal: z.boolean().optional(),
     canContinue: z.boolean().optional(),

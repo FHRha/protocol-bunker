@@ -1,4 +1,4 @@
-﻿# Протокол: Бункер
+# Протокол: Бункер
 
 Это браузерная версия настолки «Бункер» для друзей, которые хотят спорить и голосовать, но не хотят собираться в одной комнате и печатать карточки (хотя собраться вместе вы сможете с андроид версией).
 
@@ -54,7 +54,7 @@
 
 ## Скачать
 
-Все ссылки ведут на **GitHub Releases → Latest**. На странице релиза выберите нужный файл:
+Все ссылки ведут на **GitHub Releases > Latest**. На странице релиза выберите нужный файл:
 
 | Платформа | Файлы в релизе |
 |---|---|
@@ -74,9 +74,9 @@
 
 ### Windows (EXE Launcher)
 
-- `protocol-bunker-win-x64-exe-setup-v0.1.3.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `protocol-bunker-win-x64-exe-setup-v0.2.0.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
 - `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
-- `protocol-bunker-win-x64-exe-v0.1.3.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+- `protocol-bunker-win-x64-exe-v0.2.0.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
 
 Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
 
@@ -124,11 +124,11 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 ```
 - конкретная версия, public-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.1.3
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.0
 ```
 - конкретная версия, server-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.1.3
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.0
 ```
 
 Что выбрать:
@@ -280,7 +280,7 @@ Streamer mode делает две вещи:
 
 ## Разработка
 
-Проект состоит из клиента и сервера. Как запускать — зависит от того, как у вас настроены скрипты в package.json (npm/pnpm). Обычно это “поставить зависимости → поднять сервер → поднять клиент”.
+Проект состоит из клиента и сервера. Как запускать — зависит от того, как у вас настроены скрипты в package.json (npm/pnpm). Обычно это “поставить зависимости > поднять сервер > поднять клиент”.
 
 Я специально не пишу команды в README “наугад”, чтобы не было мимо вашего реального сетапа.  
 (Потому что если я напишу “делай так”, а у вас там pnpm/monorepo/скрипты по-своему — виноват буду я, а не жизнь.)
@@ -296,7 +296,7 @@ Streamer mode делает две вещи:
 
 ---
 
-## Сборка релизов (0.1.3)
+## Сборка релизов (0.2.0)
 
 Полная сборка:
 - `pnpm run build:all`
@@ -314,8 +314,8 @@ Streamer mode делает две вещи:
 Где результаты:
 - `artifacts/win/`
 - `artifacts/linux/`:
-  - `protocol-bunker-linux-x64-public-v0.1.3.tar.gz`
-  - `protocol-bunker-linux-x64-server-v0.1.3.tar.gz`
-  - `protocol-bunker-linux-arm64-public-v0.1.3.tar.gz`
-  - `protocol-bunker-linux-arm64-server-v0.1.3.tar.gz`
+  - `protocol-bunker-linux-x64-public-v0.2.0.tar.gz`
+  - `protocol-bunker-linux-x64-server-v0.2.0.tar.gz`
+  - `protocol-bunker-linux-arm64-public-v0.2.0.tar.gz`
+  - `protocol-bunker-linux-arm64-server-v0.2.0.tar.gz`
 - `artifacts/win-exe/`

@@ -237,7 +237,6 @@ export default function App() {
     message.includes("Игрок не найден") ||
     message.includes("Вы не в комнате") ||
     message.includes("Комната не найдена") ||
-    message.includes("покинул бункер") ||
     message.includes("Игра не найдена");
 
   const buildHelloPayload = (intent: SessionIntent) => {
@@ -584,8 +583,14 @@ export default function App() {
             navigate("/");
             return;
           }
+          if (msg.includes("покинул бункер")) {
+            hardResetSession({ clearLastRoom: true, preserveError: true });
+            navigate("/");
+            return;
+          }
           if (isReconnectError(msg)) {
-            hardResetSession({ clearLastRoom: true });
+            // Keep token/session for quick retry; clear only on explicit "left bunker" timeout.
+            hardResetSession({ preserveError: true });
             navigate("/");
           }
           return;

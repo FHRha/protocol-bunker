@@ -2044,13 +2044,18 @@ function addLobbyBotPlayer(room: Room, preferredName?: string): Player | null {
 function transferHost(
   room: Room,
   reason: "disconnect_timeout" | "left_bunker" | "eliminated" | "manual",
-  excludeId?: string
+  excludeId?: string,
+  preferredHostId?: string
 ): void {
   if (room.hostTransferTimer) {
     clearTimeout(room.hostTransferTimer);
     room.hostTransferTimer = undefined;
   }
-  const nextHostId = pickNextHost(room, excludeId);
+  const preferredId = String(preferredHostId ?? "").trim();
+  const nextHostId =
+    preferredId && preferredId !== excludeId && room.players.has(preferredId)
+      ? preferredId
+      : pickNextHost(room, excludeId);
   if (!nextHostId) {
     if (room.players.size === 0) {
       rooms.delete(room.code);
@@ -2414,7 +2419,7 @@ async function main() {
       publicBase: publicResolution.base,
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
-      overlayControlToken: token,
+      overlayControlToken: room.overlayEditToken,
     });
 
     res.json({
@@ -2425,7 +2430,7 @@ async function main() {
       buildProfile: BUILD_PROFILE || "public",
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
-      overlayControlToken: token,
+      overlayControlToken: room.overlayEditToken,
       links,
     });
   });
@@ -2444,6 +2449,7 @@ async function main() {
     | "SET_OUTCOME_FAILED"
     | "SKIP_ROUND"
     | "KICK_PLAYER"
+    | "TRANSFER_HOST"
     | "SCENARIO_ACTION";
 
   const startGameAsControl = (room: Room): { ok: boolean; message?: string } => {
@@ -2688,6 +2694,28 @@ async function main() {
   ): { ok: boolean; message?: string } => {
     if (command === "START_GAME") {
       return startGameAsControl(room);
+    }
+
+    if (command === "TRANSFER_HOST") {
+      const requestedTargetId = String(options?.targetPlayerId ?? "").trim();
+      if (requestedTargetId) {
+        if (requestedTargetId === room.hostId) {
+          return { ok: false, message: "Этот игрок уже ведущий." };
+        }
+        const requestedTarget = room.players.get(requestedTargetId);
+        if (!requestedTarget) {
+          return { ok: false, message: "Выбранный игрок не найден." };
+        }
+        if (!requestedTarget.connected) {
+          return { ok: false, message: "Нельзя передать ведущего офлайн-игроку." };
+        }
+      }
+      const nextHostId = requestedTargetId || pickNextHost(room, room.hostId);
+      if (!nextHostId) {
+        return { ok: false, message: "Нет другого игрока для передачи роли." };
+      }
+      transferHost(room, "manual", room.hostId, requestedTargetId || undefined);
+      return { ok: true };
     }
 
     if (command === "KICK_PLAYER" && room.phase === "lobby") {
@@ -3086,7 +3114,7 @@ async function main() {
               phase: room.phase,
             });
             const player = attachPlayer(room, payload, ws);
-            printOverlayInfo(room.code, room.overlayToken, player.token);
+            printOverlayInfo(room.code, room.overlayToken, room.overlayEditToken);
             updateRulesetIfAuto(room);
             logRoomLifecycle("joined", room.code, {
               player: payload.name,
@@ -3110,15 +3138,41 @@ async function main() {
             return;
           }
 
+          // Overlay Control websocket must never create a separate "CONTROL" player.
+          // Bind companion socket either by overlayEditToken or by current control player's token.
+          const controlPlayerForRoom = room.players.get(room.controlId);
+          const controlPlayerToken = String(controlPlayerForRoom?.token ?? "");
+          const helloPlayerToken = String(payload.playerToken ?? "");
+          const isOverlayControlCompanionByToken =
+            payload.name === "CONTROL" &&
+            Boolean(helloPlayerToken) &&
+            (helloPlayerToken === room.overlayEditToken || helloPlayerToken === controlPlayerToken);
+          if (isOverlayControlCompanionByToken) {
+            const controlPlayer = room.players.get(room.controlId);
+            if (!controlPlayer) {
+              send(ws, { type: "error", payload: { message: "CONTROL игрок не найден в комнате." } });
+              return;
+            }
+            connectionInfo.set(ws, { roomCode: room.code, playerId: controlPlayer.playerId });
+            send(ws, {
+              type: "helloAck",
+              payload: { playerId: controlPlayer.playerId, playerToken: controlPlayer.token },
+            });
+            send(ws, { type: "roomState", payload: buildRoomState(room) });
+            if (room.phase === "game" && room.session) {
+              try {
+                const payloadView = room.session.getGameView(controlPlayer.playerId);
+                send(ws, { type: "gameView", payload: payloadView });
+              } catch {
+                // ignore transient gameView errors for companion sockets
+              }
+            }
+            return;
+          }
+
           let existing: Player | undefined;
           if (IDENTITY_MODE === "dev_tab") {
             existing = findPlayerByTabId(room, payload.tabId);
-            if (!existing) {
-              existing = findPlayerByToken(room, payload.playerToken);
-            }
-            if (!existing) {
-              existing = findPlayerBySessionId(room, payload.sessionId);
-            }
           } else {
             existing = findPlayerByToken(room, payload.playerToken);
             if (!existing) {
@@ -3440,12 +3494,28 @@ async function main() {
             send(ws, { type: "error", payload: { message: "Только CONTROL может передать роль." } });
             return;
           }
-          const nextHostId = pickNextHost(room, room.hostId);
+          const requestedTargetId = String(message.payload.targetPlayerId ?? "").trim();
+          if (requestedTargetId) {
+            if (requestedTargetId === room.hostId) {
+              send(ws, { type: "error", payload: { message: "Этот игрок уже ведущий." } });
+              return;
+            }
+            const requestedTarget = room.players.get(requestedTargetId);
+            if (!requestedTarget) {
+              send(ws, { type: "error", payload: { message: "Выбранный игрок не найден." } });
+              return;
+            }
+            if (!requestedTarget.connected) {
+              send(ws, { type: "error", payload: { message: "Нельзя передать ведущего офлайн-игроку." } });
+              return;
+            }
+          }
+          const nextHostId = requestedTargetId || pickNextHost(room, room.hostId);
           if (!nextHostId) {
             send(ws, { type: "error", payload: { message: "Нет другого игрока для передачи роли." } });
             return;
           }
-          transferHost(room, "manual", room.hostId);
+          transferHost(room, "manual", room.hostId, requestedTargetId || undefined);
           return;
         }
         case "ping": {

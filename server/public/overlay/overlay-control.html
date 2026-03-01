@@ -116,6 +116,26 @@
                   </div>
                 </section>
 
+                <section class="host-block">
+                  <div class="host-block__head">
+                    <h3>Передача ведущего</h3>
+                    <p class="hint">Передай роль ведущего подключенному игроку в текущей комнате.</p>
+                  </div>
+                  <div class="host-grid host-grid--2">
+                    <label class="field">
+                      <span>Новый ведущий</span>
+                      <select id="hostTransferTargetSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Действие</span>
+                      <button id="hostTransferBtn" type="button" class="btn">Передать ведущего</button>
+                    </label>
+                  </div>
+                  <div class="row">
+                    <span id="hostTransferHint" class="hint"></span>
+                  </div>
+                </section>
+
                 <div class="table-wrap">
                   <table class="presenter-table">
                     <thead>

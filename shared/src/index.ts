@@ -1086,7 +1086,9 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("requestHostTransfer"),
-    payload: z.object({}),
+    payload: z.object({
+      targetPlayerId: z.string().min(1).optional(),
+    }),
   }),
   z.object({
     type: z.literal("overlaySubscribe"),

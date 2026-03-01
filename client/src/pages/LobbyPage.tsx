@@ -28,6 +28,7 @@ interface LobbyPageProps {
     manualConfig?: ManualRulesConfig;
   }) => void;
   onKickPlayer: (targetPlayerId: string) => void;
+  onTransferHost: (targetPlayerId: string) => void;
 }
 
 interface OverlayLinksPayload {
@@ -211,6 +212,7 @@ export default function LobbyPage({
   onUpdateSettings,
   onUpdateRules,
   onKickPlayer,
+  onTransferHost,
 }: LobbyPageProps) {
   const [showOverlayView, setShowOverlayView] = useState(false);
   const [showOverlayControl, setShowOverlayControl] = useState(false);
@@ -220,6 +222,7 @@ export default function LobbyPage({
   const [overlayLinksError, setOverlayLinksError] = useState<string | null>(null);
   const [draft, setDraft] = useState<GameSettings | null>(roomState?.settings ?? null);
   const [kickTargetId, setKickTargetId] = useState("");
+  const [transferHostTargetId, setTransferHostTargetId] = useState("");
   const [manualTemplatePlayers, setManualTemplatePlayers] = useState(4);
   const [manualVotesInput, setManualVotesInput] = useState("0");
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -232,6 +235,17 @@ export default function LobbyPage({
     if (!roomState) return;
     setDraft(roomState.settings);
   }, [roomState?.settings]);
+
+  useEffect(() => {
+    if (!roomState) {
+      setTransferHostTargetId("");
+      return;
+    }
+    const candidateIds = roomState.players
+      .map((player) => player.playerId)
+      .filter((playerId) => playerId !== roomState.hostId);
+    setTransferHostTargetId((prev) => (candidateIds.includes(prev) ? prev : candidateIds[0] ?? ""));
+  }, [roomState?.players, roomState?.hostId]);
 
   useEffect(() => {
     if (!roomState) return;
@@ -496,6 +510,7 @@ export default function LobbyPage({
   const visiblePlayers = roomState.players.slice(0, maxPlayersVisible);
   const extraPlayers = roomState.players.length - visiblePlayers.length;
   const kickCandidates = roomState.players.filter((player) => player.playerId !== roomState.controlId);
+  const transferHostCandidates = roomState.players.filter((player) => player.playerId !== roomState.hostId);
   const playerIndexById = new Map(roomState.players.map((player, index) => [player.playerId, index]));
 
   const applySettings = (next: GameSettings) => {
@@ -530,7 +545,8 @@ export default function LobbyPage({
                   return (
                     <li key={player.playerId}>
                       {safeName}
-                      {player.playerId === roomState.controlId ? ru.hostMarker : ""}
+                      {player.playerId === roomState.hostId ? ru.hostMarker : ""}
+                      {player.playerId === roomState.controlId ? ru.controlMarker : ""}
                       {player.connected ? "" : ru.offlineMarker}
                     </li>
                   );
@@ -571,6 +587,46 @@ export default function LobbyPage({
                       }}
                     >
                       {ru.lobbyKickButton}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {canControl ? (
+                <div className="formRow formRow--transferHost">
+                  <span>{ru.transferHostTitle}</span>
+                  <div className="formControlRow formControlRow--transferHost">
+                    <select
+                      value={transferHostTargetId}
+                      disabled={controlsDisabled || transferHostCandidates.length === 0}
+                      onChange={(event) => setTransferHostTargetId(event.target.value)}
+                    >
+                      {transferHostCandidates.length === 0 ? (
+                        <option value="" disabled>
+                          {ru.transferHostSelectPlaceholder}
+                        </option>
+                      ) : null}
+                      {transferHostCandidates.map((player) => {
+                        const fallbackIndex = playerIndexById.get(player.playerId) ?? 0;
+                        const safeName = getSafePlayerName(player.name, fallbackIndex);
+                        return (
+                          <option key={player.playerId} value={player.playerId}>
+                            {safeName}
+                            {player.playerId === roomState.controlId ? ru.controlMarker : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      className="ghost button-small"
+                      disabled={!transferHostTargetId || controlsDisabled || transferHostCandidates.length === 0}
+                      onClick={() => {
+                        if (controlsDisabled) return;
+                        if (!transferHostTargetId) return;
+                        onTransferHost(transferHostTargetId);
+                      }}
+                    >
+                      {ru.transferHostButton}
                     </button>
                   </div>
                 </div>

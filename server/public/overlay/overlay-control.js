@@ -122,6 +122,9 @@
   const voteOutcomeSurvivedBtn = $("voteOutcomeSurvivedBtn");
   const voteOutcomeFailedBtn = $("voteOutcomeFailedBtn");
   const voteOutcomeState = $("voteOutcomeState");
+  const hostTransferTargetSelect = $("hostTransferTargetSelect");
+  const hostTransferBtn = $("hostTransferBtn");
+  const hostTransferHint = $("hostTransferHint");
   const worldKindSelect = $("worldKindSelect");
   const worldIndexSelect = $("worldIndexSelect");
   const worldToggleRevealBtn = $("worldToggleRevealBtn");
@@ -192,6 +195,7 @@
     !replaceExecuteBtn || !replaceHint ||
     !voteStartGameBtn || !voteNextStepBtn || !voteSkipStepBtn || !voteStartBtn || !voteEndBtn ||
     !voteSkipRoundBtn || !voteOutcomeRow || !voteOutcomeSurvivedBtn || !voteOutcomeFailedBtn || !voteOutcomeState ||
+    !hostTransferTargetSelect || !hostTransferBtn || !hostTransferHint ||
     !worldKindSelect || !worldIndexSelect || !worldToggleRevealBtn || !worldReplaceModeSelect ||
     !worldReplaceCardSelect || !worldCountInput || !worldReplaceBtn || !worldSetCountBtn || !worldHint ||
     !specialActorPlayerSelect || !specialSourceModeSelect || !specialPickerSelect || !specialTargetPlayerSelect ||
@@ -444,6 +448,7 @@
       SET_OUTCOME_FAILED: "Не выжил",
       SKIP_ROUND: "Пропустить раунд",
       KICK_PLAYER: "Выгнать игрока",
+      TRANSFER_HOST: "Передать ведущего",
       SCENARIO_ACTION: "Сценарное действие",
     };
     return map[String(action)] || String(action || "команда");
@@ -1478,6 +1483,36 @@
     voteOutcomeFailedBtn.disabled = !state.commandsReady || !state.canSetOutcome;
   }
 
+  function renderHostTransferBlock() {
+    const presenter = isRecord(presenterState) ? presenterState : null;
+    const players = Array.isArray(presenter?.players) ? presenter.players : [];
+    const hostId = String(presenter?.hostId || "").trim();
+    const candidates = players.filter(
+      (player) => String(player.playerId || "") !== hostId && player.connected !== false
+    );
+    fillSelectOptions(
+      hostTransferTargetSelect,
+      candidates.map((player) => ({
+        value: String(player.playerId || ""),
+        label: fixMojibake(String(player.name || player.playerId || "Игрок"), "Игрок"),
+      })),
+      String(hostTransferTargetSelect.value || "")
+    );
+    const hostPlayer = players.find((player) => String(player.playerId || "") === hostId) || null;
+    const hostName = hostPlayer
+      ? fixMojibake(String(hostPlayer.name || hostPlayer.playerId || "Игрок"), "Игрок")
+      : "-";
+    const commandsReady = getCommandsReady();
+    const hasCandidates = candidates.length > 0;
+    hostTransferBtn.disabled = !commandsReady || !hasCandidates;
+    hostTransferBtn.title = hasCandidates
+      ? ""
+      : "Нет доступных подключенных игроков для передачи роли.";
+    hostTransferHint.textContent = hasCandidates
+      ? `Текущий ведущий: ${hostName}.`
+      : `Текущий ведущий: ${hostName}. Нет подключенных кандидатов для передачи.`;
+  }
+
   function renderWorldBlock() {
     const world = getPresenterControlWorld();
     const kind = String(worldKindSelect.value || "threat");
@@ -1822,6 +1857,7 @@
   function renderHostBlocks() {
     renderCardReplaceBlock();
     renderVotingBlock();
+    renderHostTransferBlock();
     renderWorldBlock();
     renderSpecialBlock();
     renderDevBlock();
@@ -2884,6 +2920,16 @@
   voteOutcomeFailedBtn.addEventListener("click", () => {
     sendControlAction("SET_OUTCOME_FAILED").catch((error) =>
       setStatus(error instanceof Error ? error.message : "Ошибка команды управления.", true)
+    );
+  });
+  hostTransferBtn.addEventListener("click", () => {
+    const targetPlayerId = String(hostTransferTargetSelect.value || "").trim();
+    if (!targetPlayerId) {
+      setStatus("Выбери игрока для передачи роли ведущего.", true);
+      return;
+    }
+    sendControlAction("TRANSFER_HOST", { targetPlayerId }).catch((error) =>
+      setStatus(error instanceof Error ? error.message : "Ошибка передачи роли ведущего.", true)
     );
   });
 

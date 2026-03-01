@@ -66,8 +66,9 @@ body {
 
 .topbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
+  column-gap: 12px;
   padding: 12px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
@@ -77,7 +78,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
   justify-self: end;
 }
 
@@ -86,22 +88,36 @@ body {
   min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 10px;
 }
 
 .topbar-rightStack {
   display: inline-flex;
   align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
   gap: 8px;
 }
 
 .topbar-room {
   display: flex;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   font-size: 12px;
   color: var(--muted);
   align-items: center;
+  min-width: 0;
+}
+
+.topbar-room > span {
+  white-space: nowrap;
+}
+
+.topbar-room > span:last-of-type {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbar-room-lobby {
@@ -115,6 +131,7 @@ body {
 .topbar-room-controls {
   display: inline-flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 6px;
 }
 
@@ -127,6 +144,7 @@ body {
   background: var(--bg-soft);
   padding: 4px 8px;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .topbar-streamer-toggle input {
@@ -166,9 +184,21 @@ body {
     display: grid;
     gap: 8px;
   }
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
   .topbar-rightStack {
     justify-self: start;
     display: inline-flex;
+    flex-wrap: wrap;
+  }
+  .topbar-room {
+    flex-wrap: wrap;
+  }
+  .topbar-room > span:last-of-type {
+    max-width: none;
+  }
+  .topbar-room-controls {
     flex-wrap: wrap;
   }
   .dev-topbar-controls {
@@ -651,6 +681,22 @@ body {
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
+}
+
+.formRow--transferHost {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 6px;
+}
+
+.formControlRow--transferHost {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.formControlRow--transferHost select {
+  min-width: 0;
+  flex: 1 1 210px;
 }
 
 .settingsFieldset {

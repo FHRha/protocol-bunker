@@ -725,15 +725,22 @@ export default function App() {
   const handleCreate = async (name: string, scenarioId: string) => {
     setErrorMessage(null);
     localStorage.setItem("bunker.playerName", name);
-    if (DEV_TAB_IDENTITY && !tabId) {
-      setErrorMessage("?? ??????? ??????? ????????????? ???????.");
+    let effectiveTabId = tabId;
+    if (DEV_TAB_IDENTITY && !effectiveTabId) {
+      effectiveTabId = await initTabIdentity();
+      if (effectiveTabId) {
+        setTabId(effectiveTabId);
+      }
+    }
+    if (DEV_TAB_IDENTITY && !effectiveTabId) {
+      setErrorMessage(ru.errorReconnectNetwork);
       return;
     }
     const intent: SessionIntent = {
       mode: "create",
       name,
       scenarioId,
-      tabId: DEV_TAB_IDENTITY ? tabId : undefined,
+      tabId: DEV_TAB_IDENTITY ? effectiveTabId : undefined,
     };
     intentRef.current = intent;
     try {
@@ -746,9 +753,16 @@ export default function App() {
   const handleJoin = async (name: string, roomCode: string) => {
     setErrorMessage(null);
     localStorage.setItem("bunker.playerName", name);
+    let effectiveTabId = tabId;
+    if (DEV_TAB_IDENTITY && !effectiveTabId) {
+      effectiveTabId = await initTabIdentity();
+      if (effectiveTabId) {
+        setTabId(effectiveTabId);
+      }
+    }
     const token = DEV_TAB_IDENTITY ? undefined : localStorage.getItem(tokenKey(roomCode)) ?? undefined;
-    if (DEV_TAB_IDENTITY && !tabId) {
-      setErrorMessage("?? ??????? ??????? ????????????? ???????.");
+    if (DEV_TAB_IDENTITY && !effectiveTabId) {
+      setErrorMessage(ru.errorReconnectNetwork);
       return;
     }
     const intent: SessionIntent = {
@@ -756,7 +770,7 @@ export default function App() {
       name,
       roomCode,
       playerToken: token,
-      tabId: DEV_TAB_IDENTITY ? tabId : undefined,
+      tabId: DEV_TAB_IDENTITY ? effectiveTabId : undefined,
     };
     intentRef.current = intent;
     try {
@@ -860,10 +874,14 @@ export default function App() {
     client.send({ type: "kickFromLobby", payload: { targetPlayerId } });
   };
 
-  const handleRequestHostTransfer = () => {
+  const handleRequestHostTransfer = (targetPlayerId?: string) => {
     if (!ensureWsInteractive()) return;
     setErrorMessage(null);
-    client.send({ type: "requestHostTransfer", payload: {} });
+    const normalizedTargetId = String(targetPlayerId ?? "").trim();
+    client.send({
+      type: "requestHostTransfer",
+      payload: normalizedTargetId ? { targetPlayerId: normalizedTargetId } : {},
+    });
   };
 
   const handleDevAddPlayer = (name?: string) => {
@@ -1033,7 +1051,7 @@ export default function App() {
             ) : null}
           </div>
           <div className="topbar-rightStack">
-            {roomState && isControl && !isSpectateRoute ? (
+            {roomState && isControl && !isSpectateRoute && !isLobbyRoute ? (
               <button className="ghost button-small" onClick={handleRequestHostTransfer}>
                 {ru.transferHostButton}
               </button>
@@ -1141,12 +1159,13 @@ export default function App() {
                   playerId={playerId}
                   playerToken={playerToken}
                   isControl={Boolean(isControl)}
-                streamerMode={streamerMode}
-                wsInteractive={wsInteractive}
-                onStart={handleStart}
-                onUpdateSettings={handleUpdateSettings}
-                onUpdateRules={handleUpdateRules}
+                  streamerMode={streamerMode}
+                  wsInteractive={wsInteractive}
+                  onStart={handleStart}
+                  onUpdateSettings={handleUpdateSettings}
+                  onUpdateRules={handleUpdateRules}
                   onKickPlayer={handleKickFromLobby}
+                  onTransferHost={handleRequestHostTransfer}
                 />
               }
             />

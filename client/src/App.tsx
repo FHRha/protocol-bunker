@@ -562,9 +562,20 @@ export default function App() {
           const msg = message.payload.message;
           const code = message.payload.code;
           const maxPlayers = message.payload.maxPlayers;
+          const isPermissionError =
+            msg.includes("Действие доступно только роли CONTROL.") ||
+            msg.includes("Недостаточно прав для действия игрока.") ||
+            msg.includes("Только CONTROL может") ||
+            msg.includes("Только хост может") ||
+            msg.includes("Только ведущий может");
           if (isMobileNarrow && dossierActionRef.current) {
             setMobileDossierError(msg);
             dossierActionRef.current = false;
+            return;
+          }
+          if (isPermissionError && connectionStatus === "connected") {
+            setErrorMessage(null);
+            pushUiToast(msg, "danger");
             return;
           }
           if (code === "ROOM_FULL" || msg.includes("Комната заполнена")) {
@@ -849,6 +860,12 @@ export default function App() {
     client.send({ type: "kickFromLobby", payload: { targetPlayerId } });
   };
 
+  const handleRequestHostTransfer = () => {
+    if (!ensureWsInteractive()) return;
+    setErrorMessage(null);
+    client.send({ type: "requestHostTransfer", payload: {} });
+  };
+
   const handleDevAddPlayer = (name?: string) => {
     if (!ensureWsInteractive()) return;
     setErrorMessage(null);
@@ -1016,6 +1033,11 @@ export default function App() {
             ) : null}
           </div>
           <div className="topbar-rightStack">
+            {roomState && isControl && !isSpectateRoute ? (
+              <button className="ghost button-small" onClick={handleRequestHostTransfer}>
+                {ru.transferHostButton}
+              </button>
+            ) : null}
             {roomState ? (
               <button className="primary topbar-exit-button" onClick={handleExitGame}>
                 {ru.exitButton}

@@ -1904,9 +1904,6 @@ function syncScenarioStatuses(room: Room, players: Array<{ playerId: string; sta
     if (entry.status === "eliminated" && !roomPlayer.eliminatedAt) {
       roomPlayer.eliminatedAt = Date.now();
     }
-    if (entry.status === "eliminated" && room.hostId === entry.playerId) {
-      transferHost(room, "eliminated");
-    }
   });
 }
 
@@ -2141,13 +2138,6 @@ function markPlayerLeftBunker(room: Room, player: Player) {
     room,
     buildSystemEvent(room, "playerLeftBunker", `Игрок ${player.name} покинул бункер.`)
   );
-  if (room.hostId === player.playerId) {
-    if (room.hostTransferTimer) {
-      clearTimeout(room.hostTransferTimer);
-      room.hostTransferTimer = undefined;
-    }
-    transferHost(room, "left_bunker");
-  }
 }
 
 function formatRemaining(ms: number): string {
@@ -3534,7 +3524,6 @@ async function main() {
           const role = getRoleForPlayer(room, info.playerId);
           const controlOnlyActions = new Set([
             "finalizeVoting",
-            "setBunkerOutcome",
             "devSkipRound",
             "devKickPlayer",
             "devAddPlayer",
@@ -3589,7 +3578,7 @@ async function main() {
 
           const action = message as ScenarioAction;
           let actorId =
-            controlOnlyActions.has(message.type) || continueRequiresControl || message.type === "setBunkerOutcome"
+            controlOnlyActions.has(message.type) || continueRequiresControl
               ? room.hostId
               : info.playerId;
           if (
@@ -3712,7 +3701,7 @@ async function main() {
           unrefTimer(player.disconnectTicker);
         }
       }
-      if (room.phase === "game" && room.hostId === player.playerId && !player.leftBunker) {
+      if (room.phase === "game" && room.hostId === player.playerId) {
         scheduleHostTransfer(room, "disconnect_timeout");
       }
       logRoomLifecycle("disconnected", room.code, {

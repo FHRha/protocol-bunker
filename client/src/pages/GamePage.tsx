@@ -1833,6 +1833,7 @@ export default function GamePage({
         title={ru.votingModalTitle}
         onClose={() => setVoteModalOpen(false)}
         dismissible={true}
+        className="vote-modal"
       >
         {votePhase === "voting" ? (
           <div className="vote-modal-layout">

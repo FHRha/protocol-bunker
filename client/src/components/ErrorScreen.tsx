@@ -1,4 +1,4 @@
-interface ErrorScreenProps {
+﻿interface ErrorScreenProps {
   message: string;
   canRetry: boolean;
   reconnecting?: boolean;

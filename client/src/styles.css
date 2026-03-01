@@ -3569,7 +3569,27 @@ button.ghost {
   min-height: 0;
 }
 
+.modal.vote-modal .modal-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 @media (max-width: 1250px) {
+  .modal.vote-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: 92dvh;
+  }
+
+  .modal.vote-modal .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
   .modal.mobile-dossier-modal {
     display: flex;
     flex-direction: column;

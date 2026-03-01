@@ -1052,7 +1052,7 @@ export default function App() {
           </div>
           <div className="topbar-rightStack">
             {roomState && isControl && !isSpectateRoute && !isLobbyRoute ? (
-              <button className="ghost button-small" onClick={handleRequestHostTransfer}>
+              <button className="ghost button-small" onClick={() => handleRequestHostTransfer()}>
                 {ru.transferHostButton}
               </button>
             ) : null}

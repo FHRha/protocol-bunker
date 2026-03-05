@@ -185,6 +185,7 @@ export const ru = {
   revealAction: "Раскрыть карту в этом раунде",
   revealPostGameAction: "Открыть оставшуюся карту",
   specialTitle: "Особые условия",
+  specialApplied: "Карта применена.",
   triggerLabel: (trigger: string) => {
     const map: Record<string, string> = {
       active: "активируемая",
@@ -233,7 +234,10 @@ export const ru = {
   },
   votingModalTitle: "Голосование",
   votingSummary: (name: string) => `Вы проголосовали против ${name}`,
+  votingSummaryForcedSelf: (reason?: string) =>
+    reason ? `Вы автоматически проголосовали против себя (${reason})` : "Вы автоматически проголосовали против себя.",
   votingSummaryNone: "Вы ещё не голосовали.",
+  votingWeightHint: (weight: number) => `Ваш голос учитывается с весом x${weight}.`,
   voteCandidateTitle: "Карточки кандидата",
   voteCandidateHint: "Выберите игрока слева для просмотра раскрытых карт.",
   votingWindowHint: "Окно спецусловий: можно применить карты, влияющие на голосование.",

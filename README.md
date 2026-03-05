@@ -1,4 +1,4 @@
-# Протокол: Бункер
+﻿# Протокол: Бункер
 
 Это браузерная версия настолки «Бункер» для друзей, которые хотят спорить и голосовать, но не хотят собираться в одной комнате и печатать карточки (хотя собраться вместе вы сможете с андроид версией).
 
@@ -37,6 +37,7 @@
 - Отдельная страница зрителя (read-only)
 - Streamer mode + ссылки для OBS (view/control)
 - Нормальная обработка ошибок вместо “белого экрана” (у кого-то может и синего)
+- Обновлённая авторская колода карт уже интегрирована в игру (актуальные названия и изображения)
 
 ---
 
@@ -65,6 +66,9 @@
 | Linux ARM64 | [Public](https://github.com/FHRha/protocol-bunker/releases/latest) · [Server](https://github.com/FHRha/protocol-bunker/releases/latest) |
 
 > Если файлов на странице релиза пока нет — значит сборки ещё не залиты (или GitHub решил устроить нам квест).
+>
+> Доступны два варианта артефактов по качеству колоды: обычные (`1x`) и HQ (`2x`).
+> HQ-вариант весит больше, но даёт более чёткие карты.
 
 ### Про macOS
 
@@ -74,9 +78,9 @@
 
 ### Windows (EXE Launcher)
 
-- `protocol-bunker-win-x64-exe-setup-v0.2.1.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `protocol-bunker-win-x64-exe-setup-v0.2.2.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
 - `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
-- `protocol-bunker-win-x64-exe-v0.2.1.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+- `protocol-bunker-win-x64-exe-v0.2.2.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
 
 Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
 
@@ -124,11 +128,11 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 ```
 - конкретная версия, public-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.1
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.2
 ```
 - конкретная версия, server-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.1
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.2
 ```
 
 Что выбрать:
@@ -296,26 +300,38 @@ Streamer mode делает две вещи:
 
 ---
 
-## Сборка релизов (0.2.1)
+## Сборка релизов (0.2.2)
 
 Полная сборка:
 - `pnpm run build:all`
 - `pnpm run pack:win`
+- `pnpm run pack:win:hq`
 - `pnpm run pack:linux`
+- `pnpm run pack:linux:hq`
 - `pnpm run pack:linux:arm64`
+- `pnpm run pack:linux:arm64:hq`
 - `pnpm run pack:win-exe`
 
 Быстро (если dist уже актуальны):
 - `pnpm run pack:win -- --skip-build`
+- `pnpm run pack:win:hq -- --skip-build`
 - `pnpm run pack:linux -- --skip-build`
+- `pnpm run pack:linux:hq -- --skip-build`
 - `pnpm run pack:linux:arm64 -- --skip-build`
+- `pnpm run pack:linux:arm64:hq -- --skip-build`
 - `pnpm run pack:win-exe -- --skip-build`
 
 Где результаты:
-- `artifacts/win/`
+- `artifacts/win/`:
+  - `Protocol-Bunker/` (обычная колода 1x)
+  - `Protocol-Bunker-hq2x/` (HQ-колода 2x)
 - `artifacts/linux/`:
-  - `protocol-bunker-linux-x64-public-v0.2.1.tar.gz`
-  - `protocol-bunker-linux-x64-server-v0.2.1.tar.gz`
-  - `protocol-bunker-linux-arm64-public-v0.2.1.tar.gz`
-  - `protocol-bunker-linux-arm64-server-v0.2.1.tar.gz`
+  - `protocol-bunker-linux-x64-public-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-x64-public-hq2x-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-x64-server-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-x64-server-hq2x-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-arm64-public-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-arm64-public-hq2x-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-arm64-server-v0.2.2.tar.gz`
+  - `protocol-bunker-linux-arm64-server-hq2x-v0.2.2.tar.gz`
 - `artifacts/win-exe/`

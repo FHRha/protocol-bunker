@@ -20,10 +20,18 @@ function getArgValue(flagName) {
   if (!value || value.startsWith("--")) return null;
   return value;
 }
+function normalizeAssetVariant(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "1x";
+  if (raw === "1x" || raw === "2x") return raw;
+  throw new Error(`[pack:win] Unsupported --asset-variant value: "${value}". Supported: 1x, 2x`);
+}
 const fastMode = process.argv.includes("--fast");
 const skipBuild = process.argv.includes("--skip-build");
 const forceRepack = process.argv.includes("--force-repack");
 const noArchive = process.argv.includes("--no-archive");
+const assetVariant = normalizeAssetVariant(getArgValue("--asset-variant"));
+const assetFlavorSuffix = assetVariant === "2x" ? "-hq2x" : "";
 const outRootArg = getArgValue("--out-root");
 const gitHead = (() => {
   const result = spawnSync("git", ["rev-parse", "HEAD"], {
@@ -37,7 +45,7 @@ const gitHead = (() => {
 const artifactsWinDir = outRootArg
   ? path.resolve(rootDir, outRootArg)
   : path.join(rootDir, "artifacts", "win");
-const artifactsDir = path.join(artifactsWinDir, "Protocol-Bunker");
+const artifactsDir = path.join(artifactsWinDir, `Protocol-Bunker${assetFlavorSuffix}`);
 const appDir = path.join(artifactsDir, "app");
 const appVersionFilePath = path.join(appDir, "VERSION");
 const serverAppDir = path.join(appDir, "server");
@@ -79,7 +87,7 @@ const portableEnvPath = path.join(artifactsDir, "portable.env");
 const readmePath = path.join(artifactsDir, "README_PORTABLE.txt");
 const zipPath = path.join(
   artifactsWinDir,
-  `protocol-bunker-win-x64-portable-${versionTag}.zip`
+  `protocol-bunker-win-x64-portable${assetFlavorSuffix}-${versionTag}.zip`
 );
 const jsBuildStampPath = path.join(rootDir, ".cache", "pack-js-build-stamp.json");
 const pnpmCmd = "pnpm";
@@ -274,6 +282,78 @@ function cleanPath(targetPath) {
 function copyDir(src, dst) {
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.cpSync(src, dst, { recursive: true, force: true });
+}
+
+function findBackDeckName(decksRoot) {
+  const dirs = fs.readdirSync(decksRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  const backNameRegex = /\u0420\u0443\u0431\u0430\u0448\u043a/i; // "Рубашк"
+  const byName = dirs.find((entry) => backNameRegex.test(entry.name));
+  if (byName) return byName.name;
+
+  for (const dir of dirs) {
+    const fullDir = path.join(decksRoot, dir.name);
+    const files = fs.readdirSync(fullDir, { withFileTypes: true }).filter((entry) => entry.isFile());
+    if (files.some((file) => backNameRegex.test(file.name))) {
+      return dir.name;
+    }
+  }
+  return null;
+}
+
+function moveBackDeckToRoot(dstDecksRoot, variantCopyDir) {
+  const backDeckName = findBackDeckName(variantCopyDir);
+  if (!backDeckName) {
+    return;
+  }
+  const sourceBackDir = path.join(variantCopyDir, backDeckName);
+  const targetBackDir = path.join(dstDecksRoot, backDeckName);
+  cleanPath(targetBackDir);
+  fs.mkdirSync(path.dirname(targetBackDir), { recursive: true });
+  fs.renameSync(sourceBackDir, targetBackDir);
+}
+
+function copyAssetsVariant(srcAssetsRoot, dstAssetsRoot, variant) {
+  const srcDecksRoot = path.join(srcAssetsRoot, "decks");
+  ensureExists(srcDecksRoot, "assets/decks source");
+
+  cleanPath(dstAssetsRoot);
+  fs.mkdirSync(dstAssetsRoot, { recursive: true });
+
+  const topLevelEntries = fs.readdirSync(srcAssetsRoot, { withFileTypes: true });
+  for (const entry of topLevelEntries) {
+    if (entry.name === "decks") continue;
+    const srcPath = path.join(srcAssetsRoot, entry.name);
+    const dstPath = path.join(dstAssetsRoot, entry.name);
+    if (entry.isDirectory()) {
+      copyDir(srcPath, dstPath);
+    } else if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(dstPath), { recursive: true });
+      fs.copyFileSync(srcPath, dstPath);
+    }
+  }
+
+  const variantDir = path.join(srcDecksRoot, variant);
+  const hasVariantFolders = ["1x", "2x"].some((name) => fs.existsSync(path.join(srcDecksRoot, name)));
+  const dstDecksRoot = path.join(dstAssetsRoot, "decks");
+  fs.mkdirSync(dstDecksRoot, { recursive: true });
+
+  if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
+    const variantCopyDir = path.join(dstDecksRoot, variant);
+    copyDir(variantDir, variantCopyDir);
+    moveBackDeckToRoot(dstDecksRoot, variantCopyDir);
+    writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), `${variant}\n`);
+    return;
+  }
+
+  if (hasVariantFolders) {
+    throw new Error(
+      `[pack:win] assets/decks contains variant folders, but "${variant}" was not found: ${variantDir}`
+    );
+  }
+
+  // Legacy layout: decks/<Категория>.
+  copyDir(srcDecksRoot, dstDecksRoot);
+  writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), "legacy\n");
 }
 
 function writeFile(filePath, content) {
@@ -879,6 +959,7 @@ $env:BUNKER_SERVE_CLIENT = "true"
 $env:BUNKER_PORTABLE = "1"
 $env:BUNKER_ASSETS_ROOT = $assetsRoot
 $env:BUNKER_CLIENT_DIST = $clientDist
+$env:BUNKER_ASSET_VARIANT = "${assetVariant}"
 
 if ($script:mode -eq "domain") {
   $env:HOST = "127.0.0.1"
@@ -991,6 +1072,7 @@ function main() {
     VITE_DEV_NEW_PLAYER_PER_TAB: "false",
   };
   console.log(`[pack:win] Building version: ${versionTag}`);
+  console.log(`[pack:win] Assets variant: ${assetVariant} (archive suffix: ${assetFlavorSuffix || "none"})`);
   console.log("[pack:win] Syncing icons...");
   syncRootIconsIntoClientSource();
   if (skipBuild) {
@@ -1045,7 +1127,7 @@ function main() {
     ensureExists(clientDistSrc, "client dist source");
     ensureExists(assetsSrc, "assets source");
     copyDir(clientDistSrc, clientDistDst);
-    copyDir(assetsSrc, assetsDst);
+    copyAssetsVariant(assetsSrc, assetsDst, assetVariant);
 
     console.log("[pack:win] Copying scenario runtime data...");
     ensureExists(scenariosRuntimeSrc, "scenarios runtime source");

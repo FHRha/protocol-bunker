@@ -368,6 +368,7 @@ export interface VotePublic {
   targetName?: string;
   status: "voted" | "not_voted" | "invalid";
   reason?: string;
+  weight?: number;
   submittedAt?: number;
 }
 
@@ -907,6 +908,7 @@ export const VotePublicSchema = z.object({
   targetName: z.string().optional(),
   status: z.union([z.literal("voted"), z.literal("not_voted"), z.literal("invalid")]),
   reason: z.string().optional(),
+  weight: z.number().optional(),
   submittedAt: z.number().int().nonnegative().optional(),
 });
 

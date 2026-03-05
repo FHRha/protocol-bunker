@@ -901,6 +901,32 @@ if (!fs.existsSync(OVERLAY_PUBLIC_ROOT)) {
   process.exit(1);
 }
 
+const BACK_DECK_DIR_NAME = "Рубашки";
+const KNOWN_ASSET_VARIANTS = ["1x", "2x"] as const;
+
+function resolveBackDeckAssetPath(fileName: string): string | null {
+  const safeFileName = path.basename(fileName);
+  if (!safeFileName || safeFileName !== fileName) return null;
+
+  const decksRoot = path.join(ASSETS_ROOT, "decks");
+  const directPath = path.join(decksRoot, BACK_DECK_DIR_NAME, safeFileName);
+  if (fs.existsSync(directPath)) return directPath;
+
+  const requestedVariant = process.env.BUNKER_ASSET_VARIANT?.trim().toLowerCase();
+  const candidateVariants = new Set<string>();
+  if (requestedVariant) candidateVariants.add(requestedVariant);
+  for (const variant of KNOWN_ASSET_VARIANTS) candidateVariants.add(variant);
+
+  for (const variant of candidateVariants) {
+    const candidatePath = path.join(decksRoot, variant, BACK_DECK_DIR_NAME, safeFileName);
+    if (fs.existsSync(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  return null;
+}
+
 const DEFAULT_SETTINGS: GameSettings = {
   enableRevealDiscussionTimer: false,
   revealDiscussionSeconds: 60,
@@ -2290,6 +2316,19 @@ async function main() {
     next();
   });
   app.use(express.json({ limit: "256kb" }));
+
+  app.get("/assets/decks/:deckName/:fileName", (req, res, next) => {
+    if (req.params.deckName !== BACK_DECK_DIR_NAME) {
+      next();
+      return;
+    }
+    const resolvedPath = resolveBackDeckAssetPath(req.params.fileName);
+    if (!resolvedPath) {
+      next();
+      return;
+    }
+    res.sendFile(resolvedPath);
+  });
 
   app.use("/assets", express.static(ASSETS_ROOT));
   app.use(LINK_PATHS.overlayAssets, express.static(OVERLAY_PUBLIC_ROOT));

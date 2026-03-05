@@ -129,6 +129,9 @@ jobs:
       - name: Pack Windows portable
         run: pnpm run pack:win -- --skip-build --force-repack
 
+      - name: Pack Windows portable HQ (2x)
+        run: pnpm run pack:win:hq -- --skip-build --force-repack
+
       - name: Pack Windows EXE
         if: steps.detect_win_exe.outputs.available == 'true'
         shell: pwsh
@@ -141,7 +144,10 @@ jobs:
           Get-ChildItem artifacts/win-exe -ErrorAction SilentlyContinue | Format-Table -AutoSize
 
           $v = "${{ needs.verify-version.outputs.version_tag }}"
-          $expected = @("artifacts/win/protocol-bunker-win-x64-portable-$v.zip")
+          $expected = @(
+            "artifacts/win/protocol-bunker-win-x64-portable-$v.zip",
+            "artifacts/win/protocol-bunker-win-x64-portable-hq2x-$v.zip"
+          )
           if ("${{ steps.detect_win_exe.outputs.available }}" -eq "true") {
             $expected += @(
               "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
@@ -159,7 +165,9 @@ jobs:
         with:
           name: release-windows
           if-no-files-found: error
-          path: artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
+          path: |
+            artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
+            artifacts/win/protocol-bunker-win-x64-portable-hq2x-${{ needs.verify-version.outputs.version_tag }}.zip
 
       - name: Upload Windows EXE release assets
         if: steps.detect_win_exe.outputs.available == 'true'
@@ -201,8 +209,14 @@ jobs:
       - name: Pack Linux x64
         run: pnpm run pack:linux -- --skip-build --force-repack
 
+      - name: Pack Linux x64 HQ (2x)
+        run: pnpm run pack:linux:hq -- --skip-build --force-repack
+
       - name: Pack Linux arm64
         run: pnpm run pack:linux:arm64 -- --skip-build --force-repack
+
+      - name: Pack Linux arm64 HQ (2x)
+        run: pnpm run pack:linux:arm64:hq -- --skip-build --force-repack
 
       - name: Validate Linux artifacts
         shell: bash
@@ -212,8 +226,12 @@ jobs:
 
           test -f "artifacts/linux/protocol-bunker-linux-x64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
           test -f "artifacts/linux/protocol-bunker-linux-x64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-x64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-x64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
           test -f "artifacts/linux/protocol-bunker-linux-arm64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
           test -f "artifacts/linux/protocol-bunker-linux-arm64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-arm64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
+          test -f "artifacts/linux/protocol-bunker-linux-arm64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
 
       - name: Upload Linux release assets
         uses: actions/upload-artifact@v4
@@ -223,8 +241,12 @@ jobs:
           path: |
             artifacts/linux/protocol-bunker-linux-x64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz
             artifacts/linux/protocol-bunker-linux-x64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-x64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-x64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
             artifacts/linux/protocol-bunker-linux-arm64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz
             artifacts/linux/protocol-bunker-linux-arm64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-arm64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+            artifacts/linux/protocol-bunker-linux-arm64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
 
   publish-release:
     name: Publish GitHub Release assets

@@ -135,6 +135,7 @@ interface VotingState {
   baseVotes: Map<string, VoteRecord> | null;
   candidates: Set<string>;
   autoWastedVoters: Set<string>;
+  forcedSelfVoters: Set<string>;
   disabledVoters: Set<string>;
   voteWeights: Map<string, number>;
   doubleAgainstTarget?: string;
@@ -658,6 +659,7 @@ export const scenario: ScenarioModule = {
       votingState.voteWeights.delete(targetId);
       votingState.disabledVoters.delete(targetId);
       votingState.autoWastedVoters.delete(targetId);
+      votingState.forcedSelfVoters.delete(targetId);
       votingState.revoteDisallowTargets.delete(targetId);
       if (votingState.doubleAgainstTarget === targetId) {
         votingState.doubleAgainstTarget = undefined;
@@ -701,6 +703,21 @@ export const scenario: ScenarioModule = {
         targetId: undefined,
         submittedAt: Date.now(),
         isValid: false,
+        reasonInvalid: reason,
+      });
+    };
+
+    const markVoteForcedSelf = (
+      state: VotingState,
+      voterId: string,
+      reason = "Автоголос в себя (тайное условие)."
+    ) => {
+      state.forcedSelfVoters.add(voterId);
+      state.disabledVoters.delete(voterId);
+      state.votes.set(voterId, {
+        targetId: voterId,
+        submittedAt: Date.now(),
+        isValid: true,
         reasonInvalid: reason,
       });
     };
@@ -769,6 +786,7 @@ export const scenario: ScenarioModule = {
         baseVotes: null,
         candidates: new Set(alivePlayers().map((player) => player.playerId)),
         autoWastedVoters: new Set(),
+        forcedSelfVoters: new Set(),
         disabledVoters: new Set(),
         voteWeights: new Map(),
         doubleAgainstTarget: undefined,
@@ -784,7 +802,7 @@ export const scenario: ScenarioModule = {
 
       for (const player of alivePlayers()) {
         if (player.forcedWastedVoteNext) {
-          markVoteWasted(votingState, player.playerId, "Голос потрачен.");
+          markVoteForcedSelf(votingState, player.playerId);
           player.forcedWastedVoteNext = false;
         }
       }
@@ -1158,6 +1176,9 @@ export const scenario: ScenarioModule = {
       for (const voterId of votingState.autoWastedVoters) {
         markVoteWasted(votingState, voterId, "Голос потрачен.");
       }
+      for (const voterId of votingState.forcedSelfVoters) {
+        markVoteForcedSelf(votingState, voterId);
+      }
     };
 
     const startTieBreakRevote = (candidates: string[]) => {
@@ -1272,8 +1293,16 @@ export const scenario: ScenarioModule = {
           }
 
           if (triggered) {
+            const becamePublic = !condition.revealedPublic;
+            condition.revealedPublic = true;
             condition.used = true;
             player.forcedWastedVoteNext = true;
+            emitEvent(
+              "info",
+              becamePublic
+                ? `Тайная карта раскрылась у ${player.name}: "${def.title}". Следующее голосование — автоголос в себя.`
+                : `Сработало условие "${def.title}" у ${player.name}. Следующее голосование — автоголос в себя.`
+            );
           }
         }
       }
@@ -1708,6 +1737,7 @@ export const scenario: ScenarioModule = {
 
       if (trigger === "onOwnerEliminated") {
         special.pendingActivation = false;
+        emitEvent("info", `${player.name} применяет особое условие после изгнания: ${special.definition.title}.`);
       }
 
       let changed = Boolean(result.stateChanged);
@@ -2041,7 +2071,7 @@ export const scenario: ScenarioModule = {
           target.revealedAtRound = target.revealedAtRound ?? round;
 
           special.used = true;
-          emitEvent("info", `Спецусловие "${def.title}" убирает карту бункера из стола.`);
+          emitEvent("info", `Карта "${def.title}" применена: карта бункера убрана из стола.`);
           return { stateChanged: true };
         }
         case "forceRevealCategoryForAll": {
@@ -2321,6 +2351,8 @@ export const scenario: ScenarioModule = {
             targetId: info.targetId,
             targetName: players.get(info.targetId)?.name ?? "Неизвестно",
             status: "voted" as const,
+            reason: info.reason,
+            weight: info.weight,
             submittedAt: info.submittedAt,
           };
         }
@@ -2329,6 +2361,7 @@ export const scenario: ScenarioModule = {
           voterName: player.name,
           status: info.status === "invalid" ? ("invalid" as const) : ("not_voted" as const),
           reason: info.reason,
+          weight: info.weight,
           submittedAt: info.submittedAt,
         };
       });

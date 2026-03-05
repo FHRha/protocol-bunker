@@ -9,9 +9,9 @@
     <AssemblyName>ProtocolBunker</AssemblyName>
     <RootNamespace>ProtocolBunker.Launcher</RootNamespace>
     <ApplicationIcon>..\..\assets\icons\app.ico</ApplicationIcon>
-    <Version>0.2.1</Version>
-    <FileVersion>0.2.1.0</FileVersion>
-    <AssemblyVersion>0.2.1.0</AssemblyVersion>
+    <Version>0.2.2</Version>
+    <FileVersion>0.2.2.0</FileVersion>
+    <AssemblyVersion>0.2.2.0</AssemblyVersion>
   </PropertyGroup>
 
 </Project>

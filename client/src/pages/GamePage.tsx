@@ -524,11 +524,22 @@ export default function GamePage({
     return map;
   }, [votesPublic]);
 
+  const yourVoteEntry = useMemo(() => votesByVoter.get(you?.playerId ?? ""), [votesByVoter, you?.playerId]);
+
   const yourVoteLabel = useMemo(() => {
-    const vote = votesByVoter.get(you?.playerId ?? "");
+    const vote = yourVoteEntry;
     if (!vote || vote.status !== "voted" || !vote.targetName) return ru.votingSummaryNone;
+    if (vote.targetId === you?.playerId) {
+      return ru.votingSummaryForcedSelf(vote.reason);
+    }
     return ru.votingSummary(vote.targetName);
-  }, [votesByVoter, you?.playerId]);
+  }, [yourVoteEntry, you?.playerId]);
+
+  const yourVoteWeight = useMemo(() => {
+    if (!yourVoteEntry) return 1;
+    const weight = Number(yourVoteEntry.weight ?? 1);
+    return Number.isFinite(weight) && weight > 0 ? weight : 1;
+  }, [yourVoteEntry]);
 
   const selectedVotePlayer = useMemo(
     () => publicPlayers.find((entry) => entry.playerId === voteTargetId) ?? null,
@@ -721,6 +732,19 @@ export default function GamePage({
       const slot = player.categories.find((entry) => entry.category === label);
       return Boolean(slot && slot.status === "revealed" && slot.cards.length > 0);
     });
+  };
+
+  const getRevealedCategoryCardHint = (playerId: string, categoryKey: string): string | null => {
+    const player = publicPlayers.find((entry) => entry.playerId === playerId);
+    if (!player) return null;
+    const labels = CATEGORY_KEY_TO_LABELS[categoryKey] ?? [categoryKey];
+    for (const label of labels) {
+      const slot = player.categories.find((entry) => entry.category === label);
+      if (!slot || slot.status !== "revealed" || slot.cards.length === 0) continue;
+      const cardLabel = slot.cards[0]?.labelShort?.trim() || "—";
+      return `${label}: ${cardLabel}`;
+    }
+    return null;
   };
 
   const getRevealedBunkerOptions = () =>
@@ -922,6 +946,20 @@ export default function GamePage({
           options = options.filter((option) => youHas && hasRevealedCategory(option.id, categoryKey));
         }
       }
+      if (categoryKey) {
+        const shouldShowCategoryCardHint =
+          effectType === "swapRevealedWithNeighbor" ||
+          effectType === "replaceRevealedCard" ||
+          effectType === "discardRevealedAndDealHidden";
+        if (shouldShowCategoryCardHint) {
+          options = options.map((option) => {
+            const hint = getRevealedCategoryCardHint(option.id, categoryKey);
+            if (!hint) return option;
+            const suffix = effectType === "swapRevealedWithNeighbor" ? `обмен на: ${hint}` : hint;
+            return { ...option, label: `${option.label} — ${suffix}` };
+          });
+        }
+      }
 
       if (effectType === "stealBaggage_and_giveSpecial") {
         const baggageOptions = options.flatMap((option) => {
@@ -1053,6 +1091,7 @@ export default function GamePage({
                 <div className="special-description">{special.text}</div>
                 <div className="special-meta">
                   {!special.implemented ? <span>{ru.notImplemented}</span> : null}
+                  {special.used ? <span>{ru.specialApplied}</span> : null}
                 </div>
                 <div className="special-actions">
                   <button className="primary" disabled={!canUse} onClick={() => handleApplySpecial(special)}>
@@ -1251,6 +1290,7 @@ export default function GamePage({
                     />
                   </div>
                   <div className="special-description">{special.text}</div>
+                  {special.used ? <div className="special-meta"><span>{ru.specialApplied}</span></div> : null}
                   <div className="special-actions">
                     <button className="primary" disabled={!canUse} onClick={() => handleApplySpecialFromDossier(special)}>
                       {ru.useSpecialButton}
@@ -1839,6 +1879,7 @@ export default function GamePage({
           <div className="vote-modal-layout">
             <div className="vote-modal-section">
               <div className="muted">{yourVoteLabel}</div>
+              {yourVoteWeight > 1 ? <div className="muted">{ru.votingWeightHint(yourVoteWeight)}</div> : null}
               <select value={voteTargetId ?? ""} onChange={(event) => setVoteTargetId(event.target.value)}>
                 <option value="" disabled>
                   {ru.selectPlayerPlaceholder}
@@ -1905,7 +1946,9 @@ export default function GamePage({
                   <span>{vote.voterName}</span>
                   <span>
                     {vote.status === "voted" && vote.targetName
-                      ? ru.voteAgainst(vote.targetName)
+                      ? vote.reason
+                        ? `${ru.voteAgainst(vote.targetName)} (${vote.reason})${(vote.weight ?? 1) > 1 ? ` x${vote.weight}` : ""}`
+                        : `${ru.voteAgainst(vote.targetName)}${(vote.weight ?? 1) > 1 ? ` x${vote.weight}` : ""}`
                       : vote.status === "invalid"
                         ? ru.voteInvalid(vote.reason ?? ru.voteNotVoted)
                         : ru.voteNotVoted}

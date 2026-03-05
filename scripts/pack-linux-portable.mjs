@@ -27,6 +27,24 @@ function readArchArg(argv) {
   }
   return "";
 }
+function readOptionValue(argv, flagName) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === flagName) {
+      return argv[index + 1] ?? "";
+    }
+    if (arg.startsWith(`${flagName}=`)) {
+      return arg.slice(flagName.length + 1);
+    }
+  }
+  return "";
+}
+function normalizeAssetVariant(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "1x";
+  if (raw === "1x" || raw === "2x") return raw;
+  throw new Error(`[pack:linux] Unsupported --asset-variant value: "${value}". Supported: 1x, 2x`);
+}
 
 const rootDir = process.cwd();
 const rootPackageJsonPath = path.join(rootDir, "package.json");
@@ -37,6 +55,8 @@ const fastMode = process.argv.includes("--fast");
 const skipBuild = process.argv.includes("--skip-build");
 const forceRepack = process.argv.includes("--force-repack");
 const targetArchInput = readArchArg(process.argv.slice(2));
+const assetVariant = normalizeAssetVariant(readOptionValue(process.argv.slice(2), "--asset-variant"));
+const assetFlavorSuffix = assetVariant === "2x" ? "-hq2x" : "";
 const targetArch = normalizeArch(targetArchInput || "x64");
 if (!targetArch || !SUPPORTED_ARCHES[targetArch]) {
   console.error(
@@ -55,9 +75,14 @@ const gitHead = (() => {
   return String(result.stdout ?? "").trim() || "nogit";
 })();
 const artifactsLinuxDir = path.join(rootDir, "artifacts", "linux");
-const artifactsDirName = targetArch === "x64" ? "Protocol-Bunker" : `Protocol-Bunker-${targetArch}`;
+const artifactsDirName =
+  targetArch === "x64"
+    ? `Protocol-Bunker${assetFlavorSuffix}`
+    : `Protocol-Bunker-${targetArch}${assetFlavorSuffix}`;
 const serverArtifactsDirName =
-  targetArch === "x64" ? "Protocol-Bunker-server" : `Protocol-Bunker-${targetArch}-server`;
+  targetArch === "x64"
+    ? `Protocol-Bunker-server${assetFlavorSuffix}`
+    : `Protocol-Bunker-${targetArch}-server${assetFlavorSuffix}`;
 const artifactsDir = path.join(artifactsLinuxDir, artifactsDirName);
 const serverArtifactsDir = path.join(artifactsLinuxDir, serverArtifactsDirName);
 const appDir = path.join(artifactsDir, "app");
@@ -99,19 +124,19 @@ const portableEnvPath = path.join(artifactsDir, "portable.env");
 const readmePath = path.join(artifactsDir, "README_PORTABLE.txt");
 const publicTarGzPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-${targetArch}-public-${versionTag}.tar.gz`
+  `protocol-bunker-linux-${targetArch}-public${assetFlavorSuffix}-${versionTag}.tar.gz`
 );
 const publicZipPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-${targetArch}-public-${versionTag}.zip`
+  `protocol-bunker-linux-${targetArch}-public${assetFlavorSuffix}-${versionTag}.zip`
 );
 const serverTarGzPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-${targetArch}-server-${versionTag}.tar.gz`
+  `protocol-bunker-linux-${targetArch}-server${assetFlavorSuffix}-${versionTag}.tar.gz`
 );
 const serverZipPath = path.join(
   artifactsLinuxDir,
-  `protocol-bunker-linux-${targetArch}-server-${versionTag}.zip`
+  `protocol-bunker-linux-${targetArch}-server${assetFlavorSuffix}-${versionTag}.zip`
 );
 const jsBuildStampPath = path.join(rootDir, ".cache", "pack-js-build-stamp.json");
 const pnpmCmd = "pnpm";
@@ -246,6 +271,78 @@ function cleanPathBestEffort(targetPath, label) {
 function copyDir(src, dst) {
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.cpSync(src, dst, { recursive: true, force: true });
+}
+
+function findBackDeckName(decksRoot) {
+  const dirs = fs.readdirSync(decksRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  const backNameRegex = /\u0420\u0443\u0431\u0430\u0448\u043a/i; // "Рубашк"
+  const byName = dirs.find((entry) => backNameRegex.test(entry.name));
+  if (byName) return byName.name;
+
+  for (const dir of dirs) {
+    const fullDir = path.join(decksRoot, dir.name);
+    const files = fs.readdirSync(fullDir, { withFileTypes: true }).filter((entry) => entry.isFile());
+    if (files.some((file) => backNameRegex.test(file.name))) {
+      return dir.name;
+    }
+  }
+  return null;
+}
+
+function moveBackDeckToRoot(dstDecksRoot, variantCopyDir) {
+  const backDeckName = findBackDeckName(variantCopyDir);
+  if (!backDeckName) {
+    return;
+  }
+  const sourceBackDir = path.join(variantCopyDir, backDeckName);
+  const targetBackDir = path.join(dstDecksRoot, backDeckName);
+  cleanPath(targetBackDir);
+  fs.mkdirSync(path.dirname(targetBackDir), { recursive: true });
+  fs.renameSync(sourceBackDir, targetBackDir);
+}
+
+function copyAssetsVariant(srcAssetsRoot, dstAssetsRoot, variant) {
+  const srcDecksRoot = path.join(srcAssetsRoot, "decks");
+  ensureExists(srcDecksRoot, "assets/decks source");
+
+  cleanPath(dstAssetsRoot);
+  fs.mkdirSync(dstAssetsRoot, { recursive: true });
+
+  const topLevelEntries = fs.readdirSync(srcAssetsRoot, { withFileTypes: true });
+  for (const entry of topLevelEntries) {
+    if (entry.name === "decks") continue;
+    const srcPath = path.join(srcAssetsRoot, entry.name);
+    const dstPath = path.join(dstAssetsRoot, entry.name);
+    if (entry.isDirectory()) {
+      copyDir(srcPath, dstPath);
+    } else if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(dstPath), { recursive: true });
+      fs.copyFileSync(srcPath, dstPath);
+    }
+  }
+
+  const variantDir = path.join(srcDecksRoot, variant);
+  const hasVariantFolders = ["1x", "2x"].some((name) => fs.existsSync(path.join(srcDecksRoot, name)));
+  const dstDecksRoot = path.join(dstAssetsRoot, "decks");
+  fs.mkdirSync(dstDecksRoot, { recursive: true });
+
+  if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
+    const variantCopyDir = path.join(dstDecksRoot, variant);
+    copyDir(variantDir, variantCopyDir);
+    moveBackDeckToRoot(dstDecksRoot, variantCopyDir);
+    writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), `${variant}\n`);
+    return;
+  }
+
+  if (hasVariantFolders) {
+    throw new Error(
+      `[pack:linux] assets/decks contains variant folders, but "${variant}" was not found: ${variantDir}`
+    );
+  }
+
+  // Legacy layout: decks/<Категория>.
+  copyDir(srcDecksRoot, dstDecksRoot);
+  writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), "legacy\n");
 }
 
 function writeFile(filePath, content) {
@@ -828,6 +925,7 @@ function buildStartSh(profile) {
     'export BUNKER_PORTABLE="1"',
     'export BUNKER_ASSETS_ROOT="$ASSETS_ROOT"',
     'export BUNKER_CLIENT_DIST="$APP_ROOT/client/dist"',
+    `export BUNKER_ASSET_VARIANT="${assetVariant}"`,
     'export BUNKER_BUILD_PROFILE="$BUILD_PROFILE"',
     'if [[ "$PUBLIC_ONLY_LINKS" == "1" ]]; then',
     '  export BUNKER_LINKS_VISIBILITY="public"',
@@ -994,6 +1092,7 @@ function writeVariantLaunchFiles(variantDir, profile) {
 async function main() {
   console.log(`[pack:linux] Building version: ${versionTag}`);
   console.log(`[pack:linux] Target architecture: ${targetArch}`);
+  console.log(`[pack:linux] Assets variant: ${assetVariant} (archive suffix: ${assetFlavorSuffix || "none"})`);
   console.log("[pack:linux] Syncing icons...");
   syncRootIconsIntoClientSource();
   if (process.platform !== "linux") {
@@ -1053,7 +1152,7 @@ async function main() {
     ensureExists(clientDistSrc, "client dist source");
     ensureExists(assetsSrc, "assets source");
     copyDir(clientDistSrc, clientDistDst);
-    copyDir(assetsSrc, assetsDst);
+    copyAssetsVariant(assetsSrc, assetsDst, assetVariant);
 
     console.log("[pack:linux] Copying scenario runtime data...");
     ensureExists(scenariosRuntimeSrc, "scenarios runtime source");

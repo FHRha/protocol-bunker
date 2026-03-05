@@ -138,6 +138,7 @@ interface VotingState {
   baseVotes: Map<string, VoteRecord> | null;
   candidates: Set<string>;
   autoWastedVoters: Set<string>;
+  forcedSelfVoters: Set<string>;
   disabledVoters: Set<string>;
   voteWeights: Map<string, number>;
   doubleAgainstTarget?: string;
@@ -202,9 +203,7 @@ const resolveChoiceKindFromTargeting = (definition: SpecialConditionDefinition):
   if (
     definition.effect.type === "replaceBunkerCard" ||
     definition.effect.type === "discardBunkerCard" ||
-    definition.effect.type === "stealBunkerCardToExiled" ||
-    definition.effect.type === "replaceRevealedCard" ||
-    definition.effect.type === "discardRevealedAndDealHidden"
+    definition.effect.type === "stealBunkerCardToExiled"
   ) {
     return "bunker";
   }
@@ -319,6 +318,19 @@ export const scenario: ScenarioModule = {
       deckPools.set(deckName, [...(ctx.assets.decks[deckName] ?? [])]);
     }
     const specialPool = [...IMPLEMENTED_SPECIALS];
+    const specialImageIndex = new Map<string, string>();
+    for (const asset of ctx.assets.decks[SPECIAL_CATEGORY] ?? []) {
+      const imgUrl = asset.id ? `/assets/${asset.id}` : undefined;
+      if (!imgUrl) continue;
+      const titleKey = normalizeSpecialLookup(asset.labelShort);
+      const fileKey = normalizeSpecialLookup(toSpecialFileName(asset.id));
+      if (titleKey && !specialImageIndex.has(titleKey)) {
+        specialImageIndex.set(titleKey, imgUrl);
+      }
+      if (fileKey && !specialImageIndex.has(fileKey)) {
+        specialImageIndex.set(fileKey, imgUrl);
+      }
+    }
 
     let cardCounter = 0;
     let specialCounter = 0;
@@ -381,6 +393,21 @@ export const scenario: ScenarioModule = {
             }))
         : world.bunker.map((card) => ({ ...card, isRevealed: true }));
     let worldEvent: WorldEvent | null = null;
+
+    const resolveSpecialImgUrl = (definition: SpecialConditionDefinition): string | undefined => {
+      const byTitle = specialImageIndex.get(normalizeSpecialLookup(definition.title));
+      if (byTitle) return byTitle;
+      const byFileName = specialImageIndex.get(normalizeSpecialLookup(toSpecialFileName(definition.file)));
+      if (byFileName) return byFileName;
+      const byId = specialImageIndex.get(normalizeSpecialLookup(toSpecialFileName(definition.id)));
+      if (byId) return byId;
+      return buildSpecialImgUrl(definition.file);
+    };
+    const resolveSpecialAssetId = (definition: SpecialConditionDefinition): string => {
+      const imgUrl = resolveSpecialImgUrl(definition);
+      if (!imgUrl || !imgUrl.startsWith("/assets/")) return "";
+      return imgUrl.slice("/assets/".length);
+    };
 
     const makeCardInstanceId = (playerId: string) => {
       cardCounter += 1;
@@ -543,6 +570,7 @@ export const scenario: ScenarioModule = {
       votingState.voteWeights.delete(targetId);
       votingState.disabledVoters.delete(targetId);
       votingState.autoWastedVoters.delete(targetId);
+      votingState.forcedSelfVoters.delete(targetId);
       votingState.revoteDisallowTargets.delete(targetId);
       if (votingState.doubleAgainstTarget === targetId) {
         votingState.doubleAgainstTarget = undefined;
@@ -795,6 +823,21 @@ export const scenario: ScenarioModule = {
       });
     };
 
+    const markVoteForcedSelf = (
+      state: VotingState,
+      voterId: string,
+      reason = "Автоголос в себя (тайное условие)."
+    ) => {
+      state.forcedSelfVoters.add(voterId);
+      state.disabledVoters.delete(voterId);
+      state.votes.set(voterId, {
+        targetId: voterId,
+        submittedAt: Date.now(),
+        isValid: true,
+        reasonInvalid: reason,
+      });
+    };
+
     const clearVoteWindowTimer = () => {
       if (voteWindowTimer) {
         clearTimeout(voteWindowTimer);
@@ -835,6 +878,7 @@ export const scenario: ScenarioModule = {
         baseVotes: null,
         candidates: new Set(alivePlayers().map((player) => player.playerId)),
         autoWastedVoters: new Set(),
+        forcedSelfVoters: new Set(),
         disabledVoters: new Set(),
         voteWeights: new Map(),
         doubleAgainstTarget: undefined,
@@ -849,7 +893,7 @@ export const scenario: ScenarioModule = {
 
       for (const player of alivePlayers()) {
         if (player.forcedWastedVoteNext) {
-          markVoteWasted(votingState, player.playerId, "Голос потрачен.");
+          markVoteForcedSelf(votingState, player.playerId);
           player.forcedWastedVoteNext = false;
         }
       }
@@ -1424,6 +1468,9 @@ export const scenario: ScenarioModule = {
       for (const voterId of votingState.autoWastedVoters) {
         markVoteWasted(votingState, voterId, "Голос потрачен.");
       }
+      for (const voterId of votingState.forcedSelfVoters) {
+        markVoteForcedSelf(votingState, voterId);
+      }
     };
 
     const startTieBreakRevote = (candidates: string[]) => {
@@ -1522,8 +1569,16 @@ export const scenario: ScenarioModule = {
           }
 
           if (triggered) {
+            const becamePublic = !condition.revealedPublic;
+            condition.revealedPublic = true;
             condition.used = true;
             player.forcedWastedVoteNext = true;
+            emitEvent(
+              "info",
+              becamePublic
+                ? `Тайная карта раскрылась у ${player.name}: "${def.title}". Следующее голосование — автоголос в себя.`
+                : `Сработало условие "${def.title}" у ${player.name}. Следующее голосование — автоголос в себя.`
+            );
           }
         }
       }
@@ -2052,7 +2107,7 @@ export const scenario: ScenarioModule = {
           target.revealedAtRound = target.revealedAtRound ?? round;
 
           markSpecialUsed();
-          emitEvent("info", `Спецусловие "${def.title}" убирает карту бункера из стола.`);
+          emitEvent("info", `Карта "${def.title}" применена: карта бункера убрана из стола.`);
           return { stateChanged: true };
         }
         case "forceRevealCategoryForAll": {
@@ -2099,7 +2154,7 @@ export const scenario: ScenarioModule = {
           target.hand = target.hand.filter((card) => card !== stolenCard);
           player.hand.push({ ...stolenCard, instanceId: makeCardInstanceId(player.playerId) });
 
-          const specialAssetId = def.file ? `decks/${def.file.replace(/\\/g, "/")}` : "";
+          const specialAssetId = resolveSpecialAssetId(def);
           target.hand.push({
             instanceId: makeCardInstanceId(target.playerId),
             id: specialAssetId,
@@ -2214,7 +2269,7 @@ export const scenario: ScenarioModule = {
             .filter((condition) => (DEV_SHOW_ALL_PUBLIC ? true : condition.revealedPublic))
             .map((condition) => ({
               labelShort: condition.definition.title,
-              imgUrl: buildSpecialImgUrl(condition.definition.file),
+              imgUrl: resolveSpecialImgUrl(condition.definition),
               instanceId: condition.instanceId,
               hidden: false,
               backCategory: SPECIAL_CATEGORY,
@@ -2289,7 +2344,7 @@ export const scenario: ScenarioModule = {
         implemented: condition.definition.implemented,
         revealedPublic: condition.revealedPublic,
         used: condition.used,
-        imgUrl: buildSpecialImgUrl(condition.definition.file),
+        imgUrl: resolveSpecialImgUrl(condition.definition),
         needsChoice: resolveChoiceKind(condition.definition) !== "none",
         choiceKind: resolveChoiceKind(condition.definition),
         allowSelfTarget: allowsSelfTarget(condition.definition),
@@ -2316,6 +2371,8 @@ export const scenario: ScenarioModule = {
             targetId: info.targetId,
             targetName: players.get(info.targetId)?.name ?? "Неизвестно",
             status: "voted" as const,
+            reason: info.reason,
+            weight: info.weight,
             submittedAt: info.submittedAt,
           };
         }
@@ -2324,6 +2381,7 @@ export const scenario: ScenarioModule = {
           voterName: player.name,
           status: info.status === "invalid" ? ("invalid" as const) : ("not_voted" as const),
           reason: info.reason,
+          weight: info.weight,
           submittedAt: info.submittedAt,
         };
       });

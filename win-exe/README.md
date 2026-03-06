@@ -1,35 +1,36 @@
-# Windows EXE Launcher
+﻿# Windows EXE Launcher
 
-Структура `win-exe/`:
-- `src/` — исходники `ProtocolBunker.Launcher`, `ProtocolBunker.Bootstrapper`, `ProtocolBunker.UpdaterHelper`
-- `assets/icons/` — локальные иконки (синхронизируются из корневой папки `icons/`)
-- `build/` — скрипты сборки
-- `dist/` — локальный output для standalone-сборки лаунчера
+РЎС‚СЂСѓРєС‚СѓСЂР° `win-exe/`:
+- `src/` вЂ” РёСЃС…РѕРґРЅРёРєРё `ProtocolBunker.Launcher`, `ProtocolBunker.Bootstrapper`, `ProtocolBunker.UpdaterHelper`
+- `assets/icons/` вЂ” Р»РѕРєР°Р»СЊРЅС‹Рµ РёРєРѕРЅРєРё (СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓСЋС‚СЃСЏ РёР· РєРѕСЂРЅРµРІРѕР№ РїР°РїРєРё `icons/`)
+- `build/` вЂ” СЃРєСЂРёРїС‚С‹ СЃР±РѕСЂРєРё
+- `dist/` вЂ” Р»РѕРєР°Р»СЊРЅС‹Р№ output РґР»СЏ standalone-СЃР±РѕСЂРєРё Р»Р°СѓРЅС‡РµСЂР°
 
-## Локальная сборка только лаунчера
+## Р›РѕРєР°Р»СЊРЅР°СЏ СЃР±РѕСЂРєР° С‚РѕР»СЊРєРѕ Р»Р°СѓРЅС‡РµСЂР°
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build/build-launcher.ps1
 ```
 
-Результат:
+Р РµР·СѓР»СЊС‚Р°С‚:
 - `win-exe/dist/ProtocolBunker.exe`
 - `win-exe/dist/icons/`
 
-## Полная сборка win-exe релиза
+## РџРѕР»РЅР°СЏ СЃР±РѕСЂРєР° win-exe СЂРµР»РёР·Р°
 
 ```powershell
 pnpm run pack:win-exe
 ```
 
-Результат:
-- `artifacts/win-exe/protocol-bunker-win-x64-exe-setup-v0.2.2.exe`
+Р РµР·СѓР»СЊС‚Р°С‚:
+- `artifacts/win-exe/protocol-bunker-win-x64-exe-setup-v0.2.3.exe`
 - `artifacts/win-exe/Protocol-Bunker/ProtocolBunker.exe`
 - `artifacts/win-exe/Protocol-Bunker/icons/`
-- `artifacts/win-exe/protocol-bunker-win-x64-exe-v0.2.2.zip`
+- `artifacts/win-exe/protocol-bunker-win-x64-exe-v0.2.3.zip`
 
-Быстрая пересборка (без JS build):
+Р‘С‹СЃС‚СЂР°СЏ РїРµСЂРµСЃР±РѕСЂРєР° (Р±РµР· JS build):
 
 ```powershell
 pnpm run pack:win-exe -- --skip-build
 ```
+

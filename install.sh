@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 # =========================
@@ -40,8 +40,8 @@ QUALITY="1x"       # 1x | 2x
 SERVICE_SCOPE="auto"      # auto | system | user
 EFFECTIVE_SERVICE_SCOPE="" # resolved service scope
 TARGET_ARCH=""     # normalized arch used for assets
-VERSION_TAG=""     # canonical version for asset names (e.g. v0.2.2)
-RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.2.2 or v0.2.2)
+VERSION_TAG=""     # canonical version for asset names (e.g. v0.2.3)
+RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.2.3 or v0.2.3)
 
 usage() {
   cat <<EOF
@@ -52,7 +52,7 @@ Usage:
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.2.2
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.2.3
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --arch arm64
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --quality 2x
@@ -67,7 +67,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version)
       shift
-      [ $# -gt 0 ] || err "--version requires a value like v0.2.2"
+      [ $# -gt 0 ] || err "--version requires a value like v0.2.3"
       VERSION="$1"
       ;;
     --edition)
@@ -124,7 +124,7 @@ json_latest_tag() {
 normalize_version_tag() {
   local value="$1"
   if [ -z "$value" ]; then
-    err "Version is empty. Use format like v0.2.2 or 0.2.2"
+    err "Version is empty. Use format like v0.2.3 or 0.2.3"
   fi
 
   if [[ "$value" == v* ]]; then
@@ -137,7 +137,7 @@ normalize_version_tag() {
     return
   fi
 
-  err "Invalid version format: $value (expected v0.2.2 or 0.2.2)"
+  err "Invalid version format: $value (expected v0.2.3 or 0.2.3)"
 }
 
 resolve_release_tag_by_candidates() {
@@ -600,3 +600,4 @@ elif [ -n "$GLOBAL_LAUNCHER" ]; then
 else
   info "Run: ${LAUNCHER}"
 fi
+

@@ -140,6 +140,8 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 - `public` — обычный профиль (показывает и Public, и Local ссылки).
 - `server` — серверный профиль (скрывает LAN/localhost ссылки в выводе launcher и в блоке ссылок в лобби).
 - `--arch` — можно явно выбрать `x64` или `arm64`. Если не указывать, `install.sh` определит архитектуру автоматически (`uname -m`).
+- `--quality` — качество колоды: `1x` (по умолчанию) или `2x` (HQ).
+- если выбран `1x` и запуск интерактивный, `install.sh` перед скачиванием предложит переключиться на `2x` (HQ).
 
 ### Автозапуск и сервис (Linux)
 
@@ -147,6 +149,12 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --service-scope system --autostart
+```
+
+Включить автозапуск сразу при установке (HQ-колода `2x`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --quality 2x --service-scope system --autostart
 ```
 
 По умолчанию `--service-scope auto`: для `root` используется `system`, для обычного пользователя — `user`.

@@ -36,6 +36,7 @@ DO_LIST=0
 AUTOSTART_MODE=""  # "yes" | "no" | ""
 EDITION="public"   # public | server
 ARCH=""            # x64 | arm64 (empty => auto-detect)
+QUALITY="1x"       # 1x | 2x
 SERVICE_SCOPE="auto"      # auto | system | user
 EFFECTIVE_SERVICE_SCOPE="" # resolved service scope
 TARGET_ARCH=""     # normalized arch used for assets
@@ -47,13 +48,14 @@ usage() {
 Install ${APP_NAME} (Linux)
 
 Usage:
-  install.sh [--version vX.Y.Z] [--edition public|server] [--arch x64|arm64] [--service-scope auto|system|user] [--list] [--autostart|--no-autostart]
+  install.sh [--version vX.Y.Z] [--edition public|server] [--arch x64|arm64] [--quality 1x|2x] [--service-scope auto|system|user] [--list] [--autostart|--no-autostart]
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.2.2
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --arch arm64
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --quality 2x
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --service-scope system --autostart
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --list
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --autostart
@@ -77,6 +79,11 @@ while [ $# -gt 0 ]; do
       shift
       [ $# -gt 0 ] || err "--arch requires 'x64' or 'arm64'"
       ARCH="$1"
+      ;;
+    --quality)
+      shift
+      [ $# -gt 0 ] || err "--quality requires '1x' or '2x'"
+      QUALITY="$1"
       ;;
     --service-scope)
       shift
@@ -152,6 +159,16 @@ validate_edition() {
   case "$1" in
     public|server) ;;
     *) err "Edition must be 'public' or 'server'. Got: $1" ;;
+  esac
+}
+
+normalize_quality() {
+  local value
+  value="$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    1x|standard) printf "1x" ;;
+    2x|hq|hq2x) printf "2x" ;;
+    *) err "Quality must be '1x' or '2x'. Got: $1" ;;
   esac
 }
 
@@ -233,6 +250,7 @@ else
 fi
 
 validate_edition "$EDITION"
+QUALITY="$(normalize_quality "$QUALITY")"
 validate_service_scope "$SERVICE_SCOPE"
 EFFECTIVE_SERVICE_SCOPE="$(resolve_service_scope "$SERVICE_SCOPE")"
 if [ "$EFFECTIVE_SERVICE_SCOPE" = "system" ] && [ "$(id -u)" -ne 0 ]; then
@@ -245,8 +263,33 @@ else
   TARGET_ARCH="$(detect_arch)"
   info "Detected arch: $TARGET_ARCH"
 fi
+
+if [ "$QUALITY" = "1x" ] && [ -t 0 ] && [ -t 1 ]; then
+  echo
+  echo "You selected quality: 1x (smaller download)."
+  echo "Do you want to switch to 2x HQ textures?"
+  echo "  1) Keep 1x"
+  echo "  2) Switch to 2x (HQ)"
+  printf "Choose [1-2]: "
+  read -r quality_ans || quality_ans="1"
+  case "$quality_ans" in
+    2|h|H|hq|HQ|2x|2X)
+      QUALITY="2x"
+      info "Switched quality to 2x (HQ)."
+      ;;
+    *)
+      info "Keeping quality 1x."
+      ;;
+  esac
+fi
+
+info "Quality: $QUALITY"
 info "Service scope: ${EFFECTIVE_SERVICE_SCOPE}"
-ASSET="protocol-bunker-linux-${TARGET_ARCH}-${EDITION}-${VERSION_TAG}.tar.gz"
+if [ "$QUALITY" = "2x" ]; then
+  ASSET="protocol-bunker-linux-${TARGET_ARCH}-${EDITION}-hq2x-${VERSION_TAG}.tar.gz"
+else
+  ASSET="protocol-bunker-linux-${TARGET_ARCH}-${EDITION}-${VERSION_TAG}.tar.gz"
+fi
 URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
 
 # ----- download + install -----
@@ -358,6 +401,7 @@ GLOBAL_LINK="${GLOBAL_BIN_DIR}/${APP_NAME}"
 INSTALL_URL="${INSTALL_URL}"
 EDITION="${EDITION}"
 ARCH="${TARGET_ARCH}"
+QUALITY="${QUALITY}"
 
 msg() { printf "[%s] %s\n" "\$APP_NAME" "\$*"; }
 
@@ -467,9 +511,9 @@ case "\${1:-}" in
   --update)
     # If version provided -> install that, else latest
     if [ -n "\${2:-}" ]; then
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --service-scope "\$SERVICE_SCOPE" --version "\$2"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --quality "\$QUALITY" --service-scope "\$SERVICE_SCOPE" --version "\$2"
     else
-      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --service-scope "\$SERVICE_SCOPE"
+      curl -fsSL "\$INSTALL_URL" | bash -s -- --edition "\$EDITION" --arch "\$ARCH" --quality "\$QUALITY" --service-scope "\$SERVICE_SCOPE"
     fi
     exit 0
     ;;
@@ -547,6 +591,7 @@ info "Installed release tag: $RELEASE_TAG"
 info "Installed version: $VERSION_TAG"
 info "Installed edition: $EDITION"
 info "Installed arch: $TARGET_ARCH"
+info "Installed quality: $QUALITY"
 info "Installed service scope: $EFFECTIVE_SERVICE_SCOPE"
 if command -v "${APP_NAME}" >/dev/null 2>&1; then
   info "Run: ${APP_NAME}"

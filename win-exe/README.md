@@ -1,4 +1,4 @@
-﻿# Windows EXE Launcher
+# Windows EXE Launcher
 
 РЎС‚СЂСѓРєС‚СѓСЂР° `win-exe/`:
 - `src/` вЂ” РёСЃС…РѕРґРЅРёРєРё `ProtocolBunker.Launcher`, `ProtocolBunker.Bootstrapper`, `ProtocolBunker.UpdaterHelper`

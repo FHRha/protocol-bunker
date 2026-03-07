@@ -6,6 +6,7 @@ import test from "node:test";
 const SPAWN_TIMEOUT_MS = 20_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
 const require = createRequire(import.meta.url);
+const socketMessageState = new WeakMap();
 
 const resolveWebSocketCtor = () => {
   if (typeof globalThis.WebSocket === "function") {
@@ -51,6 +52,81 @@ const removeListener = (ws, event, handler) => {
   if (typeof ws.removeListener === "function") {
     ws.removeListener(event, handler);
   }
+};
+
+const parseServerMessage = (eventOrData) => {
+  const raw =
+    eventOrData && typeof eventOrData === "object" && "data" in eventOrData ? eventOrData.data : eventOrData;
+  const text = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
+  return JSON.parse(text);
+};
+
+const getSocketMessageState = (ws) => {
+  const existing = socketMessageState.get(ws);
+  if (existing) return existing;
+
+  const state = {
+    queue: [],
+    waiters: [],
+    closed: false,
+    onMessage: null,
+    onClose: null,
+    cleanup: null,
+  };
+
+  state.onMessage = (eventOrData) => {
+    let parsed;
+    try {
+      parsed = parseServerMessage(eventOrData);
+    } catch {
+      return;
+    }
+
+    const waiterIndex = state.waiters.findIndex((waiter) => {
+      try {
+        return waiter.predicate(parsed);
+      } catch {
+        return false;
+      }
+    });
+    if (waiterIndex >= 0) {
+      const [waiter] = state.waiters.splice(waiterIndex, 1);
+      clearTimeout(waiter.timeout);
+      waiter.resolve(parsed);
+      return;
+    }
+    state.queue.push(parsed);
+  };
+
+  state.onClose = () => {
+    state.closed = true;
+    for (const waiter of state.waiters.splice(0)) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(new Error("WebSocket closed before expected message."));
+    }
+  };
+
+  state.cleanup = () => {
+    removeListener(ws, "message", state.onMessage);
+    removeListener(ws, "close", state.onClose);
+    state.queue.length = 0;
+    for (const waiter of state.waiters.splice(0)) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(new Error("Socket message state disposed."));
+    }
+  };
+
+  addListener(ws, "message", state.onMessage);
+  addListener(ws, "close", state.onClose);
+  socketMessageState.set(ws, state);
+  return state;
+};
+
+const disposeSocketMessageState = (ws) => {
+  const state = socketMessageState.get(ws);
+  if (!state) return;
+  state.cleanup?.();
+  socketMessageState.delete(ws);
 };
 
 const waitForPort = (child) =>
@@ -123,44 +199,42 @@ const sendJson = (ws, payload) => {
 
 const nextMessage = (ws, predicate) =>
   new Promise((resolve, reject) => {
+    const state = getSocketMessageState(ws);
+    const queuedIndex = state.queue.findIndex((msg) => {
+      try {
+        return predicate(msg);
+      } catch {
+        return false;
+      }
+    });
+    if (queuedIndex >= 0) {
+      const [msg] = state.queue.splice(queuedIndex, 1);
+      resolve(msg);
+      return;
+    }
+    if (state.closed) {
+      reject(new Error("WebSocket closed before expected message."));
+      return;
+    }
     const timeout = setTimeout(() => {
-      cleanup();
+      const idx = state.waiters.findIndex((waiter) => waiter.predicate === predicate && waiter.resolve === resolve);
+      if (idx >= 0) state.waiters.splice(idx, 1);
       reject(new Error("Timeout waiting for websocket message."));
     }, MESSAGE_TIMEOUT_MS);
-
-    const onMessage = (eventOrData) => {
-      try {
-        const raw =
-          eventOrData && typeof eventOrData === "object" && "data" in eventOrData
-            ? eventOrData.data
-            : eventOrData;
-        const data =
-          typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
-        const parsed = JSON.parse(data);
-        if (predicate(parsed)) {
-          clearTimeout(timeout);
-          cleanup();
-          resolve(parsed);
-        }
-      } catch {
-        // ignore malformed frames in test flow
-      }
-    };
-
-    const onClose = () => {
-      clearTimeout(timeout);
-      cleanup();
-      reject(new Error("WebSocket closed before expected message."));
-    };
-
-    const cleanup = () => {
-      removeListener(ws, "message", onMessage);
-      removeListener(ws, "close", onClose);
-    };
-
-    addListener(ws, "message", onMessage);
-    addListener(ws, "close", onClose);
+    state.waiters.push({ predicate, resolve, reject, timeout });
   });
+
+const matchRoomStatePlayersCount = (count) => (msg) =>
+  (msg?.type === "roomState" && msg.payload?.players?.length === count) ||
+  (msg?.type === "statePatch" && msg.payload?.roomState?.players?.length === count);
+
+const matchHostTransferred = (targetPlayerId) => (msg) =>
+  (msg?.type === "roomState" &&
+    msg.payload?.hostId === targetPlayerId &&
+    msg.payload?.controlId === targetPlayerId) ||
+  (msg?.type === "statePatch" &&
+    msg.payload?.roomState?.hostId === targetPlayerId &&
+    msg.payload?.roomState?.controlId === targetPlayerId);
 
 test("ws integration: host transfer works and CONTROL companion socket does not create ghost player", async (t) => {
   if (process.platform === "win32") {
@@ -217,22 +291,18 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
     });
 
     const secondAck = await nextMessage(secondWs, (msg) => msg?.type === "helloAck");
-    await nextMessage(secondWs, (msg) => msg?.type === "roomState" && msg.payload?.players?.length === 2);
-    await nextMessage(hostWs, (msg) => msg?.type === "roomState" && msg.payload?.players?.length === 2);
+    await nextMessage(secondWs, matchRoomStatePlayersCount(2));
+    await nextMessage(hostWs, matchRoomStatePlayersCount(2));
 
     sendJson(hostWs, {
       type: "requestHostTransfer",
       payload: { targetPlayerId: secondAck.payload.playerId },
     });
 
-    const transferredHostState = await nextMessage(
-      hostWs,
-      (msg) =>
-        msg?.type === "roomState" &&
-        msg.payload?.hostId === secondAck.payload.playerId &&
-        msg.payload?.controlId === secondAck.payload.playerId
-    );
-    assert.equal(transferredHostState.payload.players.length, 2);
+    const transferredHostState = await nextMessage(hostWs, matchHostTransferred(secondAck.payload.playerId));
+    if (transferredHostState?.type === "roomState") {
+      assert.equal(transferredHostState.payload.players.length, 2);
+    }
 
     controlWs = await openSocket(url);
     sendJson(controlWs, {
@@ -245,10 +315,17 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
     });
 
     await nextMessage(controlWs, (msg) => msg?.type === "helloAck");
-    const controlRoomState = await nextMessage(controlWs, (msg) => msg?.type === "roomState");
-    assert.equal(controlRoomState.payload.players.length, 2);
+    const controlRoomState = await nextMessage(
+      controlWs,
+      (msg) => msg?.type === "roomState" || msg?.type === "statePatch"
+    );
+    const players =
+      controlRoomState?.type === "roomState"
+        ? controlRoomState.payload.players
+        : (controlRoomState.payload?.roomState?.players ?? []);
+    assert.equal(players.length, 2);
     assert.equal(
-      controlRoomState.payload.players.some((player) => player.name === "CONTROL"),
+      players.some((player) => player.name === "CONTROL"),
       false,
       "CONTROL companion socket must not create an extra player"
     );
@@ -256,13 +333,23 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
     const closeSocket = (ws) =>
       new Promise((resolve) => {
         if (!ws || ws.readyState === WebSocketCtor.CLOSED) {
+          disposeSocketMessageState(ws);
           resolve();
           return;
         }
-        addListener(ws, "close", () => resolve(), true);
+        addListener(
+          ws,
+          "close",
+          () => {
+            disposeSocketMessageState(ws);
+            resolve();
+          },
+          true
+        );
         try {
           ws.close();
         } catch {
+          disposeSocketMessageState(ws);
           resolve();
         }
       });

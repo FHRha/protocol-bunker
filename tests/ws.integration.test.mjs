@@ -1,9 +1,57 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 const SPAWN_TIMEOUT_MS = 20_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
+const require = createRequire(import.meta.url);
+
+const resolveWebSocketCtor = () => {
+  if (typeof globalThis.WebSocket === "function") {
+    return globalThis.WebSocket;
+  }
+  const candidates = ["ws", "../server/node_modules/ws"];
+  for (const candidate of candidates) {
+    try {
+      const mod = require(candidate);
+      return mod.WebSocket ?? mod.default ?? mod;
+    } catch {
+      // try next candidate
+    }
+  }
+  throw new Error("WebSocket is not available in this Node runtime.");
+};
+
+const WebSocketCtor = resolveWebSocketCtor();
+
+const addListener = (ws, event, handler, once = false) => {
+  if (typeof ws.addEventListener === "function") {
+    ws.addEventListener(event, handler, once ? { once: true } : undefined);
+    return;
+  }
+  if (once && typeof ws.once === "function") {
+    ws.once(event, handler);
+    return;
+  }
+  if (typeof ws.on === "function") {
+    ws.on(event, handler);
+  }
+};
+
+const removeListener = (ws, event, handler) => {
+  if (typeof ws.removeEventListener === "function") {
+    ws.removeEventListener(event, handler);
+    return;
+  }
+  if (typeof ws.off === "function") {
+    ws.off(event, handler);
+    return;
+  }
+  if (typeof ws.removeListener === "function") {
+    ws.removeListener(event, handler);
+  }
+};
 
 const waitForPort = (child) =>
   new Promise((resolve, reject) => {
@@ -48,22 +96,23 @@ const waitForPort = (child) =>
   });
 
 const openSocket = async (url) => {
-  const ws = new WebSocket(url);
+  const ws = new WebSocketCtor(url);
   await new Promise((resolve, reject) => {
     const onOpen = () => {
       cleanup();
       resolve();
     };
-    const onError = (event) => {
+    const onError = (eventOrError) => {
       cleanup();
-      reject(new Error(`WebSocket open failed: ${event?.message ?? "unknown error"}`));
+      const message = eventOrError?.message ?? "unknown error";
+      reject(new Error(`WebSocket open failed: ${message}`));
     };
     const cleanup = () => {
-      ws.removeEventListener("open", onOpen);
-      ws.removeEventListener("error", onError);
+      removeListener(ws, "open", onOpen);
+      removeListener(ws, "error", onError);
     };
-    ws.addEventListener("open", onOpen, { once: true });
-    ws.addEventListener("error", onError, { once: true });
+    addListener(ws, "open", onOpen, true);
+    addListener(ws, "error", onError, true);
   });
   return ws;
 };
@@ -79,9 +128,14 @@ const nextMessage = (ws, predicate) =>
       reject(new Error("Timeout waiting for websocket message."));
     }, MESSAGE_TIMEOUT_MS);
 
-    const onMessage = (event) => {
+    const onMessage = (eventOrData) => {
       try {
-        const data = typeof event.data === "string" ? event.data : String(event.data);
+        const raw =
+          eventOrData && typeof eventOrData === "object" && "data" in eventOrData
+            ? eventOrData.data
+            : eventOrData;
+        const data =
+          typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
         const parsed = JSON.parse(data);
         if (predicate(parsed)) {
           clearTimeout(timeout);
@@ -100,12 +154,12 @@ const nextMessage = (ws, predicate) =>
     };
 
     const cleanup = () => {
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
+      removeListener(ws, "message", onMessage);
+      removeListener(ws, "close", onClose);
     };
 
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+    addListener(ws, "message", onMessage);
+    addListener(ws, "close", onClose);
   });
 
 test("ws integration: host transfer works and CONTROL companion socket does not create ghost player", async (t) => {
@@ -201,11 +255,11 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
   } finally {
     const closeSocket = (ws) =>
       new Promise((resolve) => {
-        if (!ws || ws.readyState === WebSocket.CLOSED) {
+        if (!ws || ws.readyState === WebSocketCtor.CLOSED) {
           resolve();
           return;
         }
-        ws.addEventListener("close", () => resolve(), { once: true });
+        addListener(ws, "close", () => resolve(), true);
         try {
           ws.close();
         } catch {

@@ -10,6 +10,7 @@ const waitForPort = (child) =>
     const timeout = setTimeout(() => {
       reject(new Error("Timeout waiting for server startup."));
     }, SPAWN_TIMEOUT_MS);
+    let stderrBuffer = "";
 
     const onStdout = (chunk) => {
       const text = chunk.toString("utf8");
@@ -21,18 +22,28 @@ const waitForPort = (child) =>
       }
     };
 
+    const onStderr = (chunk) => {
+      stderrBuffer += chunk.toString("utf8");
+      if (stderrBuffer.length > 8000) {
+        stderrBuffer = stderrBuffer.slice(-8000);
+      }
+    };
+
     const onExit = (code, signal) => {
       clearTimeout(timeout);
       cleanup();
-      reject(new Error(`Server exited before startup (code=${code}, signal=${signal ?? "none"}).`));
+      const suffix = stderrBuffer.trim() ? `\n--- server stderr ---\n${stderrBuffer.trim()}` : "";
+      reject(new Error(`Server exited before startup (code=${code}, signal=${signal ?? "none"}).${suffix}`));
     };
 
     const cleanup = () => {
       child.stdout.off("data", onStdout);
+      child.stderr.off("data", onStderr);
       child.off("exit", onExit);
     };
 
     child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
     child.on("exit", onExit);
   });
 

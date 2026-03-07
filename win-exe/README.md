@@ -23,14 +23,15 @@ pnpm run pack:win-exe
 ```
 
 Р РµР·СѓР»СЊС‚Р°С‚:
-- `artifacts/win-exe/protocol-bunker-win-x64-exe-setup-v0.2.3.exe`
+- `artifacts/win-exe/protocol-bunker-win-x64-exe-setup-v0.2.4.exe`
 - `artifacts/win-exe/Protocol-Bunker/ProtocolBunker.exe`
 - `artifacts/win-exe/Protocol-Bunker/icons/`
-- `artifacts/win-exe/protocol-bunker-win-x64-exe-v0.2.3.zip`
+- `artifacts/win-exe/protocol-bunker-win-x64-exe-v0.2.4.zip`
 
 Р‘С‹СЃС‚СЂР°СЏ РїРµСЂРµСЃР±РѕСЂРєР° (Р±РµР· JS build):
 
 ```powershell
 pnpm run pack:win-exe -- --skip-build
 ```
+
 

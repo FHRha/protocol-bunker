@@ -157,6 +157,11 @@ const OVERLAY_MAX_NAME_LEN = 24;
 const OVERLAY_MAX_TOP_BUNKER_LINES = 5;
 const OVERLAY_MAX_TOP_THREAT_LINES = 6;
 const OVERLAY_MAX_EXTRA_TEXTS = 64;
+const OVERLAY_MAX_BACKGROUND_PRESET_LEN = 64;
+const OVERLAY_MAX_URL_PARAMS = 24;
+const OVERLAY_MAX_URL_PARAM_KEY_LEN = 64;
+const OVERLAY_MAX_URL_PARAM_VALUE_LEN = 256;
+const OVERLAY_RESERVED_URL_PARAMS = new Set(["room", "roomCode", "token"]);
 const MANUAL_MAX_ROUNDS = 64;
 const MANUAL_MAX_VOTES_PER_ROUND = 9;
 const MANUAL_MIN_TARGET_REVEALS = 5;
@@ -164,6 +169,40 @@ const MANUAL_MAX_TARGET_REVEALS = 7;
 const MANUAL_DEFAULT_TARGET_REVEALS = 7;
 const WAN_LOOKUP_TIMEOUT_MS = 2800;
 const WAN_LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const OVERLAY_BACKGROUNDS_ROOT = path.join(OVERLAY_PUBLIC_ROOT, "backgrounds");
+const OVERLAY_PRESETS_FILE_PRIMARY = path.resolve(process.cwd(), "docs", "overlay_presets.txt");
+const OVERLAY_PRESETS_FILE_FALLBACK = path.resolve(process.cwd(), "..", "docs", "overlay_presets.txt");
+const OVERLAY_BACKGROUND_ALLOWED_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif"]);
+const OVERLAY_LAYOUT_FILE_ALIASES: Record<"l4" | "l8" | "l12", string[]> = {
+  l4: ["4p", "l4", "4"],
+  l8: ["8p", "l8", "8"],
+  l12: ["12p", "l12", "12"],
+};
+
+interface OverlayBackgroundPresetLayouts {
+  l4?: string;
+  l8?: string;
+  l12?: string;
+}
+
+interface OverlayBackgroundPreset {
+  id: string;
+  label: string;
+  layouts: OverlayBackgroundPresetLayouts;
+}
+
+interface OverlayBackgroundCatalog {
+  defaultPreset: string;
+  presets: OverlayBackgroundPreset[];
+}
+
+interface OverlayUrlPreset {
+  id: string;
+  label: string;
+  urlTemplate: string;
+  comment?: string;
+}
 
 let wanLookupCacheKey = "";
 let wanLookupCacheIp: string | null = null;
@@ -518,7 +557,12 @@ function buildLinkOrigins(requestOrigin?: string): {
   return { lanOrigin, lanIp };
 }
 
-function printOverlayInfo(roomCode: string, token: string, controlToken?: string) {
+function printOverlayInfo(
+  roomCode: string,
+  token: string,
+  controlToken?: string,
+  overlayQueryParams?: Record<string, string>
+) {
   const { lanOrigin } = buildLinkOrigins();
   const links = buildLinkSet({
     lanBase: lanOrigin,
@@ -526,6 +570,7 @@ function printOverlayInfo(roomCode: string, token: string, controlToken?: string
     roomCode,
     overlayViewToken: token,
     overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
+    overlayQueryParams,
   });
 
   const line = "-".repeat(72);
@@ -558,6 +603,7 @@ function printOverlayInfo(roomCode: string, token: string, controlToken?: string
         roomCode,
         overlayViewToken: token,
         overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
+        overlayQueryParams,
       });
       console.log(`${paint("App Ext:", "blue")}     ${paint(publicLinks.appUrl.public ?? "", "underline", "blue")}`);
       console.log(`${paint("Spec Ext:", "green")}    ${paint(publicLinks.viewerUrl.public ?? "", "underline", "green")}`);
@@ -734,6 +780,196 @@ function sanitizeMultiLine(value: unknown, maxLength: number): string {
   return normalized;
 }
 
+function sanitizeOverlayBackgroundPreset(value: unknown): string | undefined {
+  const sanitized = sanitizeSingleLine(value, OVERLAY_MAX_BACKGROUND_PRESET_LEN)
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "");
+  return sanitized || undefined;
+}
+
+function sanitizeOverlayUrlParamKey(value: unknown): string {
+  return sanitizeSingleLine(value, OVERLAY_MAX_URL_PARAM_KEY_LEN)
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function sanitizeOverlayUrlParams(source: unknown): Record<string, string> | undefined {
+  if (!isRecord(source)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    if (Object.keys(out).length >= OVERLAY_MAX_URL_PARAMS) break;
+    const key = sanitizeOverlayUrlParamKey(rawKey);
+    if (!key || OVERLAY_RESERVED_URL_PARAMS.has(key)) continue;
+    const value = sanitizeSingleLine(rawValue, OVERLAY_MAX_URL_PARAM_VALUE_LEN).trim();
+    if (!value) continue;
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function encodeAssetPathSegments(segments: string[]): string {
+  return segments.map((segment) => encodeURIComponent(segment)).join("/");
+}
+
+function buildOverlayBackgroundUrl(relativeSegments: string[]): string {
+  return `${LINK_PATHS.overlayAssets}/backgrounds/${encodeAssetPathSegments(relativeSegments)}`;
+}
+
+function pickOverlayLayoutFileName(dirPath: string, aliases: string[]): string | undefined {
+  if (!fs.existsSync(dirPath)) return undefined;
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const files = entries.filter((entry) => entry.isFile());
+  for (const alias of aliases) {
+    const found = files.find((entry) => {
+      const parsed = path.parse(entry.name);
+      return (
+        parsed.name.toLowerCase() === alias &&
+        OVERLAY_BACKGROUND_ALLOWED_EXTS.has(parsed.ext.toLowerCase())
+      );
+    });
+    if (found) return found.name;
+  }
+  return undefined;
+}
+
+function collectOverlayBackgroundLayouts(
+  dirPath: string,
+  relativeSegments: string[]
+): OverlayBackgroundPresetLayouts {
+  const layouts: OverlayBackgroundPresetLayouts = {};
+  const fileL4 = pickOverlayLayoutFileName(dirPath, OVERLAY_LAYOUT_FILE_ALIASES.l4);
+  const fileL8 = pickOverlayLayoutFileName(dirPath, OVERLAY_LAYOUT_FILE_ALIASES.l8);
+  const fileL12 = pickOverlayLayoutFileName(dirPath, OVERLAY_LAYOUT_FILE_ALIASES.l12);
+
+  if (fileL4) layouts.l4 = buildOverlayBackgroundUrl([...relativeSegments, fileL4]);
+  if (fileL8) layouts.l8 = buildOverlayBackgroundUrl([...relativeSegments, fileL8]);
+  if (fileL12) layouts.l12 = buildOverlayBackgroundUrl([...relativeSegments, fileL12]);
+  return layouts;
+}
+
+function hasOverlayBackgroundLayouts(layouts: OverlayBackgroundPresetLayouts): boolean {
+  return Boolean(layouts.l4 || layouts.l8 || layouts.l12);
+}
+
+function makeUniquePresetId(baseId: string, used: Set<string>): string {
+  let id = baseId;
+  let suffix = 2;
+  while (used.has(id)) {
+    const maxBaseLength = Math.max(1, OVERLAY_MAX_BACKGROUND_PRESET_LEN - 4);
+    id = `${baseId.slice(0, maxBaseLength)}-${suffix}`;
+    suffix += 1;
+  }
+  used.add(id);
+  return id;
+}
+
+function getOverlayBackgroundCatalog(): OverlayBackgroundCatalog {
+  if (!fs.existsSync(OVERLAY_BACKGROUNDS_ROOT)) {
+    return { defaultPreset: "default", presets: [] };
+  }
+
+  const presets: OverlayBackgroundPreset[] = [];
+  const usedIds = new Set<string>();
+
+  const rootLayouts = collectOverlayBackgroundLayouts(OVERLAY_BACKGROUNDS_ROOT, []);
+  if (hasOverlayBackgroundLayouts(rootLayouts)) {
+    presets.push({
+      id: makeUniquePresetId("default", usedIds),
+      label: "default",
+      layouts: rootLayouts,
+    });
+  }
+
+  const entries = fs.readdirSync(OVERLAY_BACKGROUNDS_ROOT, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const folderName = entry.name;
+    const folderPath = path.join(OVERLAY_BACKGROUNDS_ROOT, folderName);
+    const layouts = collectOverlayBackgroundLayouts(folderPath, [folderName]);
+    if (!hasOverlayBackgroundLayouts(layouts)) continue;
+
+    const presetIdBase = sanitizeOverlayBackgroundPreset(folderName) ?? "preset";
+    const presetId = makeUniquePresetId(presetIdBase, usedIds);
+    presets.push({
+      id: presetId,
+      label: folderName,
+      layouts,
+    });
+  }
+
+  const defaultPreset = presets[0]?.id ?? "default";
+  return { defaultPreset, presets };
+}
+
+function resolveOverlayPresetsFilePath(): string | null {
+  if (fs.existsSync(OVERLAY_PRESETS_FILE_PRIMARY)) return OVERLAY_PRESETS_FILE_PRIMARY;
+  if (fs.existsSync(OVERLAY_PRESETS_FILE_FALLBACK)) return OVERLAY_PRESETS_FILE_FALLBACK;
+  return null;
+}
+
+function parseOverlayUrlPresets(text: string): OverlayUrlPreset[] {
+  const presets: OverlayUrlPreset[] = [];
+  const lines = String(text ?? "").split(/\r?\n/);
+  let current: Partial<OverlayUrlPreset> | null = null;
+
+  const pushCurrent = () => {
+    if (!current) return;
+    const label = sanitizeSingleLine(current.label ?? "", 120);
+    const urlTemplate = sanitizeSingleLine(current.urlTemplate ?? "", 2048);
+    if (!label || !urlTemplate) {
+      current = null;
+      return;
+    }
+    const normalizedId =
+      sanitizeOverlayBackgroundPreset(label)?.slice(0, OVERLAY_MAX_BACKGROUND_PRESET_LEN) ??
+      `preset-${presets.length + 1}`;
+    const id = makeUniquePresetId(normalizedId, new Set(presets.map((item) => item.id)));
+    presets.push({
+      id,
+      label,
+      urlTemplate,
+      comment: sanitizeSingleLine(current.comment ?? "", 240) || undefined,
+    });
+    current = null;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const sectionMatch = trimmed.match(/^\[(.+)\]$/);
+    if (sectionMatch) {
+      pushCurrent();
+      current = { label: sectionMatch[1] };
+      continue;
+    }
+    if (!current) continue;
+    if (/^url\s*:/i.test(trimmed)) {
+      current.urlTemplate = trimmed.replace(/^url\s*:/i, "").trim();
+      continue;
+    }
+    if (/^comment\s*:/i.test(trimmed)) {
+      current.comment = trimmed.replace(/^comment\s*:/i, "").trim();
+      continue;
+    }
+  }
+  pushCurrent();
+  return presets;
+}
+
+function getOverlayUrlPresets(): OverlayUrlPreset[] {
+  const filePath = resolveOverlayPresetsFilePath();
+  if (!filePath) return [];
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    return parseOverlayUrlPresets(content);
+  } catch (error) {
+    console.warn("[overlay-presets] failed to parse presets file:", error);
+    return [];
+  }
+}
+
 function normalizeOverlayOverrides(input: unknown, room: Room): OverlayOverrides {
   const source = isRecord(input) ? input : {};
   const result: OverlayOverrides = {};
@@ -883,6 +1119,18 @@ function normalizeOverlayOverrides(input: unknown, room: Room): OverlayOverrides
       extraTexts.push({ id, text, x, y, align, size, color, shadow, visible });
     }
     result.extraTexts = extraTexts;
+  }
+
+  if (typeof source.backgroundPreset === "string") {
+    const preset = sanitizeOverlayBackgroundPreset(source.backgroundPreset);
+    if (preset) {
+      result.backgroundPreset = preset;
+    }
+  }
+
+  const overlayUrlParams = sanitizeOverlayUrlParams(source.overlayUrlParams);
+  if (overlayUrlParams) {
+    result.overlayUrlParams = overlayUrlParams;
   }
 
   return result;
@@ -2363,6 +2611,23 @@ async function main() {
     res.sendFile(controlHtml);
   });
 
+  app.get("/api/overlay-backgrounds", (_req, res) => {
+    const catalog = getOverlayBackgroundCatalog();
+    res.json({
+      ok: true,
+      defaultPreset: catalog.defaultPreset,
+      presets: catalog.presets,
+    });
+  });
+
+  app.get("/api/overlay-url-presets", (_req, res) => {
+    const presets = getOverlayUrlPresets();
+    res.json({
+      ok: true,
+      presets,
+    });
+  });
+
   app.get(LINK_PATHS.overlayControlState, async (req, res) => {
     const roomCode = String(req.query.room ?? req.query.roomCode ?? "")
       .trim()
@@ -2418,6 +2683,7 @@ async function main() {
 
     room.overlayOverrides = parsed.data;
     broadcastOverlayState(room);
+    broadcastRoomState(room);
     res.json({
       ok: true,
       roomCode: room.code,
@@ -2459,6 +2725,7 @@ async function main() {
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
       overlayControlToken: room.overlayEditToken,
+      overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
     });
 
     res.json({
@@ -2470,6 +2737,7 @@ async function main() {
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
       overlayControlToken: room.overlayEditToken,
+      overlayQueryParams: room.overlayOverrides?.overlayUrlParams ?? null,
       links,
     });
   });
@@ -3153,7 +3421,12 @@ async function main() {
               phase: room.phase,
             });
             const player = attachPlayer(room, payload, ws);
-            printOverlayInfo(room.code, room.overlayToken, room.overlayEditToken);
+            printOverlayInfo(
+              room.code,
+              room.overlayToken,
+              room.overlayEditToken,
+              room.overlayOverrides?.overlayUrlParams
+            );
             updateRulesetIfAuto(room);
             logRoomLifecycle("joined", room.code, {
               player: payload.name,

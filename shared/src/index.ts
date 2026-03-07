@@ -136,6 +136,8 @@ export interface OverlayOverrides {
   top?: OverlayOverrideTop;
   players?: Record<string, OverlayOverridePlayer>;
   extraTexts?: OverlayExtraText[];
+  backgroundPreset?: string;
+  overlayUrlParams?: Record<string, string>;
 }
 
 export interface OverlayPlayerView {
@@ -683,6 +685,8 @@ export const OverlayOverridesSchema = z.object({
   top: OverlayOverrideTopSchema.optional(),
   players: z.record(OverlayOverridePlayerSchema).optional(),
   extraTexts: z.array(OverlayExtraTextSchema).optional(),
+  backgroundPreset: z.string().min(1).max(64).optional(),
+  overlayUrlParams: z.record(z.string().min(1).max(64), z.string().min(1).max(256)).optional(),
 });
 
 export const OverlayPlayerViewSchema = z.object({

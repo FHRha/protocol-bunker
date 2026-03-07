@@ -380,6 +380,66 @@
               в overlay показывается автоматическое значение из текущего состояния игры.
             </p>
 
+            <div class="fields-inline">
+              <label class="field">
+                <span>Пресет фона (авто под 4/8/12 игроков)</span>
+                <select id="backgroundPresetSelect"></select>
+                <span id="backgroundPresetHint" class="meta">Фон не выбран (прозрачный).</span>
+              </label>
+            </div>
+
+            <div class="field">
+              <span>Пресеты URL для OBS</span>
+              <div id="overlayUrlPresetButtons" class="row"></div>
+              <span id="overlayUrlPresetHint" class="meta">Выбери пресет для быстрого URL в OBS.</span>
+            </div>
+            <div class="url-params-grid">
+              <label class="field">
+                <span>Тема</span>
+                <select id="urlParamTheme">
+                  <option value="">Авто</option>
+                  <option value="mint">mint</option>
+                  <option value="warm">warm</option>
+                  <option value="dark">dark</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Scale (0.8-1.6)</span>
+                <input id="urlParamScale" type="number" min="0.8" max="1.6" step="0.01" placeholder="1.3" />
+              </label>
+              <label class="field">
+                <span>Top (160-320)</span>
+                <input id="urlParamTop" type="number" min="160" max="320" step="1" placeholder="200" />
+              </label>
+              <label class="field">
+                <span>Debug</span>
+                <select id="urlParamDebug">
+                  <option value="">off</option>
+                  <option value="1">on (debug=1)</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">
+              <span>Готовый URL для OBS</span>
+              <input id="overlayUrlPresetValue" type="text" readonly />
+            </label>
+            <div class="row">
+              <button id="overlayUrlPresetOpenBtn" type="button" class="btn">Open</button>
+              <button id="overlayUrlPresetCopyBtn" type="button" class="btn">Copy</button>
+            </div>
+            <details class="advanced">
+              <summary>Advanced: свой URL шаблон</summary>
+              <label class="field">
+                <span>Шаблон URL</span>
+                <input
+                  id="overlayUrlPresetTemplate"
+                  type="text"
+                  placeholder="https://127.0.0.1:3001/overlay?room={ROOM}&token={TOKEN}&bgPreset={BG_PRESET}"
+                />
+              </label>
+              <p class="hint">Поддерживаемые теги: <code>{ROOM}</code>, <code>{TOKEN}</code>, <code>{BG_PRESET}</code>.</p>
+            </details>
+
             <div class="top-grid top-grid--preview">
               <section class="preview-box">
                 <h3>Сейчас в OBS: Бункер</h3>

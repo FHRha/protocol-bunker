@@ -71,6 +71,18 @@
   const topBunkerMeta = $("topBunkerMeta");
   const topCatastropheMeta = $("topCatastropheMeta");
   const topThreatsMeta = $("topThreatsMeta");
+  const backgroundPresetSelect = $("backgroundPresetSelect");
+  const backgroundPresetHint = $("backgroundPresetHint");
+  const overlayUrlPresetButtons = $("overlayUrlPresetButtons");
+  const overlayUrlPresetHint = $("overlayUrlPresetHint");
+  const overlayUrlPresetValue = $("overlayUrlPresetValue");
+  const overlayUrlPresetTemplate = $("overlayUrlPresetTemplate");
+  const overlayUrlPresetOpenBtn = $("overlayUrlPresetOpenBtn");
+  const overlayUrlPresetCopyBtn = $("overlayUrlPresetCopyBtn");
+  const urlParamTheme = $("urlParamTheme");
+  const urlParamScale = $("urlParamScale");
+  const urlParamTop = $("urlParamTop");
+  const urlParamDebug = $("urlParamDebug");
   const enabledTopBunker = $("enabled_topBunker");
   const enabledTopCatastrophe = $("enabled_topCatastrophe");
   const enabledTopThreats = $("enabled_topThreats");
@@ -182,6 +194,9 @@
     !playerCategoriesJson || !insertCategoriesTemplateBtn || !applyCategoriesJsonBtn ||
     !topCurrentBunker || !topCurrentCatastrophe || !topCurrentThreats || !topBaseCatastrophe || !topCatastropheSource || !topBunkerLines ||
     !topCatastropheText || !topThreatsLines || !topBunkerMeta || !topCatastropheMeta || !topThreatsMeta ||
+    !backgroundPresetSelect || !backgroundPresetHint ||
+    !overlayUrlPresetButtons || !overlayUrlPresetHint || !overlayUrlPresetValue || !overlayUrlPresetTemplate || !overlayUrlPresetOpenBtn || !overlayUrlPresetCopyBtn ||
+    !urlParamTheme || !urlParamScale || !urlParamTop || !urlParamDebug ||
     !enabledTopBunker || !enabledTopCatastrophe || !enabledTopThreats ||
     !playerEnabledName || !playerEnabledTraits || !playerEnabledCategories || !playerNameInput ||
     !traitSexInput || !traitAgeInput || !traitOrientInput || !currentPlayerName || !currentTraitSex ||
@@ -273,6 +288,9 @@
   let draftOverrides = {};
   let latestOverlayState = null;
   let effectiveOverlayState = null;
+  let backgroundCatalog = { defaultPreset: "default", presets: [] };
+  let overlayUrlPresets = [];
+  let selectedOverlayUrlPresetId = "";
   let categoryDefsFromServer = [...DEFAULT_CATEGORIES];
   let categoryDefs = [...DEFAULT_CATEGORIES];
   let presenterState = null;
@@ -302,6 +320,35 @@
   let reconnectAttempt = 0;
   let isRealtimeConnected = false;
   let controlRole = "";
+
+  const DEFAULT_OVERLAY_URL_PRESETS = [
+    {
+      id: "base",
+      label: "Base",
+      urlTemplate: `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}`,
+      comment: "Базовый URL без дополнительных параметров.",
+    },
+    {
+      id: "debug",
+      label: "Debug",
+      urlTemplate: `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&debug=1`,
+      comment: "Включает отладочную информацию поверх оверлея.",
+    },
+    {
+      id: "fullhd",
+      label: "FullHD",
+      urlTemplate:
+        `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&top=200&scale=1.3&theme=mint`,
+      comment: "Базовый preset для 1920x1080.",
+    },
+    {
+      id: "fullhd-bg",
+      label: "FullHD + BG",
+      urlTemplate:
+        `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&top=200&scale=1.3&theme=mint&bgPreset={BG_PRESET}`,
+      comment: "Использует выбранный пресет фона через тег {BG_PRESET}.",
+    },
+  ];
 
   const CONTROL_ACTION_META = {
     revealCard: {
@@ -569,6 +616,380 @@
     if (!isRecord(draftOverrides.players)) draftOverrides.players = {};
   }
 
+  function normalizeBackgroundPresetId(value) {
+    return sanitizeLine(value, 64)
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9_-]/g, "");
+  }
+
+  const BACKGROUND_PRESET_DEFAULT = "__default__";
+  const BACKGROUND_PRESET_NONE = "__none__";
+  const NO_BACKGROUND_PRESET_IDS = new Set(["none", "off", "transparent", "__none__", "__transparent__"]);
+
+  function isNoBackgroundPresetId(value) {
+    const normalized = normalizeBackgroundPresetId(value || "");
+    return normalized ? NO_BACKGROUND_PRESET_IDS.has(normalized) : false;
+  }
+
+  function normalizeOverlayUrlParamKey(value) {
+    return sanitizeLine(value, 64)
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+  }
+
+  function sanitizeOverlayUrlParamsForOverrides(raw) {
+    if (!isRecord(raw)) return {};
+    const out = {};
+    const entries = Object.entries(raw);
+    for (let index = 0; index < entries.length; index += 1) {
+      if (Object.keys(out).length >= 24) break;
+      const [rawKey, rawValue] = entries[index];
+      const key = normalizeOverlayUrlParamKey(rawKey);
+      if (!key || key === "room" || key === "roomCode" || key === "token") continue;
+      const value = sanitizeLine(rawValue, 256).trim();
+      if (!value) continue;
+      out[key] = value;
+    }
+    return out;
+  }
+
+  function normalizeBackgroundCatalog(raw) {
+    if (!isRecord(raw)) return { defaultPreset: "default", presets: [] };
+    const presets = Array.isArray(raw.presets)
+      ? raw.presets
+          .map((item) => {
+            if (!isRecord(item)) return null;
+            const id = normalizeBackgroundPresetId(item.id);
+            if (!id) return null;
+            const label = sanitizeLine(item.label || id, 80) || id;
+            const layouts = isRecord(item.layouts) ? item.layouts : {};
+            const outLayouts = {};
+            if (typeof layouts.l4 === "string" && layouts.l4.trim()) outLayouts.l4 = layouts.l4.trim();
+            if (typeof layouts.l8 === "string" && layouts.l8.trim()) outLayouts.l8 = layouts.l8.trim();
+            if (typeof layouts.l12 === "string" && layouts.l12.trim()) outLayouts.l12 = layouts.l12.trim();
+            if (!Object.keys(outLayouts).length) return null;
+            return { id, label, layouts: outLayouts };
+          })
+          .filter(Boolean)
+      : [];
+    const defaultPresetRaw = normalizeBackgroundPresetId(raw.defaultPreset || "");
+    const defaultPreset =
+      defaultPresetRaw && presets.some((item) => item.id === defaultPresetRaw)
+        ? defaultPresetRaw
+        : presets[0]?.id || "default";
+    return { defaultPreset, presets };
+  }
+
+  function getBackgroundPresetById(presetId) {
+    const id = normalizeBackgroundPresetId(presetId || "");
+    if (!id) return null;
+    return backgroundCatalog.presets.find((item) => item.id === id) || null;
+  }
+
+  function renderBackgroundPresetEditor() {
+    const selected = normalizeBackgroundPresetId(draftOverrides.backgroundPreset || "");
+    const defaultPreset = getBackgroundPresetById(backgroundCatalog.defaultPreset);
+
+    backgroundPresetSelect.textContent = "";
+    const defaultOption = document.createElement("option");
+    defaultOption.value = BACKGROUND_PRESET_DEFAULT;
+    defaultOption.textContent = defaultPreset
+      ? `Default (${defaultPreset.label})`
+      : "Default";
+    backgroundPresetSelect.append(defaultOption);
+
+    const noneOption = document.createElement("option");
+    noneOption.value = BACKGROUND_PRESET_NONE;
+    noneOption.textContent = "Прозрачный (без фона)";
+    backgroundPresetSelect.append(noneOption);
+
+    for (const preset of backgroundCatalog.presets) {
+      const option = document.createElement("option");
+      option.value = preset.id;
+      const layouts = [];
+      if (preset.layouts.l4) layouts.push("4p");
+      if (preset.layouts.l8) layouts.push("8p");
+      if (preset.layouts.l12) layouts.push("12p");
+      option.textContent = `${preset.label}${layouts.length ? ` (${layouts.join(", ")})` : ""}`;
+      backgroundPresetSelect.append(option);
+    }
+
+    if (isNoBackgroundPresetId(selected)) {
+      backgroundPresetSelect.value = BACKGROUND_PRESET_NONE;
+    } else if (selected && backgroundCatalog.presets.some((preset) => preset.id === selected)) {
+      backgroundPresetSelect.value = selected;
+    } else {
+      backgroundPresetSelect.value = BACKGROUND_PRESET_DEFAULT;
+    }
+
+    if (backgroundPresetSelect.value === BACKGROUND_PRESET_NONE) {
+      backgroundPresetHint.textContent = "Фон отключён: overlay будет прозрачным.";
+      return;
+    }
+    const effectivePresetId =
+      backgroundPresetSelect.value === BACKGROUND_PRESET_DEFAULT
+        ? normalizeBackgroundPresetId(backgroundCatalog.defaultPreset || "")
+        : normalizeBackgroundPresetId(backgroundPresetSelect.value);
+    const chosenPreset = getBackgroundPresetById(effectivePresetId);
+    if (!chosenPreset) {
+      backgroundPresetHint.textContent = "Выбран неизвестный пресет.";
+      return;
+    }
+    const availableLayouts = [];
+    if (chosenPreset.layouts.l4) availableLayouts.push("4p");
+    if (chosenPreset.layouts.l8) availableLayouts.push("8p");
+    if (chosenPreset.layouts.l12) availableLayouts.push("12p");
+    backgroundPresetHint.textContent = `Используется пресет: ${chosenPreset.label}. Доступные layouts: ${availableLayouts.join(", ") || "-"}.`;
+  }
+
+  function applyBackgroundPresetInputToDraft() {
+    const selected = normalizeBackgroundPresetId(backgroundPresetSelect.value);
+    if (selected === normalizeBackgroundPresetId(BACKGROUND_PRESET_NONE)) {
+      draftOverrides.backgroundPreset = normalizeBackgroundPresetId(BACKGROUND_PRESET_NONE);
+      return;
+    }
+    if (selected === normalizeBackgroundPresetId(BACKGROUND_PRESET_DEFAULT)) {
+      delete draftOverrides.backgroundPreset;
+      return;
+    }
+    if (selected && backgroundCatalog.presets.some((preset) => preset.id === selected)) {
+      draftOverrides.backgroundPreset = selected;
+    } else {
+      delete draftOverrides.backgroundPreset;
+    }
+  }
+
+  function normalizeOverlayUrlPresets(raw) {
+    const fromApi =
+      isRecord(raw) && Array.isArray(raw.presets)
+        ? raw.presets
+            .map((item) => {
+              if (!isRecord(item)) return null;
+              const id = normalizeBackgroundPresetId(item.id);
+              const label = sanitizeLine(item.label || id, 120);
+              const urlTemplate = sanitizeLine(item.urlTemplate, 2048);
+              const comment = sanitizeLine(item.comment || "", 240);
+              if (!id || !label || !urlTemplate) return null;
+              return { id, label, urlTemplate, comment };
+            })
+            .filter(Boolean)
+        : [];
+
+    const merged = [...DEFAULT_OVERLAY_URL_PRESETS, ...fromApi];
+    const seen = new Set();
+    return merged
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const id = normalizeBackgroundPresetId(item.id || "");
+        const label = sanitizeLine(item.label || id, 120);
+        const urlTemplate = sanitizeLine(item.urlTemplate || "", 2048);
+        const comment = sanitizeLine(item.comment || "", 240);
+        if (!id || !label || !urlTemplate) return null;
+        if (seen.has(id)) return null;
+        seen.add(id);
+        return { id, label, urlTemplate, comment };
+      })
+      .filter(Boolean);
+  }
+
+  function buildResolvedPresetUrl(template) {
+    const rawTemplate = String(template || "").trim();
+    if (!rawTemplate) return "";
+    const selectedBgPresetRaw = normalizeBackgroundPresetId(draftOverrides.backgroundPreset || "");
+    const selectedBgPreset = isNoBackgroundPresetId(selectedBgPresetRaw) ? "" : selectedBgPresetRaw;
+
+    const substitutedTemplate = rawTemplate
+      .replace(/\{ROOM\}/gi, roomCode)
+      .replace(/\{TOKEN\}/gi, token)
+      .replace(/\{BG_PRESET\}/gi, selectedBgPreset)
+      .replace(/\{BG\}/gi, selectedBgPreset);
+
+    let parsed;
+    try {
+      parsed = new URL(substitutedTemplate, window.location.origin);
+    } catch {
+      return "";
+    }
+    const baseUrl = new URL(window.location.origin);
+    baseUrl.pathname = "/overlay";
+    baseUrl.search = "";
+    baseUrl.hash = "";
+
+    for (const [key, value] of parsed.searchParams.entries()) {
+      if (key === "room" || key === "roomCode" || key === "token") continue;
+      if (key === "bgPreset" && !String(value || "").trim()) continue;
+      baseUrl.searchParams.set(key, value);
+    }
+    baseUrl.searchParams.set("room", roomCode);
+    baseUrl.searchParams.set("token", token);
+    if (!baseUrl.searchParams.get("bgPreset")) {
+      if (selectedBgPreset) {
+        baseUrl.searchParams.set("bgPreset", selectedBgPreset);
+      }
+    }
+    return baseUrl.toString();
+  }
+
+  function extractOverlayQueryParamsFromResolvedUrl(urlValue) {
+    let parsed;
+    try {
+      parsed = new URL(String(urlValue || "").trim(), window.location.origin);
+    } catch {
+      return {};
+    }
+    const out = {};
+    for (const [rawKey, rawValue] of parsed.searchParams.entries()) {
+      const key = normalizeOverlayUrlParamKey(rawKey);
+      if (!key || key === "room" || key === "roomCode" || key === "token") continue;
+      const value = sanitizeLine(rawValue, 256).trim();
+      if (!value) continue;
+      out[key] = value;
+    }
+    return out;
+  }
+
+  function buildOverlayTemplateFromStoredParams(params) {
+    const cleaned = sanitizeOverlayUrlParamsForOverrides(params);
+    if (!Object.keys(cleaned).length) return "";
+    const selectedBgPresetRaw = normalizeBackgroundPresetId(draftOverrides.backgroundPreset || "");
+    const selectedBgPreset = isNoBackgroundPresetId(selectedBgPresetRaw) ? "" : selectedBgPresetRaw;
+    const templateUrl = new URL(window.location.origin);
+    templateUrl.pathname = "/overlay";
+    templateUrl.search = "";
+    templateUrl.hash = "";
+    for (const [key, value] of Object.entries(cleaned)) {
+      if (key === "bgPreset" && selectedBgPreset && value === selectedBgPreset) {
+        templateUrl.searchParams.set("bgPreset", "{BG_PRESET}");
+      } else {
+        templateUrl.searchParams.set(key, value);
+      }
+    }
+    templateUrl.searchParams.set("room", roomCode);
+    templateUrl.searchParams.set("token", token);
+    return templateUrl.toString();
+  }
+
+  function applyOverlayUrlPresetTemplateToDraft() {
+    ensureDraftShape();
+    const template = String(overlayUrlPresetTemplate.value || "").trim();
+    if (!template) {
+      delete draftOverrides.overlayUrlParams;
+      overlayUrlPresetValue.value = "";
+      return;
+    }
+    const resolvedUrl = buildResolvedPresetUrl(template);
+    overlayUrlPresetValue.value = resolvedUrl;
+    const params = sanitizeOverlayUrlParamsForOverrides(
+      extractOverlayQueryParamsFromResolvedUrl(resolvedUrl)
+    );
+    if (Object.keys(params).length) {
+      draftOverrides.overlayUrlParams = params;
+      return;
+    }
+    delete draftOverrides.overlayUrlParams;
+  }
+
+  function renderOverlayUrlParamInputs() {
+    const params = sanitizeOverlayUrlParamsForOverrides(draftOverrides.overlayUrlParams);
+    urlParamTheme.value = String(params.theme || "");
+    urlParamScale.value = String(params.scale || "1.3");
+    urlParamTop.value = String(params.top || "");
+    urlParamDebug.value = String(params.debug === "1" ? "1" : "");
+  }
+
+  function applyOverlayUrlParamInputsToDraft() {
+    ensureDraftShape();
+    const params = sanitizeOverlayUrlParamsForOverrides(draftOverrides.overlayUrlParams);
+
+    const theme = String(urlParamTheme.value || "").trim().toLowerCase();
+    if (theme && ["mint", "warm", "dark"].includes(theme)) params.theme = theme;
+    else delete params.theme;
+
+    const scaleNum = Number.parseFloat(String(urlParamScale.value || "").trim());
+    if (Number.isFinite(scaleNum)) {
+      const normalizedScale = Math.max(0.8, Math.min(1.6, scaleNum));
+      params.scale = normalizedScale.toFixed(2).replace(/\.?0+$/, "");
+    } else {
+      delete params.scale;
+    }
+
+    const topNum = Number.parseFloat(String(urlParamTop.value || "").trim());
+    if (Number.isFinite(topNum)) {
+      const normalizedTop = Math.round(Math.max(160, Math.min(320, topNum)));
+      params.top = String(normalizedTop);
+    } else {
+      delete params.top;
+    }
+
+    if (String(urlParamDebug.value || "").trim() === "1") params.debug = "1";
+    else delete params.debug;
+
+    if (Object.keys(params).length) {
+      draftOverrides.overlayUrlParams = params;
+    } else {
+      delete draftOverrides.overlayUrlParams;
+    }
+  }
+
+  function syncOverlayTemplateFromDraftParams() {
+    const templateFromParams = buildOverlayTemplateFromStoredParams(draftOverrides.overlayUrlParams);
+    if (templateFromParams) {
+      overlayUrlPresetTemplate.value = templateFromParams;
+      return;
+    }
+    if (!String(overlayUrlPresetTemplate.value || "").trim()) return;
+    overlayUrlPresetTemplate.value = "";
+  }
+
+  function renderOverlayUrlPresets() {
+    const presets = overlayUrlPresets.length ? overlayUrlPresets : DEFAULT_OVERLAY_URL_PRESETS;
+    if (!selectedOverlayUrlPresetId || !presets.some((item) => item.id === selectedOverlayUrlPresetId)) {
+      selectedOverlayUrlPresetId = presets[0]?.id || "";
+    }
+
+    overlayUrlPresetButtons.textContent = "";
+    for (const preset of presets) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-small";
+      button.dataset.presetId = preset.id;
+      if (preset.id === selectedOverlayUrlPresetId) {
+        button.classList.add("btn--primary");
+      }
+      button.textContent = preset.label;
+      overlayUrlPresetButtons.append(button);
+    }
+
+    const selectedPreset = presets.find((item) => item.id === selectedOverlayUrlPresetId) || null;
+    if (!String(overlayUrlPresetTemplate.value || "").trim()) {
+      const fromDraftTemplate = buildOverlayTemplateFromStoredParams(draftOverrides.overlayUrlParams);
+      if (fromDraftTemplate) {
+        overlayUrlPresetTemplate.value = fromDraftTemplate;
+      }
+    }
+    if (selectedPreset && !String(overlayUrlPresetTemplate.value || "").trim()) {
+      overlayUrlPresetTemplate.value = buildResolvedPresetUrl(selectedPreset.urlTemplate);
+    }
+
+    const template = String(overlayUrlPresetTemplate.value || "").trim() || selectedPreset?.urlTemplate || "";
+    overlayUrlPresetValue.value = buildResolvedPresetUrl(template);
+    renderOverlayUrlParamInputs();
+
+    if (!template) {
+      overlayUrlPresetHint.textContent = "Выбери пресет для быстрого URL в OBS.";
+      return;
+    }
+    if (!selectedPreset) {
+      overlayUrlPresetHint.textContent = "Используется пользовательский шаблон URL.";
+      return;
+    }
+    overlayUrlPresetHint.textContent =
+      selectedPreset.comment ||
+      "Параметры пресета применены к текущей комнате и токену control-панели.";
+  }
+
   function normalizeExtraText(raw, index = 0) {
     if (!isRecord(raw)) return null;
     const idRaw = sanitizeLine(raw.id, 64);
@@ -671,6 +1092,16 @@
     if (Array.isArray(src.extraTexts)) {
       const extraTexts = src.extraTexts.map((item, index) => normalizeExtraText(item, index)).filter(Boolean);
       if (extraTexts.length) out.extraTexts = extraTexts;
+    }
+
+    const backgroundPreset = normalizeBackgroundPresetId(src.backgroundPreset || "");
+    if (backgroundPreset) {
+      out.backgroundPreset = backgroundPreset;
+    }
+
+    const overlayUrlParams = sanitizeOverlayUrlParamsForOverrides(src.overlayUrlParams);
+    if (Object.keys(overlayUrlParams).length) {
+      out.overlayUrlParams = overlayUrlParams;
     }
 
     return out;
@@ -2428,6 +2859,8 @@
     renderPlayerSelect();
     renderPlayersList();
     renderTopEditor();
+    renderBackgroundPresetEditor();
+    renderOverlayUrlPresets();
     renderPlayerEditor();
     renderExtraTextsEditor();
     syncDirtyBadge();
@@ -2590,6 +3023,34 @@
     }
   }
 
+  async function loadBackgroundCatalog() {
+    try {
+      const response = await fetch("/api/overlay-backgrounds");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      backgroundCatalog = normalizeBackgroundCatalog(payload);
+    } catch (error) {
+      console.warn("[overlay-control] failed to load background catalog", error);
+      backgroundCatalog = { defaultPreset: "default", presets: [] };
+    }
+  }
+
+  async function loadOverlayUrlPresets() {
+    try {
+      const response = await fetch("/api/overlay-url-presets");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(payload?.message || `HTTP ${response.status}`);
+      }
+      overlayUrlPresets = normalizeOverlayUrlPresets(payload);
+    } catch (error) {
+      console.warn("[overlay-control] failed to load overlay URL presets", error);
+      overlayUrlPresets = [];
+    }
+  }
+
   async function loadState() {
     console.log("[overlay-control] loadState request", { roomCode, tokenPresent: Boolean(token) });
     const res = await fetch(`/overlay-control/state?room=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(token)}`);
@@ -2617,9 +3078,11 @@
     serverOverrides = cleanupOverrides(data.overrides || {});
     draftOverrides = clone(serverOverrides);
     ensureDraftShape();
+    overlayUrlPresetTemplate.value = "";
     if (!players.some((player) => player.playerId === selectedPlayerId)) {
       selectedPlayerId = players[0]?.playerId || "";
     }
+    await Promise.all([loadBackgroundCatalog(), loadOverlayUrlPresets()]);
     renderAll();
     setStatus("Состояние загружено.");
   }
@@ -2627,6 +3090,8 @@
   function buildOverridesForSave() {
     const validation = applyTopInputsToDraft();
     if (validation.errors.length) throw new Error(validation.errors.join(" "));
+    applyBackgroundPresetInputToDraft();
+    applyOverlayUrlPresetTemplateToDraft();
     setDraftExtraTexts(parseExtraTextsJson(extraTextsJson.value.trim() || "[]"));
     return cleanupOverrides(draftOverrides);
   }
@@ -2689,6 +3154,8 @@
     renderPlayerSelect();
     renderPlayersList();
     renderTopEditor();
+    renderBackgroundPresetEditor();
+    renderOverlayUrlPresets();
     renderPlayerEditor();
   }
 
@@ -3206,6 +3673,65 @@
   enabledTopBunker.addEventListener("change", topInputChanged);
   enabledTopCatastrophe.addEventListener("change", topInputChanged);
   enabledTopThreats.addEventListener("change", topInputChanged);
+  backgroundPresetSelect.addEventListener("change", () => {
+    applyBackgroundPresetInputToDraft();
+    syncOverlayTemplateFromDraftParams();
+    applyOverlayUrlPresetTemplateToDraft();
+    renderBackgroundPresetEditor();
+    renderOverlayUrlPresets();
+    syncDirtyBadge();
+  });
+  overlayUrlPresetButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-preset-id]");
+    if (!button) return;
+    selectedOverlayUrlPresetId = normalizeBackgroundPresetId(button.dataset.presetId || "");
+    const preset = overlayUrlPresets.find((item) => item.id === selectedOverlayUrlPresetId) || null;
+    if (preset) {
+      overlayUrlPresetTemplate.value = buildResolvedPresetUrl(preset.urlTemplate);
+    }
+    applyOverlayUrlPresetTemplateToDraft();
+    renderOverlayUrlPresets();
+    syncDirtyBadge();
+  });
+  overlayUrlPresetTemplate.addEventListener("input", () => {
+    applyOverlayUrlPresetTemplateToDraft();
+    renderOverlayUrlPresets();
+    syncDirtyBadge();
+  });
+  const onUrlParamInputChanged = () => {
+    applyOverlayUrlParamInputsToDraft();
+    syncOverlayTemplateFromDraftParams();
+    applyOverlayUrlPresetTemplateToDraft();
+    renderOverlayUrlPresets();
+    syncDirtyBadge();
+  };
+  urlParamTheme.addEventListener("change", onUrlParamInputChanged);
+  urlParamScale.addEventListener("change", onUrlParamInputChanged);
+  urlParamTop.addEventListener("change", onUrlParamInputChanged);
+  urlParamDebug.addEventListener("change", onUrlParamInputChanged);
+  overlayUrlPresetOpenBtn.addEventListener("click", () => {
+    const url = String(overlayUrlPresetValue.value || "").trim();
+    if (!url) {
+      setStatus("Сначала выбери URL-пресет.", true);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+  overlayUrlPresetCopyBtn.addEventListener("click", async () => {
+    const url = String(overlayUrlPresetValue.value || "").trim();
+    if (!url) {
+      setStatus("Сначала выбери URL-пресет.", true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setStatus("URL пресета скопирован.");
+    } catch {
+      overlayUrlPresetValue.focus();
+      overlayUrlPresetValue.select();
+      setStatus("Не удалось скопировать автоматически. URL выделен для копирования.", true);
+    }
+  });
 
   playerNameInput.addEventListener("input", () => setSelectedPlayerField("name", playerNameInput.value));
   traitSexInput.addEventListener("input", () => setSelectedPlayerField("sex", traitSexInput.value));

@@ -31,12 +31,18 @@ interface GamePageProps {
 
 type SpecialDialogKind = "none" | "player" | "neighbor" | "category" | "bunker" | "baggage" | "special";
 
+interface SpecialDialogCardPicker {
+  categoryKey: string;
+  requireSourceCard?: boolean;
+}
+
 interface SpecialDialogState {
   kind: SpecialDialogKind;
   specialInstanceId: string;
   title: string;
   options: Array<{ id: string; label: string }>;
   description?: string;
+  cardPicker?: SpecialDialogCardPicker;
 }
 
 const CATEGORY_KEY_TO_RU: Record<string, string> = {
@@ -169,6 +175,8 @@ export default function GamePage({
   const [autoVoteRound, setAutoVoteRound] = useState<number | null>(null);
   const [specialDialog, setSpecialDialog] = useState<SpecialDialogState | null>(null);
   const [dialogSelection, setDialogSelection] = useState<string>("");
+  const [dialogTargetCardSelection, setDialogTargetCardSelection] = useState<string>("");
+  const [dialogSourceCardSelection, setDialogSourceCardSelection] = useState<string>("");
   const [devRemoveTargetId, setDevRemoveTargetId] = useState<string>("");
   const [devChecks, setDevChecks] = useState<
     Array<{ id: string; label: string; status: "pass" | "fail"; detail?: string }>
@@ -713,38 +721,69 @@ export default function GamePage({
     title: string,
     kind: SpecialDialogKind,
     options: Array<{ id: string; label: string }> = [],
-    description?: string
+    description?: string,
+    cardPicker?: SpecialDialogCardPicker
   ) => {
     setDialogSelection("");
-    setSpecialDialog({ kind, specialInstanceId, title, options, description });
+    setDialogTargetCardSelection("");
+    setDialogSourceCardSelection("");
+    setSpecialDialog({ kind, specialInstanceId, title, options, description, cardPicker });
   };
 
   const closeSpecialDialog = () => {
     setSpecialDialog(null);
     setDialogSelection("");
+    setDialogTargetCardSelection("");
+    setDialogSourceCardSelection("");
+  };
+
+  const selectDialogPlayer = (playerId: string) => {
+    setDialogSelection(playerId);
+    if (!specialDialog || specialDialog.kind !== "player" || !specialDialog.cardPicker) {
+      setDialogTargetCardSelection("");
+      setDialogSourceCardSelection("");
+      return;
+    }
+    const targetCards = getRevealedCategoryCards(playerId, specialDialog.cardPicker.categoryKey);
+    setDialogTargetCardSelection(targetCards[0]?.instanceId ?? "");
+    if (specialDialog.cardPicker.requireSourceCard && you) {
+      if (!dialogSourceCardSelection) {
+        const ownCards = getRevealedCategoryCards(you.playerId, specialDialog.cardPicker.categoryKey);
+        setDialogSourceCardSelection(ownCards[0]?.instanceId ?? "");
+      }
+    } else {
+      setDialogSourceCardSelection("");
+    }
+  };
+
+  const getRevealedCategoryCards = (
+    playerId: string,
+    categoryKey: string
+  ): Array<{ instanceId: string; hint: string }> => {
+    const player = publicPlayers.find((entry) => entry.playerId === playerId);
+    if (!player) return [];
+    const labels = CATEGORY_KEY_TO_LABELS[categoryKey] ?? [categoryKey];
+    const result: Array<{ instanceId: string; hint: string }> = [];
+    for (const label of labels) {
+      const slot = player.categories.find((entry) => entry.category === label);
+      if (!slot || slot.status !== "revealed") continue;
+      for (const card of slot.cards) {
+        if (card.hidden) continue;
+        const instanceId = String(card.instanceId ?? "").trim();
+        if (!instanceId) continue;
+        const cardLabel = String(card.labelShort ?? "").trim() || "—";
+        result.push({ instanceId, hint: `${label}: ${cardLabel}` });
+      }
+    }
+    return result;
   };
 
   const hasRevealedCategory = (playerId: string, categoryKey: string) => {
-    const player = publicPlayers.find((entry) => entry.playerId === playerId);
-    if (!player) return false;
-    const labels = CATEGORY_KEY_TO_LABELS[categoryKey] ?? [categoryKey];
-    return labels.some((label) => {
-      const slot = player.categories.find((entry) => entry.category === label);
-      return Boolean(slot && slot.status === "revealed" && slot.cards.length > 0);
-    });
+    return getRevealedCategoryCards(playerId, categoryKey).length > 0;
   };
 
   const getRevealedCategoryCardHint = (playerId: string, categoryKey: string): string | null => {
-    const player = publicPlayers.find((entry) => entry.playerId === playerId);
-    if (!player) return null;
-    const labels = CATEGORY_KEY_TO_LABELS[categoryKey] ?? [categoryKey];
-    for (const label of labels) {
-      const slot = player.categories.find((entry) => entry.category === label);
-      if (!slot || slot.status !== "revealed" || slot.cards.length === 0) continue;
-      const cardLabel = slot.cards[0]?.labelShort?.trim() || "—";
-      return `${label}: ${cardLabel}`;
-    }
-    return null;
+    return getRevealedCategoryCards(playerId, categoryKey)[0]?.hint ?? null;
   };
 
   const getRevealedBunkerOptions = () =>
@@ -935,30 +974,28 @@ export default function GamePage({
       }
 
       const categoryKey = String(special.effect.params?.category ?? "");
-      if (effectType === "replaceRevealedCard" || effectType === "discardRevealedAndDealHidden") {
-        if (categoryKey) {
-          options = options.filter((option) => hasRevealedCategory(option.id, categoryKey));
+      const isCategoryCardEffect =
+        effectType === "swapRevealedWithNeighbor" ||
+        effectType === "replaceRevealedCard" ||
+        effectType === "discardRevealedAndDealHidden";
+      if (categoryKey && isCategoryCardEffect) {
+        if (effectType === "swapRevealedWithNeighbor") {
+          const ownCards = getRevealedCategoryCards(you.playerId, categoryKey);
+          options = options.filter(
+            (option) => ownCards.length > 0 && getRevealedCategoryCards(option.id, categoryKey).length > 0
+          );
+        } else {
+          options = options.filter((option) => getRevealedCategoryCards(option.id, categoryKey).length > 0);
         }
-      }
-      if (effectType === "swapRevealedWithNeighbor") {
-        if (categoryKey) {
-          const youHas = hasRevealedCategory(you.playerId, categoryKey);
-          options = options.filter((option) => youHas && hasRevealedCategory(option.id, categoryKey));
-        }
-      }
-      if (categoryKey) {
-        const shouldShowCategoryCardHint =
-          effectType === "swapRevealedWithNeighbor" ||
-          effectType === "replaceRevealedCard" ||
-          effectType === "discardRevealedAndDealHidden";
-        if (shouldShowCategoryCardHint) {
-          options = options.map((option) => {
-            const hint = getRevealedCategoryCardHint(option.id, categoryKey);
-            if (!hint) return option;
-            const suffix = effectType === "swapRevealedWithNeighbor" ? `обмен на: ${hint}` : hint;
-            return { ...option, label: `${option.label} — ${suffix}` };
-          });
-        }
+        openSpecialDialog(
+          special.instanceId,
+          targetScope === "neighbors" ? "Выберите соседа" : "Выберите игрока",
+          "player",
+          options,
+          special.text,
+          { categoryKey, requireSourceCard: effectType === "swapRevealedWithNeighbor" }
+        );
+        return;
       }
 
       if (effectType === "stealBaggage_and_giveSpecial") {
@@ -1014,7 +1051,33 @@ export default function GamePage({
     if (!dialogSelection) return;
 
     if (specialDialog.kind === "player") {
-      onApplySpecial(specialDialog.specialInstanceId, { targetPlayerId: dialogSelection });
+      const normalizedTargetPlayerId = String(dialogSelection ?? "").trim();
+      if (!normalizedTargetPlayerId) {
+        closeSpecialDialog();
+        return;
+      }
+      const payload: Record<string, unknown> = { targetPlayerId: normalizedTargetPlayerId };
+      if (specialDialog.cardPicker) {
+        const normalizedTargetCardInstanceId = String(dialogTargetCardSelection ?? "").trim();
+        if (!normalizedTargetCardInstanceId) return;
+        payload.targetCardInstanceId = normalizedTargetCardInstanceId;
+        if (specialDialog.cardPicker.requireSourceCard) {
+          const normalizedSourceCardInstanceId = String(dialogSourceCardSelection ?? "").trim();
+          if (!normalizedSourceCardInstanceId) return;
+          payload.sourceCardInstanceId = normalizedSourceCardInstanceId;
+        }
+      } else {
+        const [, targetCardInstanceId, sourceCardInstanceId] = dialogSelection.split("::");
+        const normalizedTargetCardInstanceId = String(targetCardInstanceId ?? "").trim();
+        if (normalizedTargetCardInstanceId) {
+          payload.targetCardInstanceId = normalizedTargetCardInstanceId;
+        }
+        const normalizedSourceCardInstanceId = String(sourceCardInstanceId ?? "").trim();
+        if (normalizedSourceCardInstanceId) {
+          payload.sourceCardInstanceId = normalizedSourceCardInstanceId;
+        }
+      }
+      onApplySpecial(specialDialog.specialInstanceId, payload);
     } else if (specialDialog.kind === "neighbor") {
       onApplySpecial(specialDialog.specialInstanceId, { side: dialogSelection });
     } else if (specialDialog.kind === "category") {
@@ -1035,6 +1098,32 @@ export default function GamePage({
 
     closeSpecialDialog();
   };
+
+  const isPlayerCardPickerDialog = Boolean(
+    specialDialog?.kind === "player" && specialDialog?.cardPicker
+  );
+  const dialogTargetCards =
+    specialDialog?.kind === "player" && specialDialog?.cardPicker && dialogSelection
+      ? getRevealedCategoryCards(dialogSelection, specialDialog.cardPicker.categoryKey)
+      : [];
+  const dialogSourceCards =
+    specialDialog?.kind === "player" &&
+    specialDialog?.cardPicker?.requireSourceCard &&
+    you
+      ? getRevealedCategoryCards(you.playerId, specialDialog.cardPicker.categoryKey)
+      : [];
+  const selectedTargetCardHint =
+    dialogTargetCards.find((card) => card.instanceId === dialogTargetCardSelection)?.hint ?? "";
+  const selectedSourceCardHint =
+    dialogSourceCards.find((card) => card.instanceId === dialogSourceCardSelection)?.hint ?? "";
+  const canSubmitSpecialDialog = (() => {
+    if (!specialDialog) return false;
+    if (!dialogSelection || specialDialog.options.length === 0) return false;
+    if (!isPlayerCardPickerDialog) return true;
+    if (!dialogTargetCardSelection) return false;
+    if (specialDialog.cardPicker?.requireSourceCard && !dialogSourceCardSelection) return false;
+    return true;
+  })();
 
   if (!roomState || !gameView) {
     return (
@@ -1367,6 +1456,7 @@ export default function GamePage({
             })}
           </div>
         </div>
+
       </div>
     );
   };
@@ -1684,6 +1774,16 @@ export default function GamePage({
           <button className="ghost mobile-action-dossier" onClick={() => setDossierOpen(true)}>
             {ru.dossierTitle}
           </button>
+          {isDevScenario ? (
+            <div className="mobile-dev-quick-actions">
+              <button className="ghost button-small" onClick={() => onDevAddPlayer()}>
+                + Игрок
+              </button>
+              <button className="ghost button-small" onClick={() => onDevRemovePlayer(undefined)}>
+                - Игрок
+              </button>
+            </div>
+          ) : null}
           {!useOverlayControl && phase === "reveal_discussion" ? (
             <button
               className="primary"
@@ -2228,21 +2328,80 @@ export default function GamePage({
             <>
               {specialDialog.options.length === 0 ? (
                 <div className="muted">{ru.noTargetCandidates}</div>
-              ) : null}
-              <select
-                value={dialogSelection}
-                onChange={(event) => setDialogSelection(event.target.value)}
-                disabled={specialDialog.options.length === 0}
-              >
-                <option value="" disabled>
-                  {ru.modalSelect}
-                </option>
-                {specialDialog.options.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              ) : (
+                <>
+                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
+                    <>
+                      <div className="muted">1) Ваша карта</div>
+                      <select
+                        value={dialogSourceCardSelection}
+                        onChange={(event) => setDialogSourceCardSelection(event.target.value)}
+                        disabled={dialogSourceCards.length === 0}
+                      >
+                        <option value="" disabled>
+                          Выберите свою карту
+                        </option>
+                        {dialogSourceCards.map((card) => (
+                          <option key={card.instanceId} value={card.instanceId}>
+                            {card.hint}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : null}
+
+                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
+                    <div className="muted">2) Игрок</div>
+                  ) : null}
+                  <select
+                    value={dialogSelection}
+                    onChange={(event) => selectDialogPlayer(event.target.value)}
+                    disabled={specialDialog.options.length === 0}
+                  >
+                    <option value="" disabled>
+                      {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard
+                        ? "Выберите игрока"
+                        : ru.modalSelect}
+                    </option>
+                    {specialDialog.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {isPlayerCardPickerDialog && dialogSelection ? (
+                    <>
+                      {specialDialog?.cardPicker?.requireSourceCard ? (
+                        <div className="muted">3) Карта игрока</div>
+                      ) : (
+                        <div className="muted">Карта игрока</div>
+                      )}
+                      <select
+                        value={dialogTargetCardSelection}
+                        onChange={(event) => setDialogTargetCardSelection(event.target.value)}
+                        disabled={dialogTargetCards.length === 0}
+                      >
+                        <option value="" disabled>
+                          Выберите карту игрока
+                        </option>
+                        {dialogTargetCards.map((card) => (
+                          <option key={card.instanceId} value={card.instanceId}>
+                            {card.hint}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedTargetCardHint ? (
+                        <div className="muted">
+                          {specialDialog?.cardPicker?.requireSourceCard && selectedSourceCardHint
+                            ? `Ваша карта: ${selectedSourceCardHint} - Карта игрока: ${selectedTargetCardHint}`
+                            : `Карта игрока: ${selectedTargetCardHint}`}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </>
+              )}
             </>
           ) : null}
           <div className="modal-actions">
@@ -2251,7 +2410,7 @@ export default function GamePage({
             </button>
             <button
               className="primary"
-              disabled={!dialogSelection || (specialDialog?.options.length ?? 0) === 0}
+              disabled={!canSubmitSpecialDialog}
               onClick={submitSpecialDialog}
             >
               {ru.modalApply}
@@ -2279,18 +2438,74 @@ export default function GamePage({
               {specialDialog.options.length === 0 ? (
                 <div className="muted">{ru.noTargetCandidates}</div>
               ) : (
-                <div className="mobile-special-options">
-                  {specialDialog.options.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={`mobile-special-option${dialogSelection === option.id ? " selected" : ""}`}
-                      onClick={() => setDialogSelection(option.id)}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
+                    <>
+                      <div className="muted">1) Ваша карта</div>
+                      <select
+                        value={dialogSourceCardSelection}
+                        onChange={(event) => setDialogSourceCardSelection(event.target.value)}
+                        disabled={dialogSourceCards.length === 0}
+                      >
+                        <option value="" disabled>
+                          Выберите свою карту
+                        </option>
+                        {dialogSourceCards.map((card) => (
+                          <option key={card.instanceId} value={card.instanceId}>
+                            {card.hint}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : null}
+
+                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
+                    <div className="muted">2) Игрок</div>
+                  ) : null}
+                  <div className="mobile-special-options">
+                    {specialDialog.options.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`mobile-special-option${dialogSelection === option.id ? " selected" : ""}`}
+                        onClick={() => selectDialogPlayer(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {isPlayerCardPickerDialog && dialogSelection ? (
+                    <>
+                      {specialDialog?.cardPicker?.requireSourceCard ? (
+                        <div className="muted">3) Карта игрока</div>
+                      ) : (
+                        <div className="muted">Карта игрока</div>
+                      )}
+                      <select
+                        value={dialogTargetCardSelection}
+                        onChange={(event) => setDialogTargetCardSelection(event.target.value)}
+                        disabled={dialogTargetCards.length === 0}
+                      >
+                        <option value="" disabled>
+                          Выберите карту игрока
+                        </option>
+                        {dialogTargetCards.map((card) => (
+                          <option key={card.instanceId} value={card.instanceId}>
+                            {card.hint}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedTargetCardHint ? (
+                        <div className="muted">
+                          {specialDialog?.cardPicker?.requireSourceCard && selectedSourceCardHint
+                            ? `Ваша карта: ${selectedSourceCardHint} - Карта игрока: ${selectedTargetCardHint}`
+                            : `Карта игрока: ${selectedTargetCardHint}`}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </>
               )}
             </div>
             <div className="mobile-special-footer">
@@ -2299,7 +2514,7 @@ export default function GamePage({
               </button>
               <button
                 className="primary"
-                disabled={!dialogSelection || specialDialog.options.length === 0}
+                disabled={!canSubmitSpecialDialog}
                 onClick={submitSpecialDialog}
               >
                 {ru.modalApply}

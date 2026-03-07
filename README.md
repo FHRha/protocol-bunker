@@ -4,6 +4,16 @@
 
 Проект живой: тут много “как в настолке”, немного “как в стриме”, и чуть-чуть “почему всё снова обсуждают 60 секунд”.
 
+**Важно: полезные материалы в `docs/`**
+
+- [Правила игры](docs/rules.md)
+- [Особые условия (описания)](docs/SPECIAL_CONDITIONS.md)
+- [Overlay Control: как пользоваться](docs/overlay-control.md)
+- [Пресеты OBS-ссылок](docs/overlay_presets.txt)
+- [Nginx stream для Linux](docs/nginx-stream-linux.md)
+- [Инструкция для стримеров](docs/ДЛЯ%20СТРИМЕРОВ/README.md)
+- [Ручной UI-чеклист перед релизом](docs/manual-ui-checklist.md)
+
 ---
 
 ## Что это
@@ -78,9 +88,9 @@
 
 ### Windows (EXE Launcher)
 
-- `protocol-bunker-win-x64-exe-setup-v0.2.3.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
+- `protocol-bunker-win-x64-exe-setup-v0.2.4.exe` — установщик/бутстраппер (скачает нужные файлы и развернёт игру).
 - `ProtocolBunker.exe` — лаунчер: запускает сервер, показывает логи/статус, есть кнопка **Check updates**.
-- `protocol-bunker-win-x64-exe-v0.2.3.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
+- `protocol-bunker-win-x64-exe-v0.2.4.zip` — архив с релизными файлами (на случай “я хочу руками и всё контролировать”).
 
 Коротко: хочешь “как у людей” — **setup**. Хочешь “я сам себе DevOps” — **zip**.
 
@@ -128,11 +138,11 @@ curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.
 ```
 - конкретная версия, public-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.3
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.4
 ```
 - конкретная версия, server-профиль:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.3
+curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.4
 ```
 
 Что выбрать:
@@ -308,7 +318,7 @@ Streamer mode делает две вещи:
 
 ---
 
-## Сборка релизов (0.2.3)
+## Сборка релизов (0.2.4)
 
 Полная сборка:
 - `pnpm run build:all`
@@ -334,13 +344,19 @@ Streamer mode делает две вещи:
   - `Protocol-Bunker/` (обычная колода 1x)
   - `Protocol-Bunker-hq2x/` (HQ-колода 2x)
 - `artifacts/linux/`:
-  - `protocol-bunker-linux-x64-public-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-x64-public-hq2x-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-x64-server-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-x64-server-hq2x-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-arm64-public-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-arm64-public-hq2x-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-arm64-server-v0.2.3.tar.gz`
-  - `protocol-bunker-linux-arm64-server-hq2x-v0.2.3.tar.gz`
+  - `protocol-bunker-linux-x64-public-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-x64-public-hq2x-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-x64-server-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-x64-server-hq2x-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-arm64-public-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-arm64-public-hq2x-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-arm64-server-v0.2.4.tar.gz`
+  - `protocol-bunker-linux-arm64-server-hq2x-v0.2.4.tar.gz`
 - `artifacts/win-exe/`
+
+---
+
+## Ручная UI-проверка
+
+- Чеклист перед релизом: `docs/manual-ui-checklist.md`
 

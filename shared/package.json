@@ -1,6 +1,6 @@
 {
   "name": "@bunker/shared",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,4 +13,5 @@
     "zod": "^3.23.8"
   }
 }
+
 

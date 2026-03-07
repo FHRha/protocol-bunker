@@ -2,14 +2,25 @@
   const params = new URLSearchParams(window.location.search);
   const roomCode = (params.get("room") || params.get("roomCode") || "").trim().toUpperCase();
   const token = (params.get("token") || "").trim();
-  const debug = params.get("debug") === "1";
-  const scaleParam = Number.parseFloat(params.get("scale") || "1.15");
-  const scale = Number.isFinite(scaleParam) ? Math.min(1.6, Math.max(0.8, scaleParam)) : 1.15;
-  const topParam = Number.parseFloat(params.get("top") || "200");
-  const top = Number.isFinite(topParam) ? Math.min(320, Math.max(160, topParam)) : 200;
-  const themeParam = (params.get("theme") || "mint").trim().toLowerCase();
-  const theme = ["mint", "warm", "dark"].includes(themeParam) ? themeParam : "mint";
+  const debugParamRaw = params.get("debug");
+  const debugFromUrl = debugParamRaw === "1";
+  const hasDebugFromUrl = debugParamRaw !== null;
+  const scaleParamRaw = params.get("scale");
+  const scaleParam = Number.parseFloat(scaleParamRaw || "1.3");
+  const scaleFromUrl = Number.isFinite(scaleParam) ? Math.min(1.6, Math.max(0.8, scaleParam)) : 1.3;
+  const hasScaleFromUrl = scaleParamRaw !== null;
+  const topParamRaw = params.get("top");
+  const topParam = Number.parseFloat(topParamRaw || "200");
+  const topFromUrl = Number.isFinite(topParam) ? Math.min(320, Math.max(160, topParam)) : 200;
+  const hasTopFromUrl = topParamRaw !== null;
+  const themeParamRaw = params.get("theme");
+  const themeParam = (themeParamRaw || "mint").trim().toLowerCase();
+  const themeFromUrl = ["mint", "warm", "dark"].includes(themeParam) ? themeParam : "mint";
+  const hasThemeFromUrl = themeParamRaw !== null;
   const previewBg = params.get("previewBg") === "1";
+  const requestedBgPresetRaw = params.get("bgPreset") || params.get("bg") || "";
+  const requestedBgPreset = requestedBgPresetRaw.trim().toLowerCase();
+  const hasRequestedBgPresetFromUrl = Boolean(requestedBgPreset);
 
   const app = document.getElementById("overlay-app");
   const grid = document.getElementById("overlay-grid");
@@ -23,14 +34,25 @@
     return;
   }
 
-  document.documentElement.style.setProperty("--scale", String(scale));
-  document.documentElement.style.setProperty("--topbar-h", `${top}px`);
-  document.documentElement.setAttribute("data-theme", theme);
-  document.documentElement.setAttribute("data-preview-bg", previewBg ? "1" : "0");
+  let debug = debugFromUrl;
+  let currentScale = scaleFromUrl;
+  let currentTop = topFromUrl;
+  let currentTheme = themeFromUrl;
+  let requestedBgPresetFromState = "";
 
-  if (debug) {
-    app.classList.add("is-debug");
+  function applyVisualSettings() {
+    document.documentElement.style.setProperty("--scale", String(currentScale));
+    document.documentElement.style.setProperty("--topbar-h", `${currentTop}px`);
+    document.documentElement.setAttribute("data-theme", currentTheme);
+    if (debug) {
+      app.classList.add("is-debug");
+    } else {
+      app.classList.remove("is-debug");
+    }
   }
+
+  applyVisualSettings();
+  document.documentElement.setAttribute("data-preview-bg", previewBg ? "1" : "0");
   const debugInfo = document.createElement("div");
   debugInfo.className = "overlay-debug";
   app.append(debugInfo);
@@ -60,6 +82,8 @@
   };
 
   const SLOT_COUNT = { l4: 4, l8: 8, l12: 12 };
+  const EMPTY_BG_CATALOG = { defaultPreset: "default", presets: [] };
+  const NO_BG_PRESET_IDS = new Set(["none", "off", "transparent", "__none__", "__transparent__"]);
   const CATEGORY_KEY_ALIASES = {
     fact1: ["facts1"],
     fact2: ["facts2"],
@@ -82,6 +106,9 @@
   let socket = null;
   let reconnectTimer = null;
   let reconnectAttempt = 0;
+  let bgCatalog = EMPTY_BG_CATALOG;
+  let bgCatalogLoadPromise = null;
+  let lastBackgroundSignature = "";
 
   function setStatus(message, visible = true) {
     statusEl.textContent = message;
@@ -96,6 +123,203 @@
     if (playerCount <= 4) return "l4";
     if (playerCount <= 8) return "l8";
     return "l12";
+  }
+
+  function normalizeBgPresetId(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9_-]/g, "");
+  }
+
+  function isNoBackgroundPresetId(value) {
+    const normalized = normalizeBgPresetId(value);
+    return normalized ? NO_BG_PRESET_IDS.has(normalized) : false;
+  }
+
+  function pickStringParamFromOverrides(overrides, key) {
+    const map =
+      overrides && typeof overrides.overlayUrlParams === "object" && overrides.overlayUrlParams
+        ? overrides.overlayUrlParams
+        : null;
+    if (!map) return "";
+    const value = map[key];
+    if (value == null) return "";
+    return String(value).trim();
+  }
+
+  function applyVisualSettingsFromOverrides(overrides) {
+    const themeOverride = pickStringParamFromOverrides(overrides, "theme").toLowerCase();
+    const scaleOverrideRaw = pickStringParamFromOverrides(overrides, "scale");
+    const topOverrideRaw = pickStringParamFromOverrides(overrides, "top");
+    const debugOverrideRaw = pickStringParamFromOverrides(overrides, "debug");
+    const bgPresetOverrideRaw =
+      pickStringParamFromOverrides(overrides, "bgPreset") || pickStringParamFromOverrides(overrides, "bg");
+
+    if (hasThemeFromUrl) {
+      currentTheme = themeFromUrl;
+    } else if (["mint", "warm", "dark"].includes(themeOverride)) {
+      currentTheme = themeOverride;
+    } else {
+      currentTheme = "mint";
+    }
+
+    const scaleOverride = Number.parseFloat(scaleOverrideRaw);
+    if (hasScaleFromUrl) {
+      currentScale = scaleFromUrl;
+    } else if (Number.isFinite(scaleOverride)) {
+      currentScale = Math.min(1.6, Math.max(0.8, scaleOverride));
+    } else {
+      currentScale = 1.3;
+    }
+
+    const topOverride = Number.parseFloat(topOverrideRaw);
+    if (hasTopFromUrl) {
+      currentTop = topFromUrl;
+    } else if (Number.isFinite(topOverride)) {
+      currentTop = Math.min(320, Math.max(160, topOverride));
+    } else {
+      currentTop = 200;
+    }
+
+    if (hasDebugFromUrl) {
+      debug = debugFromUrl;
+    } else {
+      debug = debugOverrideRaw === "1";
+    }
+
+    if (hasRequestedBgPresetFromUrl) {
+      requestedBgPresetFromState = "";
+    } else {
+      requestedBgPresetFromState = String(bgPresetOverrideRaw || "").trim().toLowerCase();
+    }
+
+    applyVisualSettings();
+  }
+
+  function applyAutoScaleForLayout(layout, overrides) {
+    const overrideScaleRaw = pickStringParamFromOverrides(overrides, "scale");
+    const overrideScaleNum = Number.parseFloat(overrideScaleRaw);
+    const hasExplicitScale = hasScaleFromUrl || Number.isFinite(overrideScaleNum);
+    if (hasExplicitScale) return;
+
+    const autoScale = layout === "l8" || layout === "l12" ? 1.1 : 1.3;
+    if (Math.abs(currentScale - autoScale) < 0.0001) return;
+    currentScale = autoScale;
+    applyVisualSettings();
+  }
+
+  function normalizeBgCatalog(raw) {
+    if (!raw || typeof raw !== "object") return EMPTY_BG_CATALOG;
+    const presets = Array.isArray(raw.presets)
+      ? raw.presets
+          .map((entry) => {
+            if (!entry || typeof entry !== "object") return null;
+            const id = normalizeBgPresetId(entry.id);
+            if (!id) return null;
+            const layouts = entry.layouts && typeof entry.layouts === "object" ? entry.layouts : {};
+            const normalizedLayouts = {};
+            if (typeof layouts.l4 === "string" && layouts.l4.trim()) normalizedLayouts.l4 = layouts.l4.trim();
+            if (typeof layouts.l8 === "string" && layouts.l8.trim()) normalizedLayouts.l8 = layouts.l8.trim();
+            if (typeof layouts.l12 === "string" && layouts.l12.trim()) normalizedLayouts.l12 = layouts.l12.trim();
+            if (!Object.keys(normalizedLayouts).length) return null;
+            return {
+              id,
+              label: String(entry.label || id),
+              layouts: normalizedLayouts,
+            };
+          })
+          .filter(Boolean)
+      : [];
+    const defaultPresetRaw = normalizeBgPresetId(raw.defaultPreset || "");
+    const defaultPreset =
+      defaultPresetRaw && presets.some((preset) => preset.id === defaultPresetRaw)
+        ? defaultPresetRaw
+        : presets[0]?.id || "default";
+    return { defaultPreset, presets };
+  }
+
+  async function loadBgCatalog() {
+    if (bgCatalogLoadPromise) {
+      return bgCatalogLoadPromise;
+    }
+    bgCatalogLoadPromise = fetch("/api/overlay-backgrounds")
+      .then((response) => response.json().catch(() => ({})).then((payload) => ({ response, payload })))
+      .then(({ response, payload }) => {
+        if (!response.ok || payload?.ok !== true) {
+          throw new Error(payload?.message || `HTTP ${response.status}`);
+        }
+        bgCatalog = normalizeBgCatalog(payload);
+        return bgCatalog;
+      })
+      .catch((error) => {
+        console.warn("[overlay] failed to load background catalog:", error);
+        bgCatalog = EMPTY_BG_CATALOG;
+        return bgCatalog;
+      });
+    return bgCatalogLoadPromise;
+  }
+
+  function findBgPresetById(presetId) {
+    const id = normalizeBgPresetId(presetId);
+    if (!id) return null;
+    return bgCatalog.presets.find((preset) => preset.id === id) || null;
+  }
+
+  function resolveBgUrl(layout, overrides) {
+    const overridePresetRaw = String(overrides?.backgroundPreset || "").trim();
+    if (isNoBackgroundPresetId(overridePresetRaw)) return "";
+    const overridePreset = normalizeBgPresetId(overridePresetRaw);
+    const forcedPreset = normalizeBgPresetId(requestedBgPreset || requestedBgPresetFromState);
+    const selectedPresetId = overridePreset || forcedPreset || bgCatalog.defaultPreset;
+    if (!selectedPresetId) return "";
+
+    const selectedPreset = findBgPresetById(selectedPresetId) || findBgPresetById(bgCatalog.defaultPreset);
+    if (!selectedPreset) return "";
+    const direct = String(selectedPreset.layouts?.[layout] || "").trim();
+    if (direct) return direct;
+
+    const fallbackPreset = findBgPresetById(bgCatalog.defaultPreset);
+    const fallbackLayout = String(fallbackPreset?.layouts?.[layout] || "").trim();
+    if (fallbackLayout) return fallbackLayout;
+
+    return String(selectedPreset.layouts?.l4 || selectedPreset.layouts?.l8 || selectedPreset.layouts?.l12 || "").trim();
+  }
+
+  function applyGridBackground(layout, overrides) {
+    const applyResolvedBackground = () => {
+      const bgUrl = resolveBgUrl(layout, overrides);
+      const signature = `${layout}:${bgUrl || "none"}`;
+      if (signature === lastBackgroundSignature) {
+        return;
+      }
+      lastBackgroundSignature = signature;
+
+      if (!bgUrl) {
+        app.style.backgroundImage = "";
+        app.style.backgroundSize = "";
+        app.style.backgroundPosition = "";
+        app.style.backgroundRepeat = "";
+        app.classList.remove("has-custom-bg");
+        setDebugInfo("overlay-bg=transparent");
+        return;
+      }
+
+      app.style.backgroundImage = `url("${bgUrl}")`;
+      // Full-frame overlay backgrounds are authored for exact canvas composition.
+      app.style.backgroundSize = "100% 100%";
+      app.style.backgroundPosition = "left top";
+      app.style.backgroundRepeat = "no-repeat";
+      app.classList.add("has-custom-bg");
+      setDebugInfo(`overlay-bg=${bgUrl}`);
+    };
+
+    if (bgCatalog.presets.length > 0) {
+      applyResolvedBackground();
+      return;
+    }
+    loadBgCatalog().finally(applyResolvedBackground);
   }
 
   function normalizeCategory(player, key, label) {
@@ -586,9 +810,11 @@
   function renderState(state, extraTexts = []) {
     const playerCount = Number(state.playerCount) || 0;
     const layout = selectLayout(playerCount);
+    applyAutoScaleForLayout(layout, state?.overrides);
     app.setAttribute("data-layout", layout);
-    const slotAr = layout === "l12" ? "16 / 10" : "16 / 9";
+    const slotAr = "16 / 9";
     app.style.setProperty("--slot-ar", slotAr);
+    applyGridBackground(layout, state?.overrides);
 
     renderTopCards(topBunker, state.top?.bunker?.items, state.top?.bunker?.lines, "скрыто");
     renderTopCards(topThreat, state.top?.threats?.items, state.top?.threats?.lines, "скрыто");
@@ -619,6 +845,7 @@
     }
 
     setStatus("", false);
+    applyVisualSettingsFromOverrides(payload.state.overrides);
     const effectiveState = applyOverrides(payload.state, payload.state.overrides);
     const extraTexts = normalizeExtraTexts(payload.state.overrides);
     renderState(effectiveState, extraTexts);

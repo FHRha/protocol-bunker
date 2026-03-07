@@ -2602,6 +2602,18 @@ button.ghost {
 
 .mobile-action-dossier {
   width: 100%;
+  grid-column: 1 / -1;
+}
+
+.mobile-dev-quick-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-dev-quick-actions > button {
+  width: 100%;
 }
 
 .dossier-modal-body {
@@ -3056,9 +3068,7 @@ button.ghost {
   }
 
   .mobile-player-bar {
-    position: sticky;
-    top: 0;
-    z-index: 4;
+    position: static;
     background: var(--panel);
     padding: 6px 6px;
     border-radius: 12px;
@@ -3256,7 +3266,7 @@ button.ghost {
   }
 
   .board-layout {
-    grid-template-rows: minmax(240px, 42vh) minmax(150px, 1fr);
+    grid-template-rows: auto auto;
   }
 
   .table-container {
@@ -4124,30 +4134,30 @@ body.viewport-compact .selected-panel {
 
 @media (max-width: 520px) {
   .topbar {
-    position: relative;
     padding: 10px 12px;
     gap: 10px;
-    padding-right: 190px;
+    padding-right: 12px;
   }
 
   .topbar-rightArea {
     width: 100%;
     justify-self: stretch;
-    display: block;
+    display: grid;
+    gap: 8px;
   }
 
   .topbar-rightStack {
-    position: absolute;
-    top: 10px;
-    right: 10px;
+    position: static;
     display: grid;
     gap: 8px;
-    width: 170px;
-    z-index: 2;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: stretch;
   }
 
   .topbar-rightStack > * {
     width: 100%;
+    min-width: 0;
   }
 
   .topbar-actions {
@@ -4167,8 +4177,16 @@ body.viewport-compact .selected-panel {
 
   .topbar-room-controls {
     justify-content: flex-start;
-    width: auto;
+    width: 100%;
     flex-wrap: wrap;
+  }
+
+  .topbar-rightStack .button-small,
+  .topbar-rightStack .topbar-theme-button,
+  .topbar-rightStack .topbar-exit-button {
+    white-space: normal;
+    line-height: 1.2;
+    min-height: 42px;
   }
 
   .rulesButton {

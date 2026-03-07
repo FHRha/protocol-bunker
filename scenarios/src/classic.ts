@@ -631,8 +631,17 @@ export const scenario: ScenarioModule = {
     const getAnyCardsByCategory = (player: PlayerState, categoryKey: string) =>
       getCardsByCategoryKey(player, categoryKey, false);
 
-    const getFirstRevealedCard = (player: PlayerState, categoryKey: string) =>
-      getCardsByCategoryKey(player, categoryKey, true)[0];
+    const getSelectedRevealedCard = (
+      player: PlayerState,
+      categoryKey: string,
+      requestedInstanceId?: string
+    ) => {
+      const revealedCards = getCardsByCategoryKey(player, categoryKey, true);
+      if (revealedCards.length === 0) return undefined;
+      const requested = String(requestedInstanceId ?? "").trim();
+      if (!requested) return revealedCards[0];
+      return revealedCards.find((card) => card.instanceId === requested);
+    };
 
     const getCardByInstanceId = (player: PlayerState, cardId: string) =>
       player.hand.find((card) => card.instanceId === cardId);
@@ -1312,6 +1321,8 @@ export const scenario: ScenarioModule = {
       const target = players.get(targetId);
       if (!target || target.status !== "alive") return;
 
+      // Evaluate secret_onEliminate conditions against pre-elimination table state.
+      handleSecretEliminationTriggers(targetId);
       target.status = "eliminated";
       consumeRoundElimination();
       totalExiles += 1;
@@ -1319,7 +1330,6 @@ export const scenario: ScenarioModule = {
       resolutionNote = `${target.name} исключён.`;
 
       handleOnOwnerEliminated(target);
-      handleSecretEliminationTriggers(targetId);
     };
 
     const markLeftBunker = (targetId: string): ScenarioActionResult => {
@@ -1921,9 +1931,13 @@ export const scenario: ScenarioModule = {
           const neighbor = neighborChoice.neighborId ? players.get(neighborChoice.neighborId) : undefined;
           if (!neighbor) return { error: "Сосед не найден." };
 
-          const yourCard = getFirstRevealedCard(player, categoryKey);
-          const theirCard = getFirstRevealedCard(neighbor, categoryKey);
-          if (!yourCard || !theirCard) return { error: "Нужны раскрытые карты у обоих игроков." };
+          const targetCardInstanceId = String(payload.targetCardInstanceId ?? "");
+          const sourceCardInstanceId = String(payload.sourceCardInstanceId ?? "");
+          const yourCard = getSelectedRevealedCard(player, categoryKey, sourceCardInstanceId);
+          const theirCard = getSelectedRevealedCard(neighbor, categoryKey, targetCardInstanceId);
+          if (!yourCard || !theirCard) {
+            return { error: "Нужно выбрать корректные раскрытые карты у обоих игроков." };
+          }
 
           const temp = { id: yourCard.id, labelShort: yourCard.labelShort, missing: yourCard.missing };
           yourCard.id = theirCard.id;
@@ -1945,7 +1959,8 @@ export const scenario: ScenarioModule = {
           if (!target || target.status !== "alive") return { error: "Цель не в игре." };
           if (!deckName) return { error: "Неизвестная категория." };
 
-          const revealedCard = getFirstRevealedCard(target, categoryKey);
+          const targetCardInstanceId = String(payload.targetCardInstanceId ?? "");
+          const revealedCard = getSelectedRevealedCard(target, categoryKey, targetCardInstanceId);
           if (!revealedCard) return { error: "У цели нет раскрытой карты этой категории." };
 
           const newCard = drawCardFromDeck(deckName, deckPools, rng);
@@ -1967,7 +1982,8 @@ export const scenario: ScenarioModule = {
           if (!target || target.status !== "alive") return { error: "Цель не в игре." };
           if (!deckName) return { error: "Неизвестная категория." };
 
-          const revealedCard = getFirstRevealedCard(target, categoryKey);
+          const targetCardInstanceId = String(payload.targetCardInstanceId ?? "");
+          const revealedCard = getSelectedRevealedCard(target, categoryKey, targetCardInstanceId);
           if (!revealedCard) return { error: "У цели нет раскрытой карты этой категории." };
 
           const newCard = drawCardFromDeck(deckName, deckPools, rng);

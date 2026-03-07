@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import type { AssetCatalog, ScenarioAction, ScenarioContext, ScenarioSession } from "@bunker/shared";
+import { scenario as classicScenario } from "../src/classic";
 import { scenario as devScenario } from "../src/dev_test";
 
 type SpecialDef = {
@@ -130,6 +131,36 @@ const run = (session: ScenarioSession, actorId: string, action: ScenarioAction):
   }
 };
 
+const runFinalizeVotingWithFallback = (session: ScenarioSession) => {
+  const actorIds = [
+    "p1",
+    ...getHostView(session).public.players.map((player) => player.playerId).filter((id) => id !== "p1"),
+  ];
+  let lastError = "unknown";
+  for (const actorId of actorIds) {
+    const result = session.handleAction(actorId, { type: "finalizeVoting", payload: {} });
+    if (!result.error) return;
+    lastError = result.error;
+  }
+  throw new Error(`Action failed (finalizeVoting): ${lastError}`);
+};
+
+const runContinueRoundWithFallback = (session: ScenarioSession) => {
+  const actorIds = [
+    "p1",
+    ...getHostView(session).public.players.map((player) => player.playerId).filter((id) => id !== "p1"),
+  ];
+  const candidates = actorIds.filter((actorId) => session.getGameView(actorId).public.canContinue);
+  if (candidates.length === 0) return;
+  let lastError = "unknown";
+  for (const actorId of candidates) {
+    const result = session.handleAction(actorId, { type: "continueRound" });
+    if (!result.error) return;
+    lastError = result.error;
+  }
+  throw new Error(`Action failed (continueRound): ${lastError}`);
+};
+
 const castVotesUntilWindow = (session: ScenarioSession, preferredTargets: Record<string, string>) => {
   for (let guard = 0; guard < 20; guard += 1) {
     const hostView = getHostView(session);
@@ -182,11 +213,11 @@ const finalizeCurrentVoting = (session: ScenarioSession, preferredTargets: Recor
   }
   const mid = getHostView(session);
   if (mid.phase === "voting" && mid.public.votePhase === "voting") {
-    run(session, "p1", { type: "finalizeVoting" });
+    runFinalizeVotingWithFallback(session);
   }
   const after = getHostView(session);
   if (after.phase === "voting" && after.public.votePhase === "voteSpecialWindow") {
-    run(session, "p1", { type: "finalizeVoting" });
+    runFinalizeVotingWithFallback(session);
   }
 };
 
@@ -194,6 +225,12 @@ const hasRevealedDeckCard = (session: ScenarioSession, playerId: string, deck: s
   const view = session.getGameView(playerId);
   return view.you.hand.some((card) => card.deck === deck && card.revealed);
 };
+
+const getRevealedDeckCards = (session: ScenarioSession, playerId: string, deck: string) =>
+  session.getGameView(playerId).you.hand.filter((card) => card.deck === deck && card.revealed);
+
+const getDeckCards = (session: ScenarioSession, playerId: string, deck: string) =>
+  session.getGameView(playerId).you.hand.filter((card) => card.deck === deck);
 
 const advanceOneTurnWithReveal = (session: ScenarioSession, preferredDeckByPlayerId?: Record<string, string>) => {
   const hostView = getHostView(session);
@@ -214,7 +251,7 @@ const advanceOneTurnWithReveal = (session: ScenarioSession, preferredDeckByPlaye
       : null) ?? view.you.hand.find((entry) => !entry.revealed);
   if (!card) throw new Error(`No hidden cards to reveal for ${turnId}.`);
   run(session, turnId, { type: "revealCard", payload: { cardId: card.instanceId } });
-  run(session, "p1", { type: "continueRound" });
+  runContinueRoundWithFallback(session);
 };
 
 const ensureRevealForPlayerDeck = (session: ScenarioSession, playerId: string, deck: string) => {
@@ -232,6 +269,54 @@ const ensureRevealForPlayerDeck = (session: ScenarioSession, playerId: string, d
     throw new Error(`Unexpected phase while preparing reveal: ${hostView.phase}`);
   }
   throw new Error(`Failed to reveal ${deck} for ${playerId}.`);
+};
+
+const ensureRevealCountForPlayerDeck = (
+  session: ScenarioSession,
+  playerId: string,
+  deck: string,
+  minCount: number
+) => {
+  if (session.getGameView(playerId).you.hand.filter((card) => card.deck === deck && card.revealed).length >= minCount)
+    return;
+  for (let guard = 0; guard < 80; guard += 1) {
+    const hostView = getHostView(session);
+    if (hostView.phase === "voting") {
+      const alive = getAlivePlayerIds(session);
+      const protectedIds = new Set([playerId, "p1"]);
+      const preferredTarget =
+        alive.find((id) => !protectedIds.has(id)) ?? alive.find((id) => id !== "p1") ?? alive[0] ?? playerId;
+      const preferredVotes: Record<string, string> = {};
+      for (const voterId of alive) {
+        if (preferredTarget !== voterId) {
+          preferredVotes[voterId] = preferredTarget;
+          continue;
+        }
+        preferredVotes[voterId] =
+          alive.find((id) => id !== voterId && !protectedIds.has(id)) ??
+          alive.find((id) => id !== voterId) ??
+          voterId;
+      }
+      finalizeCurrentVoting(session, preferredVotes);
+      if (session.getGameView(playerId).you.hand.filter((card) => card.deck === deck && card.revealed).length >= minCount)
+        return;
+      continue;
+    }
+    if (hostView.phase === "resolution") {
+      vi.advanceTimersByTime(2_500);
+      if (session.getGameView(playerId).you.hand.filter((card) => card.deck === deck && card.revealed).length >= minCount)
+        return;
+      continue;
+    }
+    if (hostView.phase === "reveal" || hostView.phase === "reveal_discussion") {
+      advanceOneTurnWithReveal(session, { [playerId]: deck });
+      if (session.getGameView(playerId).you.hand.filter((card) => card.deck === deck && card.revealed).length >= minCount)
+        return;
+      continue;
+    }
+    throw new Error(`Unexpected phase while preparing ${deck} x${minCount}: ${hostView.phase}`);
+  }
+  throw new Error(`Failed to reveal ${minCount} cards from ${deck} for ${playerId}.`);
 };
 
 const ensureVoteSpecialWindow = (session: ScenarioSession) => {
@@ -255,6 +340,91 @@ const ensureVoteSpecialWindow = (session: ScenarioSession) => {
     throw new Error(`Cannot reach voteSpecialWindow from phase=${hostView.phase}, votePhase=${votePhase}`);
   }
   throw new Error("Failed to reach voteSpecialWindow.");
+};
+
+const buildPreferredVotesForTargetElimination = (
+  session: ScenarioSession,
+  targetId: string,
+  protectedIds: string[] = []
+) => {
+  const alive = getAlivePlayerIds(session);
+  const protectedSet = new Set<string>([targetId, ...protectedIds]);
+  const fallback =
+    alive.find((id) => !protectedSet.has(id)) ?? alive.find((id) => id !== targetId) ?? alive[0] ?? targetId;
+  const preferredVotes: Record<string, string> = {};
+  for (const voterId of alive) {
+    if (voterId === targetId) {
+      preferredVotes[voterId] = fallback === voterId ? targetId : fallback;
+      continue;
+    }
+    preferredVotes[voterId] = targetId;
+  }
+  return preferredVotes;
+};
+
+const eliminatePlayerByVoting = (session: ScenarioSession, targetId: string) => {
+  const preferredVotes = buildPreferredVotesForTargetElimination(session, targetId, ["p1"]);
+  finalizeCurrentVoting(session, preferredVotes);
+  vi.advanceTimersByTime(2_500);
+};
+
+const getSecretTriggerTarget = (condition: string): string => {
+  if (condition === "leftNeighborEliminated") return "p9";
+  if (condition === "rightNeighborEliminated") return "p2";
+  if (condition === "youngestByRevealedAgeEliminated") return "p2";
+  if (condition === "oldestByRevealedAgeEliminated") return "p2";
+  if (condition === "firstRevealedHealthEliminated") return "p2";
+  throw new Error(`Unsupported secret condition: ${condition}`);
+};
+
+const assertSecretOnEliminateRuntime = (
+  createSession: (ctx: ScenarioContext) => ScenarioSession,
+  special: SpecialDef
+) => {
+  const condition = String(special.effect.params?.condition ?? "");
+  const targetId = getSecretTriggerTarget(condition);
+
+  vi.useFakeTimers();
+  try {
+    const session = createSession(makeContext(9));
+    const hostView = session.getGameView("p1");
+    const hostSpecial = hostView.you.specialConditions[0];
+    expect(hostSpecial).toBeTruthy();
+    if (!hostSpecial) return;
+
+    run(session, "p1", {
+      type: "adminReplacePlayerCard",
+      payload: {
+        targetPlayerId: "p1",
+        targetArea: "special",
+        cardInstanceId: hostSpecial.instanceId,
+        replacementMode: "specific",
+        replacementCardId: special.id,
+      },
+    });
+
+    if (condition === "youngestByRevealedAgeEliminated" || condition === "oldestByRevealedAgeEliminated") {
+      ensureRevealForPlayerDeck(session, targetId, DECK_BIOLOGY);
+    } else if (condition === "firstRevealedHealthEliminated") {
+      ensureRevealForPlayerDeck(session, targetId, DECK_HEALTH);
+    }
+
+    eliminatePlayerByVoting(session, targetId);
+
+    const triggeredAfterElimination = session.getGameView("p1");
+    const revealedSecret = triggeredAfterElimination.you.specialConditions.find(
+      (entry) => entry.title === special.title
+    );
+    expect(revealedSecret?.used).toBe(true);
+
+    ensureVotingCollectionPhase(session);
+    const triggeredVoting = session.getGameView("p1");
+    const forcedVote = triggeredVoting.public.votesPublic?.find((entry) => entry.voterId === "p1");
+    expect(forcedVote?.status).toBe("voted");
+    expect(forcedVote?.targetId).toBe("p1");
+  } finally {
+    vi.useRealTimers();
+  }
 };
 
 const prepareByRequirements = (session: ScenarioSession, special: SpecialDef, actorId: string, targetId: string) => {
@@ -325,117 +495,230 @@ const buildPayload = (session: ScenarioSession, special: SpecialDef, targetId: s
 };
 
 describe("Special conditions contract", () => {
-  it("validates secret_onEliminate definitions against trigger contract", () => {
-    const specials = readImplementedSpecials().filter((entry) => entry.trigger === "secret_onEliminate");
-    const allowedConditions = new Set([
-      "leftNeighborEliminated",
-      "rightNeighborEliminated",
-      "youngestByRevealedAgeEliminated",
-      "oldestByRevealedAgeEliminated",
-      "firstRevealedHealthEliminated",
-    ]);
+  const implementedSpecials = readImplementedSpecials();
+  const secretOnEliminateSpecials = implementedSpecials.filter((entry) => entry.trigger === "secret_onEliminate");
+  const regularSpecials = implementedSpecials.filter((entry) => entry.trigger !== "secret_onEliminate");
+  const allowedSecretConditions = new Set([
+    "leftNeighborEliminated",
+    "rightNeighborEliminated",
+    "youngestByRevealedAgeEliminated",
+    "oldestByRevealedAgeEliminated",
+    "firstRevealedHealthEliminated",
+  ]);
 
-    expect(specials.length).toBeGreaterThan(0);
-    for (const special of specials) {
-      expect(special.effect.type).toBe("forcedWastedVoteOnNextVoting");
-      const condition = String(special.effect.params?.condition ?? "");
-      expect(allowedConditions.has(condition)).toBe(true);
-    }
+  it("has implemented specials for per-card coverage", () => {
+    expect(implementedSpecials.length).toBeGreaterThan(0);
+    expect(regularSpecials.length).toBeGreaterThan(0);
+    expect(secretOnEliminateSpecials.length).toBeGreaterThan(0);
   });
 
-  it("applies every implemented special from catalog with expected preconditions", () => {
-    const specials = readImplementedSpecials().filter((entry) => entry.trigger !== "secret_onEliminate");
-    expect(specials.length).toBeGreaterThan(0);
+  for (const special of secretOnEliminateSpecials) {
+    it(`validates secret_onEliminate card contract: ${special.title}`, () => {
+      expect(special.effect.type).toBe("forcedWastedVoteOnNextVoting");
+      const condition = String(special.effect.params?.condition ?? "");
+      expect(allowedSecretConditions.has(condition)).toBe(true);
+    });
+  }
 
-    const failures: string[] = [];
-
-    for (const special of specials) {
+  for (const special of regularSpecials) {
+    it(`applies special card: ${special.title}`, () => {
       const session = devScenario.createSession(makeContext(9));
       const actorId = special.effect.type === "swapRevealedWithNeighbor" ? "p3" : "p1";
       const targetId = "p2";
 
-      try {
-        if (VOTING_WINDOW_EFFECTS.has(special.effect.type)) {
-          ensureVoteSpecialWindow(session);
+      if (VOTING_WINDOW_EFFECTS.has(special.effect.type)) {
+        ensureVoteSpecialWindow(session);
+      }
+      prepareByRequirements(session, special, actorId, targetId);
+      const payload = buildPayload(session, special, targetId);
+      const result = session.handleAction("p1", {
+        type: "adminApplySpecial",
+        payload: {
+          actorPlayerId: actorId,
+          specialId: special.id,
+          payload,
+        },
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.stateChanged).toBe(true);
+    });
+  }
+
+  it("validates category-card effects declaration (including facts multi-slot support)", () => {
+    const effectsWithCategoryPick = readImplementedSpecials().filter((entry) =>
+      ["swapRevealedWithNeighbor", "replaceRevealedCard", "discardRevealedAndDealHidden"].includes(
+        entry.effect.type
+      )
+    );
+    expect(effectsWithCategoryPick.length).toBeGreaterThan(0);
+
+    let factsCategoryCount = 0;
+    for (const special of effectsWithCategoryPick) {
+      const categoryKey = String(special.effect.params?.category ?? "").trim();
+      expect(Boolean(CATEGORY_KEY_TO_DECK[categoryKey])).toBe(true);
+      if (categoryKey === "facts") {
+        factsCategoryCount += 1;
+      }
+      if (special.effect.type === "swapRevealedWithNeighbor") {
+        expect((special.requires ?? []).includes("targetHasRevealedSameCategory")).toBe(true);
+      }
+    }
+    expect(factsCategoryCount).toBeGreaterThan(0);
+  });
+
+  it("supports explicit selection of every revealed facts card in swap payload", () => {
+    vi.useFakeTimers();
+    try {
+      const swapFacts = readImplementedSpecials().find(
+        (entry) =>
+          entry.effect.type === "swapRevealedWithNeighbor" && String(entry.effect.params?.category ?? "") === "facts"
+      );
+      expect(swapFacts).toBeTruthy();
+      if (!swapFacts) return;
+
+      const combinations: Array<[number, number]> = [
+        [0, 0],
+        [0, 1],
+        [1, 0],
+        [1, 1],
+      ];
+
+      for (const [sourceIndex, targetIndex] of combinations) {
+        const context = makeContext(9);
+        context.settings.revealsBeforeVoting = 99;
+        context.settings.continuePermission = "everyone";
+        const session = devScenario.createSession(context);
+        ensureRevealCountForPlayerDeck(session, "p3", DECK_FACTS, 2);
+        ensureRevealCountForPlayerDeck(session, "p2", DECK_FACTS, 2);
+
+        const actorRevealed = getRevealedDeckCards(session, "p3", DECK_FACTS);
+        const targetRevealed = getRevealedDeckCards(session, "p2", DECK_FACTS);
+        expect(actorRevealed.length).toBeGreaterThanOrEqual(2);
+        expect(targetRevealed.length).toBeGreaterThanOrEqual(2);
+
+        const actorCard = actorRevealed[sourceIndex];
+        const targetCard = targetRevealed[targetIndex];
+        expect(actorCard).toBeTruthy();
+        expect(targetCard).toBeTruthy();
+        if (!actorCard || !targetCard) {
+          continue;
         }
-        prepareByRequirements(session, special, actorId, targetId);
-        const payload = buildPayload(session, special, targetId);
+
+        const actorBefore = actorCard.labelShort;
+        const targetBefore = targetCard.labelShort;
+
         const result = session.handleAction("p1", {
           type: "adminApplySpecial",
           payload: {
-            actorPlayerId: actorId,
-            specialId: special.id,
-            payload,
+            actorPlayerId: "p3",
+            specialId: swapFacts.id,
+            payload: {
+              side: "left",
+              sourceCardInstanceId: actorCard.instanceId,
+              targetCardInstanceId: targetCard.instanceId,
+            },
           },
         });
-        if (result.error) {
-          failures.push(`${special.title}: ${result.error}`);
-          continue;
-        }
-        if (!result.stateChanged) {
-          failures.push(`${special.title}: action returned no state change`);
-        }
-      } catch (error) {
-        failures.push(`${special.title}: ${error instanceof Error ? error.message : String(error)}`);
+        expect(result.error).toBeUndefined();
+        expect(result.stateChanged).toBe(true);
+
+        const actorAfter = getRevealedDeckCards(session, "p3", DECK_FACTS).find(
+          (card) => card.instanceId === actorCard.instanceId
+        );
+        const targetAfter = getRevealedDeckCards(session, "p2", DECK_FACTS).find(
+          (card) => card.instanceId === targetCard.instanceId
+        );
+        expect(actorAfter?.labelShort).toBe(targetBefore);
+        expect(targetAfter?.labelShort).toBe(actorBefore);
       }
-    }
-
-    expect(failures).toEqual([]);
-  });
-
-  it("secret_onEliminate reveals card and forces self-vote on next voting", () => {
-    vi.useFakeTimers();
-    try {
-      const session = devScenario.createSession(makeContext(7));
-      const leftSecret = readImplementedSpecials().find(
-        (entry) =>
-          entry.trigger === "secret_onEliminate" &&
-          String(entry.effect.params?.condition ?? "") === "firstRevealedHealthEliminated"
-      );
-      expect(leftSecret).toBeTruthy();
-      if (!leftSecret) return;
-
-      const hostView = session.getGameView("p1");
-      const hostSpecial = hostView.you.specialConditions[0];
-      expect(hostSpecial).toBeTruthy();
-      if (!hostSpecial) return;
-
-      run(session, "p1", {
-        type: "adminReplacePlayerCard",
-        payload: {
-          targetPlayerId: "p1",
-          targetArea: "special",
-          cardInstanceId: hostSpecial.instanceId,
-          replacementMode: "specific",
-          replacementCardId: leftSecret.id,
-        },
-      });
-
-      ensureRevealForPlayerDeck(session, "p2", DECK_HEALTH);
-
-      finalizeCurrentVoting(session, {
-        p1: "p2",
-        p2: "p3",
-        p3: "p2",
-        p4: "p2",
-        p5: "p2",
-        p6: "p2",
-        p7: "p2",
-      });
-      vi.advanceTimersByTime(2_500);
-
-      ensureVotingCollectionPhase(session);
-      const firstTriggeredVoting = session.getGameView("p1");
-      expect(firstTriggeredVoting.public.votePhase).toBe("voting");
-      const revealedSecret = firstTriggeredVoting.you.specialConditions.find(
-        (entry) => entry.title === leftSecret.title
-      );
-      expect(revealedSecret).toBeTruthy();
-      const voteP1Cycle1 = firstTriggeredVoting.public.votesPublic?.find((entry) => entry.voterId === "p1");
-      expect(voteP1Cycle1?.status).toBe("voted");
-      expect(voteP1Cycle1?.targetId).toBe("p1");
     } finally {
       vi.useRealTimers();
     }
   });
+
+  it("supports explicit selection when player has multiple baggage cards", () => {
+    const stealBaggage = readImplementedSpecials().find((entry) => entry.effect.type === "stealBaggage_and_giveSpecial");
+    const swapBaggage = readImplementedSpecials().find(
+      (entry) =>
+        entry.effect.type === "swapRevealedWithNeighbor" && String(entry.effect.params?.category ?? "") === "baggage"
+    );
+    expect(stealBaggage).toBeTruthy();
+    expect(swapBaggage).toBeTruthy();
+    if (!stealBaggage || !swapBaggage) return;
+
+    const session = devScenario.createSession(makeContext(9));
+
+    // p3 gains an extra baggage from p4; p2 gains an extra baggage from p5.
+    const stealByP3 = session.handleAction("p1", {
+      type: "adminApplySpecial",
+      payload: {
+        actorPlayerId: "p3",
+        specialId: stealBaggage.id,
+        payload: { targetPlayerId: "p4" },
+      },
+    });
+    expect(stealByP3.error).toBeUndefined();
+    expect(stealByP3.stateChanged).toBe(true);
+
+    const stealByP2 = session.handleAction("p1", {
+      type: "adminApplySpecial",
+      payload: {
+        actorPlayerId: "p2",
+        specialId: stealBaggage.id,
+        payload: { targetPlayerId: "p5" },
+      },
+    });
+    expect(stealByP2.error).toBeUndefined();
+    expect(stealByP2.stateChanged).toBe(true);
+
+    const p3Baggage = getDeckCards(session, "p3", DECK_BAGGAGE);
+    const p2Baggage = getDeckCards(session, "p2", DECK_BAGGAGE);
+    expect(p3Baggage.length).toBeGreaterThanOrEqual(2);
+    expect(p2Baggage.length).toBeGreaterThanOrEqual(2);
+
+    const sourceCard = p3Baggage[1] ?? p3Baggage[0];
+    const targetCard = p2Baggage[0];
+    expect(sourceCard).toBeTruthy();
+    expect(targetCard).toBeTruthy();
+    if (!sourceCard || !targetCard) return;
+
+    const sourceBefore = sourceCard.labelShort;
+    const targetBefore = targetCard.labelShort;
+
+    const swapResult = session.handleAction("p1", {
+      type: "adminApplySpecial",
+      payload: {
+        actorPlayerId: "p3",
+        specialId: swapBaggage.id,
+        payload: {
+          side: "left",
+          sourceCardInstanceId: sourceCard.instanceId,
+          targetCardInstanceId: targetCard.instanceId,
+        },
+      },
+    });
+    expect(swapResult.error).toBeUndefined();
+    expect(swapResult.stateChanged).toBe(true);
+
+    const sourceAfter = getDeckCards(session, "p3", DECK_BAGGAGE).find(
+      (card) => card.instanceId === sourceCard.instanceId
+    );
+    const targetAfter = getDeckCards(session, "p2", DECK_BAGGAGE).find(
+      (card) => card.instanceId === targetCard.instanceId
+    );
+    expect(sourceAfter?.labelShort).toBe(targetBefore);
+    expect(targetAfter?.labelShort).toBe(sourceBefore);
+  });
+
+  for (const special of secretOnEliminateSpecials) {
+    it(`runtime secret_onEliminate trigger works [dev]: ${special.title}`, () => {
+      assertSecretOnEliminateRuntime(devScenario.createSession, special);
+    });
+  }
+
+  for (const special of secretOnEliminateSpecials) {
+    it(`runtime secret_onEliminate trigger works [classic]: ${special.title}`, () => {
+      assertSecretOnEliminateRuntime(classicScenario.createSession, special);
+    });
+  }
 });

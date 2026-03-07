@@ -33,6 +33,7 @@ export interface BuildLinkSetInput {
   roomCode: string;
   overlayViewToken: string;
   overlayControlToken: string;
+  overlayQueryParams?: Record<string, string | number | boolean | null | undefined>;
 }
 
 export function normalizeBase(base: string): string {
@@ -82,6 +83,24 @@ function withPublic(lanValue: string, publicBase: string | undefined, publicPath
   return { lan: lanValue, public: join(publicBase, publicPath) };
 }
 
+function toOverlayQuerySuffix(
+  queryParams: Record<string, string | number | boolean | null | undefined> | undefined
+): string {
+  if (!queryParams) return "";
+  const search = new URLSearchParams();
+  for (const [keyRaw, valueRaw] of Object.entries(queryParams)) {
+    const key = String(keyRaw || "").trim();
+    if (!key) continue;
+    if (key === "room" || key === "roomCode" || key === "token") continue;
+    if (valueRaw == null) continue;
+    const value = String(valueRaw).trim();
+    if (!value) continue;
+    search.set(key, value);
+  }
+  const serialized = search.toString();
+  return serialized ? `&${serialized}` : "";
+}
+
 export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
   const lanBase = normalizeBase(input.lanBase);
   const publicBaseRaw = (input.publicBase ?? "").trim();
@@ -91,17 +110,26 @@ export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
   const encodedViewToken = encodeURIComponent(input.overlayViewToken);
   const encodedControlToken = encodeURIComponent(input.overlayControlToken);
 
+  const overlayQuerySuffix = toOverlayQuerySuffix(input.overlayQueryParams);
+  const overlayDebugQuerySuffix = toOverlayQuerySuffix({
+    ...(input.overlayQueryParams ?? {}),
+    debug: "1",
+  });
+
   const appPath = `${LINK_PATHS.app}?room=${encodedRoom}`;
-  const overlayViewPath = `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}`;
+  const overlayViewPath =
+    `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}${overlayQuerySuffix}`;
+  const overlayDebugPath =
+    `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}${overlayDebugQuerySuffix}`;
   const overlayControlPath = `${LINK_PATHS.overlayControl}?room=${encodedRoom}&token=${encodedControlToken}`;
   const overlayControlStatePath = `${LINK_PATHS.overlayControlState}?room=${encodedRoom}&token=${encodedControlToken}`;
 
   const appUrl = withPublic(join(lanBase, appPath), publicBase, appPath);
   const overlayViewUrl = withPublic(join(lanBase, overlayViewPath), publicBase, overlayViewPath);
   const overlayDebugUrl = withPublic(
-    `${overlayViewUrl.lan}&debug=1`,
+    join(lanBase, overlayDebugPath),
     publicBase,
-    `${overlayViewPath}&debug=1`
+    overlayDebugPath
   );
   const overlayControlUrl = withPublic(join(lanBase, overlayControlPath), publicBase, overlayControlPath);
   const overlayControlStateUrl = withPublic(

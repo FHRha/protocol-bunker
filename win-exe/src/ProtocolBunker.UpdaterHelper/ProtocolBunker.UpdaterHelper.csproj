@@ -7,9 +7,10 @@
     <AssemblyName>UpdaterHelper</AssemblyName>
     <RootNamespace>ProtocolBunker.UpdaterHelper</RootNamespace>
     <ApplicationIcon>..\..\assets\icons\app.ico</ApplicationIcon>
-    <Version>0.2.3</Version>
-    <FileVersion>0.2.3.0</FileVersion>
-    <AssemblyVersion>0.2.3.0</AssemblyVersion>
+    <Version>0.2.4</Version>
+    <FileVersion>0.2.4.0</FileVersion>
+    <AssemblyVersion>0.2.4.0</AssemblyVersion>
   </PropertyGroup>
 </Project>
+
 

@@ -2,11 +2,13 @@
   --scale: 1.15;
   --topbar-h: 200px;
   --outer-pad: 10px;
+  --layout-gap: 10px;
+  --grid-pad: 9px;
   --font-base: calc(12px * var(--scale));
   --font-small: calc(10px * var(--scale));
   --font-xs: calc(9px * var(--scale));
   --stroke: calc(1px * var(--scale));
-  --gap: calc(10px * var(--scale));
+  --gap: var(--layout-gap);
   --slot-ar: 16 / 9;
 
   --panel-bg: rgba(7, 12, 11, 0.72);
@@ -219,7 +221,7 @@ body {
   overflow: hidden;
   background: transparent;
   border-radius: calc(10px * var(--scale));
-  padding: calc(8px * var(--scale));
+  padding: var(--grid-pad);
 }
 
 html[data-preview-bg="1"] .overlay-grid {
@@ -227,6 +229,57 @@ html[data-preview-bg="1"] .overlay-grid {
     linear-gradient(160deg, rgba(55, 64, 62, 0.48), rgba(22, 26, 25, 0.58)),
     radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.1), transparent 48%);
 }
+
+.overlay-app.has-custom-bg .overlay-grid {
+  background: transparent;
+}
+
+/* Mask-locked slot geometry for custom streamer backgrounds (l4/l8/l12). */
+.overlay-app.has-custom-bg .overlay-grid {
+  position: relative;
+  display: block;
+  padding: 0;
+  gap: 0;
+}
+
+.overlay-app.has-custom-bg .playerSlot {
+  position: absolute;
+  aspect-ratio: auto;
+  width: auto;
+  height: auto;
+  justify-self: stretch;
+  align-self: stretch;
+}
+
+/* l8 (8 players): 4x2 windows */
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(1) { left: 0.474%; top: 10.118%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(2) { left: 25.421%; top: 10.118%; width: 24.316%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(3) { left: 50.316%; top: 10.118%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(4) { left: 75.211%; top: 10.118%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(5) { left: 0.474%; top: 59.647%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(6) { left: 25.421%; top: 59.647%; width: 24.316%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(7) { left: 50.316%; top: 59.647%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l8"] .playerSlot:nth-child(8) { left: 75.211%; top: 59.647%; width: 24.368%; height: 30.588%; }
+
+/* l12 (12 players): 4x3 windows */
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(1)  { left: 0.474%; top: 1.882%;  width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(2)  { left: 25.421%; top: 1.882%;  width: 24.316%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(3)  { left: 50.316%; top: 1.882%;  width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(4)  { left: 75.211%; top: 1.882%;  width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(5)  { left: 0.474%; top: 34.824%; width: 24.368%; height: 30.706%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(6)  { left: 25.421%; top: 34.824%; width: 24.316%; height: 30.706%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(7)  { left: 50.316%; top: 34.824%; width: 24.368%; height: 30.706%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(8)  { left: 75.211%; top: 34.824%; width: 24.368%; height: 30.706%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(9)  { left: 0.474%; top: 67.882%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(10) { left: 25.421%; top: 67.882%; width: 24.316%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(11) { left: 50.316%; top: 67.882%; width: 24.368%; height: 30.588%; }
+.overlay-app.has-custom-bg[data-layout="l12"] .playerSlot:nth-child(12) { left: 75.211%; top: 67.882%; width: 24.368%; height: 30.588%; }
+
+/* l4 (4 players): 2x2 windows */
+.overlay-app.has-custom-bg[data-layout="l4"] .playerSlot:nth-child(1) { left: 5.947%;  top: 1.294%;  width: 38.368%; height: 48.235%; }
+.overlay-app.has-custom-bg[data-layout="l4"] .playerSlot:nth-child(2) { left: 55.789%; top: 1.294%;  width: 38.316%; height: 48.235%; }
+.overlay-app.has-custom-bg[data-layout="l4"] .playerSlot:nth-child(3) { left: 5.947%;  top: 50.824%; width: 38.368%; height: 48.235%; }
+.overlay-app.has-custom-bg[data-layout="l4"] .playerSlot:nth-child(4) { left: 55.789%; top: 50.824%; width: 38.316%; height: 48.235%; }
 
 .overlay-app[data-layout="l4"] .overlay-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -408,7 +461,7 @@ html[data-preview-bg="1"] .overlay-grid {
   display: flex;
   flex-direction: column-reverse;
   justify-content: flex-start;
-  gap: calc(2px * var(--scale));
+  gap: calc(5px * var(--scale));
   min-width: 0;
 }
 
@@ -421,13 +474,13 @@ html[data-preview-bg="1"] .overlay-grid {
 }
 
 .catItem {
-  font-size: var(--font-base);
+  font-size: calc(var(--font-base) * 1.2);
   color: var(--text-muted);
   letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2;
+  line-height: 1.35;
   font-weight: 600;
   text-shadow:
     0 2px 4px rgba(0, 0, 0, 0.92),

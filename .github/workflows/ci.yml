@@ -39,5 +39,8 @@ jobs:
       - name: Scenario tests
         run: pnpm -C scenarios test
 
+      - name: Integration smoke tests
+        run: pnpm run test:integration
+
       - name: Build all packages
         run: pnpm run build:all

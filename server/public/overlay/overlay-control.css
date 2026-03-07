@@ -362,6 +362,12 @@ textarea {
   gap: 9px;
 }
 
+.url-params-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
 .sub {
   margin: 2px 0 0;
   font-size: 16px;
@@ -687,7 +693,8 @@ details.presenter-editor > summary {
   .presenter-editor-grid,
   .control-quick-actions,
   .host-grid--2,
-  .world-admin-grid {
+  .world-admin-grid,
+  .url-params-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -708,7 +715,8 @@ details.presenter-editor > summary {
   }
 
   .fields-inline,
-  .categories-grid {
+  .categories-grid,
+  .url-params-grid {
     grid-template-columns: 1fr;
   }
 }

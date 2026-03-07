@@ -85,6 +85,19 @@ function sumVotes(votes: number[]): number {
   return votes.reduce((acc, value) => acc + value, 0);
 }
 
+function normalizeOverlayQueryParams(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(raw)) {
+    const key = String(rawKey || "").trim();
+    if (!key || key === "room" || key === "roomCode" || key === "token") continue;
+    const value = String(rawValue ?? "").trim();
+    if (!value) continue;
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function fitVotesByTotal(votes: number[], requiredVotes: number): number[] {
   const next = normalizeVotesByRound(votes);
   const target = clampInt(requiredVotes, 0, 64);
@@ -214,6 +227,7 @@ export default function LobbyPage({
   onKickPlayer,
   onTransferHost,
 }: LobbyPageProps) {
+  const [showSpectatorLink, setShowSpectatorLink] = useState(false);
   const [showOverlayView, setShowOverlayView] = useState(false);
   const [showOverlayControl, setShowOverlayControl] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -269,6 +283,7 @@ export default function LobbyPage({
   }, [roomState?.ruleset]);
 
   useEffect(() => {
+    setShowSpectatorLink(false);
     setShowOverlayView(false);
     setShowOverlayControl(false);
   }, [streamerMode, roomCode]);
@@ -307,6 +322,7 @@ export default function LobbyPage({
         const publicBase = normalizeBase(raw.publicBase == null ? "" : String(raw.publicBase));
         const overlayViewToken = String(raw.overlayViewToken ?? "");
         const overlayControlToken = String(raw.overlayControlToken ?? "");
+        const overlayQueryParams = normalizeOverlayQueryParams(raw.overlayQueryParams);
         const apiRoomCode = String(raw.roomCode ?? roomCode).trim().toUpperCase();
         const linkVisibility = String(raw.linkVisibility ?? "all").trim().toLowerCase();
         const buildProfile = String(raw.buildProfile ?? "").trim().toLowerCase();
@@ -324,6 +340,7 @@ export default function LobbyPage({
           roomCode: apiRoomCode,
           overlayViewToken,
           overlayControlToken,
+          overlayQueryParams,
         });
         const lanSpectator = showLanLinks ? built.viewerUrl.lan : "";
         const lanOverlayView = showLanLinks ? built.overlayViewUrl.lan : "";
@@ -350,8 +367,12 @@ export default function LobbyPage({
     };
 
     void loadLinks();
+    const timer = window.setInterval(() => {
+      void loadLinks();
+    }, 3000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [canControl, playerToken, roomCode]);
 
@@ -390,6 +411,7 @@ export default function LobbyPage({
     );
   }
 
+  const spectatorHidden = streamerMode && !showSpectatorLink;
   const overlayViewHidden = streamerMode && !showOverlayView;
   const overlayControlHidden = streamerMode && !showOverlayControl;
   const spectatorUrlLan = overlayLinks?.spectatorUrlLan ?? "";
@@ -1145,11 +1167,23 @@ export default function LobbyPage({
                         <div className="obs-link-row">
                           <div className="obs-link-main">
                             <div className="obs-link-label">LAN</div>
-                            <div className="secret-value obs-link-value" title={spectatorUrlLan || ru.obsLinksUnavailable}>
-                              {spectatorUrlLan || "—"}
+                            <div
+                              className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
+                              title={spectatorHidden ? ru.showSecret : spectatorUrlLan || ru.obsLinksUnavailable}
+                            >
+                              {maskValue(spectatorUrlLan || "—", spectatorHidden)}
                             </div>
                           </div>
                           <div className="secret-actions">
+                            <button
+                              type="button"
+                              className="ghost iconButton"
+                              aria-label={spectatorHidden ? ru.showSecret : ru.hideSecret}
+                              title={spectatorHidden ? ru.showSecret : ru.hideSecret}
+                              onClick={() => setShowSpectatorLink((prev) => !prev)}
+                            >
+                              <EyeIcon open={!spectatorHidden} />
+                            </button>
                             <button
                               type="button"
                               className="ghost button-small"
@@ -1175,11 +1209,23 @@ export default function LobbyPage({
                         <div className="obs-link-row">
                           <div className="obs-link-main">
                             <div className="obs-link-label">Внешняя</div>
-                            <div className="secret-value obs-link-value" title={spectatorUrlExternal}>
-                              {spectatorUrlExternal}
+                            <div
+                              className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
+                              title={spectatorHidden ? ru.showSecret : spectatorUrlExternal}
+                            >
+                              {maskValue(spectatorUrlExternal, spectatorHidden)}
                             </div>
                           </div>
                           <div className="secret-actions">
+                            <button
+                              type="button"
+                              className="ghost iconButton"
+                              aria-label={spectatorHidden ? ru.showSecret : ru.hideSecret}
+                              title={spectatorHidden ? ru.showSecret : ru.hideSecret}
+                              onClick={() => setShowSpectatorLink((prev) => !prev)}
+                            >
+                              <EyeIcon open={!spectatorHidden} />
+                            </button>
                             <button
                               type="button"
                               className="ghost button-small"

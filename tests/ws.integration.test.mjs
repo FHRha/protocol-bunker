@@ -122,6 +122,7 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
       BUNKER_ENABLE_DEV_SCENARIOS: "0",
       BUNKER_IDENTITY_MODE: "token",
       BUNKER_DEV_LOGS: "0",
+      BUNKER_SERVE_CLIENT: "false",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,

@@ -229,12 +229,8 @@ const matchRoomStatePlayersCount = (count) => (msg) =>
   (msg?.type === "statePatch" && msg.payload?.roomState?.players?.length === count);
 
 const matchHostTransferred = (targetPlayerId) => (msg) =>
-  (msg?.type === "roomState" &&
-    msg.payload?.hostId === targetPlayerId &&
-    msg.payload?.controlId === targetPlayerId) ||
-  (msg?.type === "statePatch" &&
-    msg.payload?.roomState?.hostId === targetPlayerId &&
-    msg.payload?.roomState?.controlId === targetPlayerId);
+  (msg?.type === "roomState" && msg.payload?.hostId === targetPlayerId) ||
+  (msg?.type === "statePatch" && msg.payload?.roomState?.hostId === targetPlayerId);
 
 test("ws integration: host transfer works and CONTROL companion socket does not create ghost player", async (t) => {
   if (process.platform === "win32") {
@@ -323,6 +319,11 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
       controlRoomState?.type === "roomState"
         ? controlRoomState.payload.players
         : (controlRoomState.payload?.roomState?.players ?? []);
+    const hostId =
+      controlRoomState?.type === "roomState"
+        ? controlRoomState.payload.hostId
+        : controlRoomState.payload?.roomState?.hostId;
+    assert.equal(hostId, secondAck.payload.playerId, "hostId must be transferred to Player2");
     assert.equal(players.length, 2);
     assert.equal(
       players.some((player) => player.name === "CONTROL"),

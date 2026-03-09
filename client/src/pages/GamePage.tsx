@@ -347,9 +347,13 @@ export default function GamePage({
   const threatModifier = gameView?.public.threatModifier;
   const worldThreatFinalCount = useMemo(() => {
     if (!world) return 0;
-    // UI should always reflect the real array from state to avoid desync (e.g. +1 threat cards).
-    return world.threats.length;
-  }, [world]);
+    const fromModifier = threatModifier?.finalCount;
+    if (typeof fromModifier === "number" && Number.isFinite(fromModifier)) {
+      return Math.max(0, Math.min(world.threats.length, Math.trunc(fromModifier)));
+    }
+    const fallbackCount = world.counts?.threats ?? world.threats.length;
+    return Math.max(0, Math.min(world.threats.length, Math.trunc(fallbackCount)));
+  }, [world, threatModifier?.finalCount]);
   const visibleWorldThreats = useMemo(
     () => (world ? world.threats.slice(0, worldThreatFinalCount) : []),
     [world, worldThreatFinalCount]

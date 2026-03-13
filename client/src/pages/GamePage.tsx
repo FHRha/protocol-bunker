@@ -208,7 +208,10 @@ export default function GamePage({
       }
     | null
   >(null);
+  const [specialActionLock, setSpecialActionLock] = useState(false);
   const specialDialogRef = useRef<SpecialDialogState | null>(null);
+  const specialActionLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileActionBarRef = useRef<HTMLDivElement | null>(null);
   const lastWorldEventRef = useRef<string | null>(null);
   const lastPostGameRef = useRef<number | null>(null);
 
@@ -452,8 +455,52 @@ export default function GamePage({
     };
   }, [isMobile, dossierOpen, isMobileNarrow]);
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const clear = () => root.style.setProperty("--mobile-action-bar-height", "0px");
+    if (!isMobile) {
+      clear();
+      return;
+    }
+    const node = mobileActionBarRef.current;
+    if (!node) {
+      clear();
+      return;
+    }
+
+    const updateHeight = () => {
+      const rect = node.getBoundingClientRect();
+      const reserved = Math.max(0, Math.ceil(rect.height + 20));
+      root.style.setProperty("--mobile-action-bar-height", `${reserved}px`);
+    };
+
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => updateHeight());
+      observer.observe(node);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateHeight);
+      observer?.disconnect();
+      clear();
+    };
+  }, [isMobile, isMobileNarrow, phase, votePhase, useOverlayControl, canDecidePostGameOutcome, isDevScenario]);
+  useEffect(() => {
     specialDialogRef.current = specialDialog;
   }, [specialDialog]);
+  useEffect(
+    () => () => {
+      if (specialActionLockTimerRef.current) {
+        clearTimeout(specialActionLockTimerRef.current);
+        specialActionLockTimerRef.current = null;
+      }
+    },
+    []
+  );
   useEffect(() => {
     if (phase !== "reveal" && phase !== "ended") {
       setSelectedCardId(null);
@@ -741,6 +788,19 @@ export default function GamePage({
     setDialogSourceCardSelection("");
   };
 
+  const applySpecialAndLock = (specialInstanceId: string, payload?: Record<string, unknown>) => {
+    setSpecialActionLock(true);
+    if (specialActionLockTimerRef.current) {
+      clearTimeout(specialActionLockTimerRef.current);
+      specialActionLockTimerRef.current = null;
+    }
+    onApplySpecial(specialInstanceId, payload);
+    specialActionLockTimerRef.current = setTimeout(() => {
+      setSpecialActionLock(false);
+      specialActionLockTimerRef.current = null;
+    }, 900);
+  };
+
   const selectDialogPlayer = (playerId: string) => {
     setDialogSelection(playerId);
     if (!specialDialog || specialDialog.kind !== "player" || !specialDialog.cardPicker) {
@@ -897,7 +957,7 @@ export default function GamePage({
     if (choiceKind === "category") {
       const fixedCategory = String(special.effect.params?.category ?? "").trim();
       if (fixedCategory) {
-        onApplySpecial(special.instanceId, { category: fixedCategory });
+        applySpecialAndLock(special.instanceId, { category: fixedCategory });
         return;
       }
       openSpecialDialog(special.instanceId, "Выберите категорию", "category", CATEGORY_OPTIONS, special.text);
@@ -935,12 +995,12 @@ export default function GamePage({
 
     if (choiceKind === "player" || choiceKind === "neighbor") {
       if (!you || !targetScope) {
-        onApplySpecial(special.instanceId, {});
+        applySpecialAndLock(special.instanceId, {});
         return;
       }
 
       if (targetScope === "self") {
-        onApplySpecial(special.instanceId, { targetPlayerId: you.playerId });
+        applySpecialAndLock(special.instanceId, { targetPlayerId: you.playerId });
         return;
       }
 
@@ -1039,7 +1099,7 @@ export default function GamePage({
       return;
     }
 
-    onApplySpecial(special.instanceId, {});
+    applySpecialAndLock(special.instanceId, {});
   };
 
   const handleApplySpecialFromDossier = (special: SpecialConditionInstance) => {
@@ -1081,22 +1141,22 @@ export default function GamePage({
           payload.sourceCardInstanceId = normalizedSourceCardInstanceId;
         }
       }
-      onApplySpecial(specialDialog.specialInstanceId, payload);
+      applySpecialAndLock(specialDialog.specialInstanceId, payload);
     } else if (specialDialog.kind === "neighbor") {
-      onApplySpecial(specialDialog.specialInstanceId, { side: dialogSelection });
+      applySpecialAndLock(specialDialog.specialInstanceId, { side: dialogSelection });
     } else if (specialDialog.kind === "category") {
-      onApplySpecial(specialDialog.specialInstanceId, { category: dialogSelection });
+      applySpecialAndLock(specialDialog.specialInstanceId, { category: dialogSelection });
     } else if (specialDialog.kind === "bunker") {
       const bunkerIndex = Number(dialogSelection);
       if (Number.isInteger(bunkerIndex)) {
-        onApplySpecial(specialDialog.specialInstanceId, { bunkerIndex });
+        applySpecialAndLock(specialDialog.specialInstanceId, { bunkerIndex });
       }
     } else if (specialDialog.kind === "special") {
-      onApplySpecial(specialDialog.specialInstanceId, { specialId: dialogSelection });
+      applySpecialAndLock(specialDialog.specialInstanceId, { specialId: dialogSelection });
     } else if (specialDialog.kind === "baggage") {
       const [targetPlayerId, baggageCardId] = dialogSelection.split("::");
       if (targetPlayerId && baggageCardId) {
-        onApplySpecial(specialDialog.specialInstanceId, { targetPlayerId, baggageCardId });
+        applySpecialAndLock(specialDialog.specialInstanceId, { targetPlayerId, baggageCardId });
       }
     }
 
@@ -1128,6 +1188,7 @@ export default function GamePage({
     if (specialDialog.cardPicker?.requireSourceCard && !dialogSourceCardSelection) return false;
     return true;
   })();
+  const continueRoundBlockedBySpecial = specialActionLock || Boolean(specialDialog);
 
   if (!roomState || !gameView) {
     return (
@@ -1554,7 +1615,7 @@ export default function GamePage({
                 <div className="board-controls">
                   <button
                     className="primary button-small"
-                    disabled={!wsInteractive || !gameView.public.canContinue}
+                    disabled={!wsInteractive || !gameView.public.canContinue || continueRoundBlockedBySpecial}
                     onClick={onContinueRound}
                   >
                     {ru.continueRoundButton}
@@ -1774,7 +1835,10 @@ export default function GamePage({
       </div>
 
       {isMobile ? (
-        <div className={`mobile-action-bar${isMobileNarrow && canDecidePostGameOutcome ? " mobile-action-bar--final" : ""}`}>
+        <div
+          ref={mobileActionBarRef}
+          className={`mobile-action-bar${isMobileNarrow && canDecidePostGameOutcome ? " mobile-action-bar--final" : ""}`}
+        >
           <button className="ghost mobile-action-dossier" onClick={() => setDossierOpen(true)}>
             {ru.dossierTitle}
           </button>
@@ -1791,7 +1855,7 @@ export default function GamePage({
           {!useOverlayControl && phase === "reveal_discussion" ? (
             <button
               className="primary"
-              disabled={!wsInteractive || !gameView.public.canContinue}
+              disabled={!wsInteractive || !gameView.public.canContinue || continueRoundBlockedBySpecial}
               onClick={onContinueRound}
             >
               {ru.continueRoundButton}

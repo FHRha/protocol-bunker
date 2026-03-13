@@ -2218,6 +2218,44 @@ function pickNextHost(room: Room, excludeId?: string): string | undefined {
   return undefined;
 }
 
+function getCurrentTurnPlayerId(room: Room): string | undefined {
+  if (!room.session) return undefined;
+  const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
+  if (!anchorId) return undefined;
+  try {
+    const view = room.session.getGameView(anchorId);
+    return view.public.currentTurnPlayerId ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveControlActorId(
+  room: Room,
+  options?: { preferredId?: string; allowAnyPresentPlayer?: boolean }
+): string | undefined {
+  const preferredId = String(options?.preferredId ?? "").trim();
+  if (preferredId) {
+    if (!room.players.has(preferredId)) return undefined;
+    if (!room.session || isPlayerAlive(room, preferredId)) return preferredId;
+  }
+
+  if (room.players.has(room.hostId) && (!room.session || isPlayerAlive(room, room.hostId))) {
+    return room.hostId;
+  }
+
+  const nextAlive = pickNextHost(room, room.hostId);
+  if (nextAlive) return nextAlive;
+
+  if (options?.allowAnyPresentPlayer) {
+    const anyPresent = room.joinOrder.find((id) => room.players.has(id));
+    if (anyPresent) return anyPresent;
+  }
+
+  if (room.players.has(room.hostId)) return room.hostId;
+  return room.joinOrder.find((id) => room.players.has(id));
+}
+
 function removeLobbyPlayer(room: Room, playerId: string): boolean {
   const player = room.players.get(playerId);
   if (!player) return false;
@@ -3103,10 +3141,18 @@ async function main() {
         return { ok: false, message: "Это действие доступно только после старта игры." };
       }
 
+      const explicitActorId = String(options?.actorPlayerId ?? "").trim();
+      const preferredContinueActorId =
+        parsedScenarioAction.type === "continueRound" && room.settings.continuePermission === "revealer_only"
+          ? getCurrentTurnPlayerId(room)
+          : room.hostId;
       const actorPlayerId =
         parsedScenarioAction.type === "adminApplySpecial"
           ? parsedScenarioAction.payload.actorPlayerId
-          : String(options?.actorPlayerId ?? "").trim() || room.hostId;
+          : resolveControlActorId(room, {
+              preferredId: explicitActorId || preferredContinueActorId,
+              allowAnyPresentPlayer: true,
+            }) || room.hostId;
       if (!room.players.has(actorPlayerId)) {
         return { ok: false, message: "Выбранный игрок-исполнитель не найден в комнате." };
       }
@@ -3173,7 +3219,11 @@ async function main() {
       return { ok: false, message: "Неизвестная команда управления." };
     }
 
-    const actorId = scenarioAction.type === "continueRound" ? continueActorId : room.hostId;
+    const actorId =
+      resolveControlActorId(room, {
+        preferredId: scenarioAction.type === "continueRound" ? continueActorId : room.hostId,
+        allowAnyPresentPlayer: true,
+      }) || room.hostId;
     const result = room.session.handleAction(actorId, scenarioAction);
     if (result.error) {
       return { ok: false, message: result.error };
@@ -3961,23 +4011,29 @@ async function main() {
           const action = message as ScenarioAction;
           let actorId =
             controlOnlyActions.has(message.type) || continueRequiresControl
-              ? room.hostId
+              ? resolveControlActorId(room, { preferredId: room.hostId, allowAnyPresentPlayer: true }) ||
+                room.hostId
               : info.playerId;
           if (
             message.type === "continueRound" &&
             canControl(role) &&
             room.settings.continuePermission === "revealer_only"
           ) {
-            try {
-              const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
-              if (anchorId) {
-                const view = room.session.getGameView(anchorId);
-                if (view.public.currentTurnPlayerId) {
-                  actorId = view.public.currentTurnPlayerId;
-                }
-              }
-            } catch {
-              // keep default actorId
+            const turnActorId = getCurrentTurnPlayerId(room);
+            actorId =
+              resolveControlActorId(room, {
+                preferredId: turnActorId || room.hostId,
+                allowAnyPresentPlayer: true,
+              }) || actorId;
+          }
+          if (message.type === "continueRound" && room.settings.continuePermission === "host_only") {
+            const canProxyContinueAsHost = info.playerId === room.hostId || canControl(role);
+            if (canProxyContinueAsHost) {
+              actorId =
+                resolveControlActorId(room, {
+                  preferredId: room.hostId,
+                  allowAnyPresentPlayer: true,
+                }) || actorId;
             }
           }
           const result = room.session.handleAction(actorId, action);

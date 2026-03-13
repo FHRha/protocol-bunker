@@ -61,7 +61,7 @@ export const computeTargetScope = (uiTargeting?: string, text?: string): Special
       "у любого живого",
     ])
   ) {
-    return "any_alive";
+    return "any_including_self";
   }
 
   if (targeting.startsWith("choose") || includesAny(body, ["выберите", "выбери"])) {

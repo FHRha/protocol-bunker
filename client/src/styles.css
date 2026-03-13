@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --mobile-action-bar-height: 0px;
   --bg: #f4f1ea;
   --bg-soft: #ede7db;
   --panel: #ffffff;
@@ -2856,7 +2857,7 @@ button.ghost {
   }
 
   .container {
-    padding: 12px 12px calc(90px + env(safe-area-inset-bottom));
+    padding: 12px 12px calc(max(90px, var(--mobile-action-bar-height)) + env(safe-area-inset-bottom));
     overflow: visible;
     flex: none;
     height: auto;

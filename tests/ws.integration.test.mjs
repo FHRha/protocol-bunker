@@ -72,6 +72,8 @@ const getSocketMessageState = (ws) => {
     onMessage: null,
     onClose: null,
     cleanup: null,
+    lastRoomState: null,
+    lastGameView: null,
   };
 
   state.onMessage = (eventOrData) => {
@@ -80,6 +82,26 @@ const getSocketMessageState = (ws) => {
       parsed = parseServerMessage(eventOrData);
     } catch {
       return;
+    }
+    if (parsed?.type === "roomState" && parsed.payload) {
+      state.lastRoomState = parsed.payload;
+    } else if (parsed?.type === "gameView" && parsed.payload) {
+      state.lastGameView = parsed.payload;
+    } else if (parsed?.type === "statePatch" && parsed.payload && typeof parsed.payload === "object") {
+      const payload = { ...parsed.payload };
+      if (payload.roomState && typeof payload.roomState === "object") {
+        state.lastRoomState = { ...(state.lastRoomState ?? {}), ...payload.roomState };
+      }
+      if (payload.gameView && typeof payload.gameView === "object") {
+        state.lastGameView = { ...(state.lastGameView ?? {}), ...payload.gameView };
+      }
+      if (state.lastRoomState) {
+        payload.roomStateResolved = state.lastRoomState;
+      }
+      if (state.lastGameView) {
+        payload.gameViewResolved = state.lastGameView;
+      }
+      parsed = { ...parsed, payload };
     }
 
     const waiterIndex = state.waiters.findIndex((waiter) => {
@@ -110,6 +132,8 @@ const getSocketMessageState = (ws) => {
     removeListener(ws, "message", state.onMessage);
     removeListener(ws, "close", state.onClose);
     state.queue.length = 0;
+    state.lastRoomState = null;
+    state.lastGameView = null;
     for (const waiter of state.waiters.splice(0)) {
       clearTimeout(waiter.timeout);
       waiter.reject(new Error("Socket message state disposed."));
@@ -229,15 +253,28 @@ const nextMessage = (ws, predicate) =>
     state.waiters.push({ predicate, resolve, reject, timeout });
   });
 
+const getRoomStateFromMessage = (msg) => {
+  if (msg?.type === "roomState") return msg.payload;
+  if (msg?.type === "statePatch") return msg.payload?.roomStateResolved ?? msg.payload?.roomState;
+  return undefined;
+};
+
+const getGameViewFromMessage = (msg) => {
+  if (msg?.type === "gameView") return msg.payload;
+  if (msg?.type === "statePatch") return msg.payload?.gameViewResolved ?? msg.payload?.gameView;
+  return undefined;
+};
+
 const matchRoomStatePlayersCount = (count) => (msg) =>
-  (msg?.type === "roomState" && msg.payload?.players?.length === count) ||
-  (msg?.type === "statePatch" && msg.payload?.roomState?.players?.length === count);
+  getRoomStateFromMessage(msg)?.players?.length === count;
 
 const matchHostTransferred = (targetPlayerId) => (msg) =>
-  (msg?.type === "roomState" && msg.payload?.hostId === targetPlayerId) ||
-  (msg?.type === "statePatch" && msg.payload?.roomState?.hostId === targetPlayerId);
+  getRoomStateFromMessage(msg)?.hostId === targetPlayerId;
 
-const matchGameView = (predicate) => (msg) => msg?.type === "gameView" && predicate(msg.payload);
+const matchGameView = (predicate) => (msg) => {
+  const view = getGameViewFromMessage(msg);
+  return Boolean(view) && predicate(view);
+};
 
 test("ws integration: host transfer works and CONTROL companion socket does not create ghost player", async (t) => {
   if (process.platform === "win32") {
@@ -322,14 +359,9 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
       controlWs,
       (msg) => msg?.type === "roomState" || msg?.type === "statePatch"
     );
-    const players =
-      controlRoomState?.type === "roomState"
-        ? controlRoomState.payload.players
-        : (controlRoomState.payload?.roomState?.players ?? []);
-    const hostId =
-      controlRoomState?.type === "roomState"
-        ? controlRoomState.payload.hostId
-        : controlRoomState.payload?.roomState?.hostId;
+    const resolvedControlState = getRoomStateFromMessage(controlRoomState) ?? {};
+    const players = resolvedControlState.players ?? [];
+    const hostId = resolvedControlState.hostId;
     assert.equal(hostId, secondAck.payload.playerId, "hostId must be transferred to Player2");
     assert.equal(players.length, 2);
     assert.equal(
@@ -598,8 +630,9 @@ test("ws integration: eliminated CONTROL host can still finalize voting", async 
     // Advance game to voting phase.
     let hostView;
     for (let guard = 0; guard < 30; guard += 1) {
-      const msg = await nextMessage(hostWs, (m) => m?.type === "gameView");
-      hostView = msg.payload;
+      const msg = await nextMessage(hostWs, (m) => m?.type === "gameView" || m?.type === "statePatch");
+      hostView = getGameViewFromMessage(msg);
+      if (!hostView) continue;
       if (hostView.phase === "voting" && hostView.public?.votePhase === "voting") break;
 
       if (hostView.phase === "reveal") {
@@ -769,11 +802,12 @@ test("ws integration: applySpecial + continueRound in immediate sequence keeps s
     let sawSpecialApplied = false;
     let sawPhaseAdvance = false;
     for (let guard = 0; guard < 25; guard += 1) {
-      const msg = await nextMessage(hostWs, (m) => m?.type === "gameView" || m?.type === "error");
+      const msg = await nextMessage(hostWs, (m) => m?.type === "gameView" || m?.type === "statePatch" || m?.type === "error");
       if (msg.type === "error") {
         throw new Error(`Immediate apply+continue failed: ${msg.payload?.message ?? "unknown"}`);
       }
-      const view = msg.payload;
+      const view = getGameViewFromMessage(msg);
+      if (!view) continue;
       const currentSpecial = view.you.specialConditions.find((item) => item.instanceId === devSpecial.instanceId);
       if (currentSpecial && currentSpecial.title !== devSpecial.title) {
         sawSpecialApplied = true;
@@ -881,7 +915,7 @@ test("http integration: overlay-control/action end-to-end with presenter mode gu
     p3Ws = await joinPlayer("Player3");
     p4Ws = await joinPlayer("Player4");
     const fullRoom = await nextMessage(hostWs, matchRoomStatePlayersCount(4));
-    const currentSettings = fullRoom.payload.settings;
+    const currentSettings = getRoomStateFromMessage(fullRoom)?.settings;
     assert.ok(currentSettings, "settings must be present in roomState");
 
     const actionPayload = {
@@ -1059,9 +1093,7 @@ test("ws integration: reconnect + host transfer race keeps transferred host stab
 
     const transferred = await nextMessage(
       controlCompanionWs,
-      (msg) =>
-        (msg?.type === "roomState" && msg.payload?.hostId === targetHostId) ||
-        (msg?.type === "statePatch" && msg.payload?.roomState?.hostId === targetHostId)
+      matchHostTransferred(targetHostId)
     );
     assert.ok(transferred, "host transfer must be reflected for companion control socket");
 
@@ -1082,10 +1114,7 @@ test("ws integration: reconnect + host transfer race keeps transferred host stab
       hostReconnectWs,
       (msg) => msg?.type === "roomState" || msg?.type === "statePatch"
     );
-    const hostIdAfterReconnect =
-      postReconnectState.type === "roomState"
-        ? postReconnectState.payload.hostId
-        : postReconnectState.payload?.roomState?.hostId;
+    const hostIdAfterReconnect = getRoomStateFromMessage(postReconnectState)?.hostId;
     assert.equal(hostIdAfterReconnect, targetHostId, "reconnected former host must not steal host role back");
   } finally {
     const closeSocket = (ws) =>

@@ -266,6 +266,27 @@ const getGameViewFromMessage = (msg) => {
   return undefined;
 };
 
+const getCurrentGameViewFromSocket = (ws) => {
+  const state = getSocketMessageState(ws);
+  return state.lastGameView ?? null;
+};
+
+const waitForGameView = async (ws, predicate, options = {}) => {
+  const allowCurrent = options.allowCurrent !== false;
+  if (allowCurrent) {
+    const current = getCurrentGameViewFromSocket(ws);
+    if (current && predicate(current)) {
+      return current;
+    }
+  }
+  const msg = await nextMessage(ws, matchGameView(predicate));
+  const view = getGameViewFromMessage(msg);
+  if (!view) {
+    throw new Error("Expected gameView payload.");
+  }
+  return view;
+};
+
 const matchRoomStatePlayersCount = (count) => (msg) =>
   getRoomStateFromMessage(msg)?.players?.length === count;
 
@@ -442,6 +463,7 @@ test("ws integration: eliminated CONTROL host can still continue round with host
         name: "Host",
         create: true,
         scenarioId: "classic",
+        tabId: makeTabId("host"),
       },
     });
 
@@ -493,20 +515,18 @@ test("ws integration: eliminated CONTROL host can still continue round with host
     const turnWs = socketByPlayerId.get(currentTurnPlayerId);
     assert.ok(turnWs, "Socket for current turn player must exist");
 
-    const turnView = await nextMessage(
+    const turnView = await waitForGameView(
       turnWs,
-      matchGameView((view) => view?.phase === "reveal" && view?.public?.currentTurnPlayerId === currentTurnPlayerId)
+      (view) => view?.phase === "reveal" && view?.public?.currentTurnPlayerId === currentTurnPlayerId
     );
-    const turnViewResolved = getGameViewFromMessage(turnView);
-    assert.ok(turnViewResolved, "Turn gameView must be available");
-    const revealCard = turnViewResolved.you.hand.find((card) => !card.revealed);
+    const revealCard = turnView.you.hand.find((card) => !card.revealed);
     assert.ok(revealCard, "Current turn player must have a hidden card");
     sendJson(turnWs, {
       type: "revealCard",
       payload: { cardId: revealCard.instanceId },
     });
 
-    await nextMessage(hostWs, matchGameView((view) => view?.phase === "reveal_discussion"));
+    await waitForGameView(hostWs, (view) => view?.phase === "reveal_discussion");
 
     clearQueuedMessages(hostWs);
     sendJson(hostWs, { type: "continueRound", payload: {} });
@@ -622,7 +642,7 @@ test("ws integration: eliminated CONTROL host can still finalize voting", async 
       type: "devKickPlayer",
       payload: { targetPlayerId: hostAck.payload.playerId },
     });
-    await nextMessage(
+    const afterKickMsg = await nextMessage(
       hostWs,
       matchGameView((view) => view?.public?.players?.some((p) => p.playerId === hostAck.payload.playerId && p.status === "eliminated"))
     );
@@ -634,32 +654,36 @@ test("ws integration: eliminated CONTROL host can still finalize voting", async 
     ]);
 
     // Advance game to voting phase.
-    let hostView;
+    let hostView = getGameViewFromMessage(afterKickMsg);
+    assert.ok(hostView, "Host view after kick must be available");
     for (let guard = 0; guard < 30; guard += 1) {
-      const msg = await nextMessage(hostWs, (m) => m?.type === "gameView" || m?.type === "statePatch");
-      hostView = getGameViewFromMessage(msg);
-      if (!hostView) continue;
       if (hostView.phase === "voting" && hostView.public?.votePhase === "voting") break;
 
       if (hostView.phase === "reveal") {
         const turnId = String(hostView.public?.currentTurnPlayerId ?? "");
         const turnWs = socketsById.get(turnId);
         assert.ok(turnWs, `No socket for current turn player ${turnId}`);
-        const turnViewMsg = await nextMessage(
+        const turnView = await waitForGameView(
           turnWs,
-          matchGameView((view) => view?.phase === "reveal" && view?.public?.currentTurnPlayerId === turnId)
+          (view) => view?.phase === "reveal" && view?.public?.currentTurnPlayerId === turnId
         );
-        const turnView = getGameViewFromMessage(turnViewMsg);
-        assert.ok(turnView, `No gameView payload for current turn player ${turnId}`);
         const card = turnView.you.hand.find((entry) => !entry.revealed);
         assert.ok(card, `No hidden card to reveal for ${turnId}`);
         sendJson(turnWs, { type: "revealCard", payload: { cardId: card.instanceId } });
-        continue;
+      } else if (hostView.phase === "reveal_discussion") {
+        sendJson(hostWs, { type: "continueRound", payload: {} });
       }
 
-      if (hostView.phase === "reveal_discussion") {
-        sendJson(hostWs, { type: "continueRound", payload: {} });
-        continue;
+      const next = await nextMessage(
+        hostWs,
+        (m) => m?.type === "gameView" || m?.type === "statePatch" || m?.type === "error"
+      );
+      if (next?.type === "error") {
+        throw new Error(`advance-to-voting failed: ${next.payload?.message ?? "unknown"}`);
+      }
+      const nextView = getGameViewFromMessage(next);
+      if (nextView) {
+        hostView = nextView;
       }
     }
 

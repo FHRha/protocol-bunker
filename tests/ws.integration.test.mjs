@@ -7,6 +7,7 @@ const SPAWN_TIMEOUT_MS = 20_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
 const require = createRequire(import.meta.url);
 const socketMessageState = new WeakMap();
+const makeTabId = (prefix = "tab") => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
 const resolveWebSocketCtor = () => {
   if (typeof globalThis.WebSocket === "function") {
@@ -311,6 +312,7 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
         name: "Host",
         create: true,
         scenarioId: "classic",
+        tabId: makeTabId("host"),
       },
     });
 
@@ -453,7 +455,7 @@ test("ws integration: eliminated CONTROL host can still continue round with host
       playerSockets.push(ws);
       sendJson(ws, {
         type: "hello",
-        payload: { name, roomCode },
+        payload: { name, roomCode, tabId: makeTabId(name.toLowerCase()) },
       });
       const ack = await nextMessage(ws, (msg) => msg?.type === "helloAck");
       return { ws, ack };
@@ -478,7 +480,9 @@ test("ws integration: eliminated CONTROL host can still continue round with host
       hostWs,
       matchGameView((view) => view?.public?.players?.some((player) => player.playerId === hostAck.payload.playerId && player.status === "eliminated"))
     );
-    const currentTurnPlayerId = String(afterKickHostView.payload.public.currentTurnPlayerId ?? "");
+    const afterKickView = getGameViewFromMessage(afterKickHostView);
+    assert.ok(afterKickView, "Host view after kick must be available");
+    const currentTurnPlayerId = String(afterKickView.public?.currentTurnPlayerId ?? "");
     assert.ok(currentTurnPlayerId, "Current turn player must exist after host elimination");
 
     const socketByPlayerId = new Map([
@@ -493,7 +497,9 @@ test("ws integration: eliminated CONTROL host can still continue round with host
       turnWs,
       matchGameView((view) => view?.phase === "reveal" && view?.public?.currentTurnPlayerId === currentTurnPlayerId)
     );
-    const revealCard = turnView.payload.you.hand.find((card) => !card.revealed);
+    const turnViewResolved = getGameViewFromMessage(turnView);
+    assert.ok(turnViewResolved, "Turn gameView must be available");
+    const revealCard = turnViewResolved.you.hand.find((card) => !card.revealed);
     assert.ok(revealCard, "Current turn player must have a hidden card");
     sendJson(turnWs, {
       type: "revealCard",
@@ -587,7 +593,7 @@ test("ws integration: eliminated CONTROL host can still finalize voting", async 
     hostWs = await openSocket(url);
     sendJson(hostWs, {
       type: "hello",
-      payload: { name: "Host", create: true, scenarioId: "classic" },
+      payload: { name: "Host", create: true, scenarioId: "classic", tabId: makeTabId("host") },
     });
 
     const hostAck = await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
@@ -598,7 +604,7 @@ test("ws integration: eliminated CONTROL host can still finalize voting", async 
     const joinPlayer = async (name) => {
       const ws = await openSocket(url);
       playerSockets.push(ws);
-      sendJson(ws, { type: "hello", payload: { name, roomCode } });
+      sendJson(ws, { type: "hello", payload: { name, roomCode, tabId: makeTabId(name.toLowerCase()) } });
       const ack = await nextMessage(ws, (msg) => msg?.type === "helloAck");
       return { ws, ack };
     };
@@ -643,7 +649,9 @@ test("ws integration: eliminated CONTROL host can still finalize voting", async 
           turnWs,
           matchGameView((view) => view?.phase === "reveal" && view?.public?.currentTurnPlayerId === turnId)
         );
-        const card = turnViewMsg.payload.you.hand.find((entry) => !entry.revealed);
+        const turnView = getGameViewFromMessage(turnViewMsg);
+        assert.ok(turnView, `No gameView payload for current turn player ${turnId}`);
+        const card = turnView.you.hand.find((entry) => !entry.revealed);
         assert.ok(card, `No hidden card to reveal for ${turnId}`);
         sendJson(turnWs, { type: "revealCard", payload: { cardId: card.instanceId } });
         continue;
@@ -771,12 +779,15 @@ test("ws integration: applySpecial + continueRound in immediate sequence keeps s
 
     sendJson(hostWs, { type: "startGame", payload: {} });
     const revealViewMsg = await nextMessage(hostWs, matchGameView((view) => view?.phase === "reveal"));
-    const revealCard = revealViewMsg.payload.you.hand.find((entry) => !entry.revealed);
+    const revealView = getGameViewFromMessage(revealViewMsg);
+    assert.ok(revealView, "Reveal gameView must be available");
+    const revealCard = revealView.you.hand.find((entry) => !entry.revealed);
     assert.ok(revealCard, "Host must have a hidden card in reveal");
     sendJson(hostWs, { type: "revealCard", payload: { cardId: revealCard.instanceId } });
 
     const discussionViewMsg = await nextMessage(hostWs, matchGameView((view) => view?.phase === "reveal_discussion"));
-    const discussionView = discussionViewMsg.payload;
+    const discussionView = getGameViewFromMessage(discussionViewMsg);
+    assert.ok(discussionView, "Discussion gameView must be available");
     const devSpecial = discussionView.you.specialConditions.find((item) =>
       String(item.title ?? "").toLowerCase().includes("dev")
     );
@@ -808,7 +819,8 @@ test("ws integration: applySpecial + continueRound in immediate sequence keeps s
       }
       const view = getGameViewFromMessage(msg);
       if (!view) continue;
-      const currentSpecial = view.you.specialConditions.find((item) => item.instanceId === devSpecial.instanceId);
+      const specialConditions = Array.isArray(view.you?.specialConditions) ? view.you.specialConditions : [];
+      const currentSpecial = specialConditions.find((item) => item.instanceId === devSpecial.instanceId);
       if (currentSpecial && currentSpecial.title !== devSpecial.title) {
         sawSpecialApplied = true;
       }
@@ -941,10 +953,7 @@ test("http integration: overlay-control/action end-to-end with presenter mode gu
         enablePresenterMode: true,
       },
     });
-    await nextMessage(
-      hostWs,
-      (msg) => msg?.type === "roomState" && msg.payload?.settings?.enablePresenterMode === true
-    );
+    await nextMessage(hostWs, (msg) => getRoomStateFromMessage(msg)?.settings?.enablePresenterMode === true);
 
     const startResp = await fetch(`${base}/overlay-control/action`, {
       method: "POST",
@@ -1086,13 +1095,13 @@ test("ws integration: reconnect + host transfer race keeps transferred host stab
     await nextMessage(controlCompanionWs, (msg) => msg?.type === "helloAck");
     await nextMessage(controlCompanionWs, (msg) => msg?.type === "roomState");
 
+    clearQueuedMessages(p2Ws);
     sendJson(controlCompanionWs, {
       type: "requestHostTransfer",
       payload: { targetPlayerId: targetHostId },
     });
-
     const transferred = await nextMessage(
-      controlCompanionWs,
+      p2Ws,
       matchHostTransferred(targetHostId)
     );
     assert.ok(transferred, "host transfer must be reflected for companion control socket");

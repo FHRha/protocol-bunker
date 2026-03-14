@@ -168,7 +168,7 @@ exit 1
   assert.equal(await readFile(userDataFile, "utf8"), "user-data\n");
 
   const curlCalls = await readFile(callLogFile, "utf8");
-  assert.match(curlCalls, /releases\/download\/0\.2\.4\/protocol-bunker-linux-x64-server-hq2x-v0\.2\.4\.tar\.gz/);
+  assert.match(curlCalls, /releases\/download\/0\.2\.5\/protocol-bunker-linux-x64-server-hq2x-v0\.2\.5\.tar\.gz/);
   assert.match(curlCalls, /raw\.githubusercontent\.com\/FHRha\/protocol-bunker\/main\/install\.sh/);
 
 });

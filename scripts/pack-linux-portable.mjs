@@ -1149,7 +1149,7 @@ async function main() {
   ensureExists(path.join(appDir, "client", "dist", "index.html"), "client dist index");
   ensureExists(path.join(appDir, "locales", "ui", "app", "ru.json"), "locales/ui/app/ru.json");
   ensureExists(path.join(appDir, "locales", "ui", "app", "en.json"), "locales/ui/app/en.json");
-  ensureExists(nodeExeDst, "node runtime");
+  ensureExists(nodeBinDst, "node runtime");
   ensureExists(
   path.join(serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "ru.json"),
   "@bunker/locales/logic/targeting/ru.json"

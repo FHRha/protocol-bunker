@@ -1,4 +1,4 @@
-﻿* {
+* {
   box-sizing: border-box;
 }
 
@@ -60,6 +60,14 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.topbar__locale {
+  min-width: 170px;
+}
+
+.topbar__locale span {
+  font-size: 12px;
 }
 
 .badge {
@@ -719,4 +727,48 @@ details.presenter-editor > summary {
   .url-params-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Confirm Modal */
+
+.modal-backdrop[hidden] {
+  display: none !important;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  background: #1a2332;
+  border: 1px solid #2e3b53;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: #eff5ff;
+}
+
+.modal-message {
+  margin: 0 0 20px;
+  color: #9db0ce;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }

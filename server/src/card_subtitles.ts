@@ -1,99 +1,133 @@
-﻿import { promises as fs } from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-export type CardDeck = "бункер" | "угроза";
 export type SubtitleMap = Map<string, string>;
 
-type SubtitleRow = {
-  deck?: unknown;
-  title?: unknown;
-  path?: unknown;
-  subtitle?: unknown;
+type SubtitleLocaleFile = {
+  subtitles?: Record<string, string>;
 };
 
-const SUBTITLES_PATH = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "data",
-  "cards_bunker_threats.json"
-);
+const LOCALE_CANDIDATE_ROOTS = [
+  path.resolve(process.cwd(), "locales", "world"),
+  path.resolve(process.cwd(), "..", "locales", "world"),
+  path.resolve(process.cwd(), "..", "..", "locales", "world"),
+];
 
-let cached: SubtitleMap | null = null;
-let loading: Promise<SubtitleMap> | null = null;
+const KNOWN_LOCALES = ["ru", "en"] as const;
+const KNOWN_VARIANTS = ["1x", "2x"] as const;
+const SUBTITLE_GROUPS = ["bunker", "threats"] as const;
 
-function toNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+const cache = new Map<string, SubtitleMap>();
+
+function normalizeLocale(locale: string | undefined): string {
+  const normalized = String(locale ?? "").trim().toLowerCase();
+  return KNOWN_LOCALES.includes(normalized as (typeof KNOWN_LOCALES)[number]) ? normalized : "ru";
 }
 
-export function norm(value: string): string {
-  return String(value ?? "")
+
+function transliterateCyrillic(value: string): string {
+  const mapping: Record<string, string> = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh",
+    з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
+    п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts",
+    ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu",
+    я: "ya",
+  };
+  return value
+    .toLowerCase()
+    .split("")
+    .map((char) => mapping[char] ?? char)
+    .join("");
+}
+
+function normalizeCardKey(value: string): string {
+  return value
     .trim()
-    .toLocaleLowerCase("ru-RU")
+    .toLowerCase()
     .replace(/ё/g, "е")
-    .replace(/[–—]/g, "-")
-    .replace(/\s*-\s*/g, "-")
-    .replace(/\s+/g, " ");
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-");
 }
 
-export function normDeck(deck: string): CardDeck {
-  const d = norm(deck);
-  if (d.includes("бунк") || d.includes("bunker")) return "бункер";
-  if (d.includes("угроз") || d.includes("threat")) return "угроза";
-  return d as CardDeck;
-}
+function readLocaleFile(group: (typeof SUBTITLE_GROUPS)[number], locale: string): SubtitleLocaleFile {
+  for (const root of LOCALE_CANDIDATE_ROOTS) {
+    const filePath = path.join(root, group, `${locale}.json`);
+    if (!fs.existsSync(filePath)) continue;
 
-function cleanLine(value: unknown): string {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
-}
-
-function isSupportedDeck(deck: string): deck is CardDeck {
-  return deck === "бункер" || deck === "угроза";
-}
-
-export function subtitleKey(deck: string, title: string): string {
-  return `${normDeck(deck)}::${norm(title)}`;
-}
-
-export async function getSubtitleMap(): Promise<SubtitleMap> {
-  if (cached) return cached;
-  if (loading) return loading;
-
-  loading = (async () => {
-    const map: SubtitleMap = new Map();
     try {
-      const raw = await fs.readFile(SUBTITLES_PATH, "utf8");
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) {
-        console.warn("[overlay] subtitles JSON must be an array:", SUBTITLES_PATH);
-        cached = map;
-        return map;
-      }
-
-      for (const row of parsed as SubtitleRow[]) {
-        if (!row || typeof row !== "object") continue;
-        const deckRaw = toNonEmptyString(row.deck);
-        const title = toNonEmptyString(row.title);
-        const subtitleRaw = toNonEmptyString(row.subtitle);
-        if (!deckRaw || !title || !subtitleRaw) continue;
-        const deck = normDeck(deckRaw);
-        if (!isSupportedDeck(deck)) continue;
-        const subtitle = cleanLine(subtitleRaw);
-        if (!subtitle) continue;
-        map.set(subtitleKey(deck, title), subtitle);
-      }
+      const raw = fs.readFileSync(filePath, "utf8");
+      const parsed = JSON.parse(raw) as SubtitleLocaleFile;
+      return parsed && typeof parsed === "object" ? parsed : {};
     } catch (error) {
-      console.warn("[overlay] failed to load card subtitles:", error);
+      console.warn(`[overlay] failed to read world subtitle locale ${filePath}:`, error);
+      return {};
     }
-    cached = map;
-    return map;
-  })();
-
-  try {
-    return await loading;
-  } finally {
-    loading = null;
   }
+
+  return {};
+}
+
+function buildSubtitleMap(locale: string): SubtitleMap {
+  const normalizedLocale = normalizeLocale(locale);
+  const map: SubtitleMap = new Map();
+
+  for (const group of SUBTITLE_GROUPS) {
+    const primary = readLocaleFile(group, normalizedLocale).subtitles ?? {};
+    const fallback = normalizedLocale === "en" ? {} : readLocaleFile(group, "en").subtitles ?? {};
+
+    for (const [cardKeyRaw, subtitleRaw] of Object.entries({ ...fallback, ...primary })) {
+      const cardKey = normalizeCardKey(cardKeyRaw);
+      const subtitle = String(subtitleRaw ?? "").replace(/\s+/g, " ").trim();
+      if (!cardKey || !subtitle) continue;
+      map.set(cardKey, subtitle);
+    }
+  }
+
+  return map;
+}
+
+export function resolveCardKeyFromAssetId(assetId: string | undefined): string | undefined {
+  const normalized = String(assetId ?? "").trim().replace(/^\/+/, "");
+  if (!normalized) return undefined;
+
+  const parts = normalized.split("/").filter(Boolean);
+  const decksIndex = parts.findIndex((part) => part.toLowerCase() === "decks");
+  if (decksIndex < 0) return undefined;
+
+  const tail = parts.slice(decksIndex + 1);
+  if (tail.length < 2) return undefined;
+
+  let cursor = 0;
+  const maybeVariant = tail[cursor]?.toLowerCase();
+  if (maybeVariant && KNOWN_VARIANTS.includes(maybeVariant as (typeof KNOWN_VARIANTS)[number])) {
+    cursor += 1;
+  }
+
+  const maybeLocale = tail[cursor]?.toLowerCase();
+  if (maybeLocale && KNOWN_LOCALES.includes(maybeLocale as (typeof KNOWN_LOCALES)[number])) {
+    cursor += 1;
+  }
+
+  const deckSegment = tail[cursor];
+  const fileSegment = tail[tail.length - 1];
+  if (!deckSegment || !fileSegment) return undefined;
+
+  const deckId = normalizeCardKey(deckSegment);
+  const withoutExt = fileSegment.replace(/\.[a-z0-9]{2,4}$/i, "");
+  const prefix = `${deckId}.`;
+  const rawCardName = withoutExt.toLowerCase().startsWith(prefix) ? withoutExt.slice(prefix.length) : withoutExt;
+  const cardIdRaw = transliterateCyrillic(rawCardName);
+  const cardId = normalizeCardKey(cardIdRaw);
+  if (!deckId || !cardId) return undefined;
+
+  return `${deckId}.${cardId}`;
+}
+
+export async function getSubtitleMap(locale: string | undefined): Promise<SubtitleMap> {
+  const normalizedLocale = normalizeLocale(locale);
+  const cached = cache.get(normalizedLocale);
+  if (cached) return cached;
+  const map = buildSubtitleMap(normalizedLocale);
+  cache.set(normalizedLocale, map);
+  return map;
 }

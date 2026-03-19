@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { OverlayState } from "@bunker/shared";
+import { useUiLocaleNamespace } from "../localization";
 
 type OverlayConnectionStatus = "idle" | "connecting" | "connected" | "reconnecting" | "error";
 
@@ -67,6 +68,7 @@ function resolveConnectionInfo(params: UseOverlayViewStateParams): OverlayConnec
 }
 
 export function useOverlayViewState(params: UseOverlayViewStateParams) {
+  const overlayText = useUiLocaleNamespace("reconnect", { fallbacks: ["common", "misc"] });
   const connectionInfo = useMemo(
     () => resolveConnectionInfo(params),
     [params.roomCode, params.sourceUrl, params.token]
@@ -79,7 +81,7 @@ export function useOverlayViewState(params: UseOverlayViewStateParams) {
     if (!connectionInfo) {
       setState(null);
       setStatus("error");
-      setError("Нет room/token в ссылке зрителя.");
+      setError(overlayText.t("overlayErrorMissingRoomOrToken"));
       return;
     }
 
@@ -139,12 +141,17 @@ export function useOverlayViewState(params: UseOverlayViewStateParams) {
         };
         if (!payload.ok) {
           setStatus("error");
-          setError(payload.message || (payload.unauthorized ? "Недостаточно прав для просмотра." : "Нет данных."));
+          setError(
+            payload.message ||
+              (payload.unauthorized
+                ? overlayText.t("overlayErrorUnauthorized")
+                : overlayText.t("overlayErrorNoData"))
+          );
           return;
         }
         if (!payload.state) {
           setStatus("connecting");
-          setError("Ожидаем состояние комнаты...");
+          setError(overlayText.t("overlayWaitingState"));
           return;
         }
         setState(payload.state);
@@ -157,14 +164,14 @@ export function useOverlayViewState(params: UseOverlayViewStateParams) {
         reconnectAttempt += 1;
         const delay = Math.min(500 * 2 ** (reconnectAttempt - 1), 8000);
         setStatus("reconnecting");
-        setError(`Связь потеряна. Переподключение через ${Math.round(delay / 1000)}с...`);
+        setError(overlayText.t("overlayReconnectIn", { seconds: Math.round(delay / 1000) }));
         reconnectTimer = setTimeout(connect, delay);
       });
 
       socket.addEventListener("error", () => {
         if (disposed) return;
         setStatus("error");
-        setError("Ошибка подключения к read-only потоку.");
+        setError(overlayText.t("overlayErrorReadOnlyStream"));
         try {
           socket?.close();
         } catch {
@@ -179,7 +186,7 @@ export function useOverlayViewState(params: UseOverlayViewStateParams) {
       disposed = true;
       cleanup();
     };
-  }, [connectionInfo]);
+  }, [connectionInfo, overlayText]);
 
   return {
     state,

@@ -1,0 +1,9 @@
+{
+  "homeTitle": "Добро пожаловать в «Протокол: Бункер»",
+  "homeSubtitle": "Создай комнату или зайди по коду. Сценарий выбирается при создании.",
+  "nameTitle": "Твоё имя",
+  "namePlaceholder": "Например, Алекс",
+  "createRoomTitle": "Создать комнату",
+  "joinRoomTitle": "Войти в комнату",
+  "joinRoomPlaceholder": "Код комнаты"
+}

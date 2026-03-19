@@ -1,0 +1,38 @@
+Локализация: текущая карта переноса (2026-03-15)
+
+Уже вынесено в корень `locales/`:
+- `locales/ui/ru.json` — основной RU словарь UI.
+- `locales/ui/en.json` — EN словарь UI (частично, Beta).
+- `locales/ui/branding.json` — брендовые названия приложения.
+- `locales/ui/rules/ru.md` — правила (RU).
+- `locales/ui/rules/en.md` — правила (EN, временный placeholder).
+- `locales/cards/ru.json` — карточные тексты RU.
+- `locales/cards/en.json` — карточные тексты EN.
+- `locales/cards/backs.ts` — mapping рубашек/legacy back keys.
+
+Клиент уже использует новые источники:
+- `client/src/localization/index.ts` -> `client/src/localization/uiLocaleLoader.ts` -> `locales/ui/*.json`
+- `client/src/components/RulesModal.tsx` -> `locales/ui/rules/*`
+- `client/src/config/branding.ts` -> `locales/ui/branding.json`
+- `client/src/cards.ts` -> `locales/cards/backs.ts`
+
+Файлы, где ещё остаются вшитые локализуемые строки (следующий этап):
+- `client/src/App.tsx`
+- `client/src/pages/GamePage.tsx`
+- `client/src/pages/SpectatorTablePage.tsx`
+- `server/src/card_subtitles.ts`
+- `server/src/catalog.ts`
+- `server/src/index.ts`
+- `scenarios/src/classic.ts`
+- `scenarios/src/dev_test.ts`
+- `scenarios/src/world_deck.ts`
+- `scenarios/src/threat_modifier.ts`
+- `scenarios/src/deck_identity.ts`
+- `shared/src/index.ts`
+- `shared/src/labelFormat.ts`
+- `shared/src/targeting.ts`
+
+Комментарий по следующему шагу:
+- Дотащить UI-строки из `GamePage.tsx` и `SpectatorTablePage.tsx`.
+- Затем перейти к серверным ошибкам/системным сообщениям.
+- После этого закрыть сценарные тексты и shared-лейблы.

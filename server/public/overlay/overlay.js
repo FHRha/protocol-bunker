@@ -1,7 +1,20 @@
-﻿(() => {
+(() => {
+  const localeApi = window.BUNKER_OVERLAY_LOCALE || null;
+  const normalizeLang = (value) =>
+    localeApi && typeof localeApi.normalizeLang === "function"
+      ? localeApi.normalizeLang(value)
+      : "ru";
+  const t = (lang, key, params) =>
+    localeApi && typeof localeApi.t === "function"
+      ? localeApi.t(lang, key, params)
+      : key;
+
   const params = new URLSearchParams(window.location.search);
   const roomCode = (params.get("room") || params.get("roomCode") || "").trim().toUpperCase();
   const token = (params.get("token") || "").trim();
+  const langParamRaw = params.get("lang");
+  const langFromUrl = normalizeLang(langParamRaw);
+  const hasLangFromUrl = langParamRaw !== null;
   const debugParamRaw = params.get("debug");
   const debugFromUrl = debugParamRaw === "1";
   const hasDebugFromUrl = debugParamRaw !== null;
@@ -25,15 +38,28 @@
   const app = document.getElementById("overlay-app");
   const grid = document.getElementById("overlay-grid");
   const statusEl = document.getElementById("overlay-status");
+  const topBunkerLabel = document.getElementById("top-bunker-label");
   const topBunker = document.getElementById("top-bunker");
   const topCatastropheLabel = document.getElementById("top-catastrophe-label");
   const topCatastrophe = document.getElementById("top-catastrophe");
+  const topThreatLabel = document.getElementById("top-threat-label");
   const topThreat = document.getElementById("top-threat");
 
-  if (!app || !grid || !statusEl || !topBunker || !topCatastropheLabel || !topCatastrophe || !topThreat) {
+  if (
+    !app ||
+    !grid ||
+    !statusEl ||
+    !topBunkerLabel ||
+    !topBunker ||
+    !topCatastropheLabel ||
+    !topCatastrophe ||
+    !topThreatLabel ||
+    !topThreat
+  ) {
     return;
   }
 
+  let currentLang = langFromUrl;
   let debug = debugFromUrl;
   let currentScale = scaleFromUrl;
   let currentTop = topFromUrl;
@@ -43,7 +69,11 @@
   function applyVisualSettings() {
     document.documentElement.style.setProperty("--scale", String(currentScale));
     document.documentElement.style.setProperty("--topbar-h", `${currentTop}px`);
+    document.documentElement.setAttribute("lang", currentLang);
     document.documentElement.setAttribute("data-theme", currentTheme);
+    topBunkerLabel.textContent = t(currentLang, "overlay.top.bunker");
+    topThreatLabel.textContent = t(currentLang, "overlay.top.threats");
+    topCatastropheLabel.textContent = t(currentLang, "overlay.top.catastrophe");
     if (debug) {
       app.classList.add("is-debug");
     } else {
@@ -52,6 +82,9 @@
   }
 
   applyVisualSettings();
+  topBunker.textContent = t(currentLang, "overlay.hidden");
+  topCatastrophe.textContent = t(currentLang, "overlay.hidden");
+  topThreat.textContent = t(currentLang, "overlay.hidden");
   document.documentElement.setAttribute("data-preview-bg", previewBg ? "1" : "0");
   const debugInfo = document.createElement("div");
   debugInfo.className = "overlay-debug";
@@ -67,18 +100,9 @@
 
   setDebugInfo("overlay-bg=transparent");
 
-  const CATEGORY_LAYOUT = {
-    left: [
-      { key: "phobia", label: "Фобия" },
-      { key: "hobby", label: "Хобби" },
-      { key: "health", label: "Здоровье" },
-      { key: "profession", label: "Профессия" },
-    ],
-    right: [
-      { key: "baggage", label: "Багаж" },
-      { key: "fact1", label: "Факт №1" },
-      { key: "fact2", label: "Факт №2" },
-    ],
+  const CATEGORY_LAYOUT_KEYS = {
+    left: ["phobia", "hobby", "health", "profession"],
+    right: ["baggage", "fact1", "fact2"],
   };
 
   const SLOT_COUNT = { l4: 4, l8: 8, l12: 12 };
@@ -103,6 +127,18 @@
     return defaultCategoryEnabled(key);
   }
 
+  function getCategoryLayout() {
+    const buildColumn = (keys) =>
+      keys.map((key) => ({
+        key,
+        label: t(currentLang, `overlay.category.${key}`),
+      }));
+    return {
+      left: buildColumn(CATEGORY_LAYOUT_KEYS.left),
+      right: buildColumn(CATEGORY_LAYOUT_KEYS.right),
+    };
+  }
+
   let socket = null;
   let reconnectTimer = null;
   let reconnectAttempt = 0;
@@ -114,6 +150,8 @@
     statusEl.textContent = message;
     statusEl.classList.toggle("is-visible", visible);
   }
+
+  setStatus(t(currentLang, "overlay.status.connectingGame"), true);
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -150,12 +188,24 @@
   }
 
   function applyVisualSettingsFromOverrides(overrides) {
+    const langOverrideRaw = pickStringParamFromOverrides(overrides, "lang");
+    const hasLangOverride = Boolean(String(langOverrideRaw || "").trim());
+    const langOverride = normalizeLang(langOverrideRaw);
+    const stateLocale = normalizeLang(overrides?.__roomLocale || "ru");
     const themeOverride = pickStringParamFromOverrides(overrides, "theme").toLowerCase();
     const scaleOverrideRaw = pickStringParamFromOverrides(overrides, "scale");
     const topOverrideRaw = pickStringParamFromOverrides(overrides, "top");
     const debugOverrideRaw = pickStringParamFromOverrides(overrides, "debug");
     const bgPresetOverrideRaw =
       pickStringParamFromOverrides(overrides, "bgPreset") || pickStringParamFromOverrides(overrides, "bg");
+
+    if (hasLangFromUrl) {
+      currentLang = langFromUrl;
+    } else if (hasLangOverride) {
+      currentLang = langOverride;
+    } else {
+      currentLang = stateLocale;
+    }
 
     if (hasThemeFromUrl) {
       currentTheme = themeFromUrl;
@@ -506,7 +556,7 @@
     } else if (typeof player.nickname === "string") {
       slotNick.textContent = player.nickname;
     } else {
-      slotNick.textContent = `Игрок ${index + 1}`;
+      slotNick.textContent = t(currentLang, "overlay.player.defaultName", { index: index + 1 });
     }
     name.append(slotNo, slotNick);
     hud.append(name);
@@ -519,7 +569,11 @@
     }
     const bioName = getRevealedBiologyName(player);
     const bioNorm = bioName ? bioName.trim().toLowerCase() : "";
-    const isSpecialBio = bioNorm === "андроид" || bioNorm === "котгендер";
+    const isSpecialBio =
+      bioNorm === "андроид" ||
+      bioNorm === "котгендер" ||
+      bioNorm === "android" ||
+      bioNorm === "catgender";
     if (!hideTraits && isSpecialBio && bioName) {
       const merged = document.createElement("span");
       merged.className = "traitMerged";
@@ -528,9 +582,9 @@
       traits.append(merged);
     } else if (!hideTraits) {
       const parsedTraits = pickTraits(player);
-      traits.append(renderTrait(parsedTraits.sex, "Пол"));
-      traits.append(renderTrait(parsedTraits.age, "Возраст"));
-      traits.append(renderTrait(parsedTraits.orient, "Ориентация"));
+      traits.append(renderTrait(parsedTraits.sex, t(currentLang, "overlay.trait.sex")));
+      traits.append(renderTrait(parsedTraits.age, t(currentLang, "overlay.trait.age")));
+      traits.append(renderTrait(parsedTraits.orient, t(currentLang, "overlay.trait.orientation")));
     }
     hud.append(traits);
 
@@ -539,19 +593,21 @@
     if (player.__overlayHideCategories === true) {
       categoriesHud.classList.add("is-hidden");
     }
-    categoriesHud.append(renderCategoryColumn(player, CATEGORY_LAYOUT.left));
-    categoriesHud.append(renderCategoryColumn(player, CATEGORY_LAYOUT.right));
+    const categoryLayout = getCategoryLayout();
+    categoriesHud.append(renderCategoryColumn(player, categoryLayout.left));
+    categoriesHud.append(renderCategoryColumn(player, categoryLayout.right));
     hud.append(categoriesHud);
 
     slot.append(hud);
     return slot;
   }
 
-  function renderTopLines(target, lines, fallback = "скрыто") {
+  function renderTopLines(target, lines, fallback = t(currentLang, "overlay.hidden")) {
     const safeLines = Array.isArray(lines)
       ? lines.map((line) => String(line || "").trim()).filter(Boolean)
       : [];
-    const baseLines = safeLines.length > 0 ? safeLines : [fallback];
+    const localizedLines = safeLines.map((line) => (isHiddenPlaceholder(line) ? fallback : line));
+    const baseLines = localizedLines.length > 0 ? localizedLines : [fallback];
     target.textContent = "";
     const list = document.createElement("div");
     list.className = "topList";
@@ -563,6 +619,15 @@
     }
     target.append(list);
     target.title = baseLines.join("\n");
+  }
+
+
+  function isHiddenPlaceholder(value) {
+    const normalized = String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!normalized) return false;
+    const hiddenRu = t("ru", "overlay.hidden").replace(/\s+/g, " ").trim().toLowerCase();
+    const hiddenEn = t("en", "overlay.hidden").replace(/\s+/g, " ").trim().toLowerCase();
+    return normalized === hiddenRu || normalized === hiddenEn;
   }
 
   function cleanInline(value) {
@@ -589,7 +654,7 @@
       .filter((item) => item.title);
   }
 
-  function renderTopCards(target, items, fallbackLines, fallback = "скрыто") {
+  function renderTopCards(target, items, fallbackLines, fallback = t(currentLang, "overlay.hidden")) {
     const normalizedItems = normalizeTopItems(items);
     if (normalizedItems.length === 0) {
       renderTopLines(target, fallbackLines, fallback);
@@ -618,8 +683,9 @@
       .join("\n");
   }
 
-  function renderTopText(target, text, fallback = "скрыто") {
-    const content = String(text || "").replace(/\s+/g, " ").trim() || fallback;
+  function renderTopText(target, text, fallback = t(currentLang, "overlay.hidden")) {
+    const rawContent = String(text || "").replace(/\s+/g, " ").trim();
+    const content = !rawContent || isHiddenPlaceholder(rawContent) ? fallback : rawContent;
     target.textContent = "";
     const paragraph = document.createElement("span");
     paragraph.className = "catText";
@@ -630,7 +696,9 @@
 
   function renderCatastropheLabel(target, title) {
     const suffix = String(title || "").trim();
-    const label = suffix ? `Катастрофа: ${suffix}` : "Катастрофа";
+    const label = suffix
+      ? t(currentLang, "overlay.top.catastropheLabel", { title: suffix })
+      : t(currentLang, "overlay.top.catastrophe");
     target.textContent = label;
     target.title = label;
   }
@@ -816,10 +884,10 @@
     app.style.setProperty("--slot-ar", slotAr);
     applyGridBackground(layout, state?.overrides);
 
-    renderTopCards(topBunker, state.top?.bunker?.items, state.top?.bunker?.lines, "скрыто");
-    renderTopCards(topThreat, state.top?.threats?.items, state.top?.threats?.lines, "скрыто");
+    renderTopCards(topBunker, state.top?.bunker?.items, state.top?.bunker?.lines);
+    renderTopCards(topThreat, state.top?.threats?.items, state.top?.threats?.lines);
     renderCatastropheLabel(topCatastropheLabel, state.top?.catastrophe?.title);
-    renderTopText(topCatastrophe, state.top?.catastrophe?.text, "скрыто");
+    renderTopText(topCatastrophe, state.top?.catastrophe?.text);
 
     grid.innerHTML = "";
     const totalSlots = SLOT_COUNT[layout];
@@ -832,7 +900,11 @@
 
   function handleOverlayState(payload) {
     if (!payload || payload.ok === false) {
-      const message = payload?.message || (payload?.unauthorized ? "Unauthorized" : "Нет данных");
+      const message =
+        payload?.message ||
+        (payload?.unauthorized
+          ? "Unauthorized"
+          : t(currentLang, "overlay.status.noData"));
       setStatus(message, true);
       grid.innerHTML = "";
       extraTextLayer.textContent = "";
@@ -840,12 +912,17 @@
     }
 
     if (!payload.state) {
-      setStatus("Состояние ещё не готово", true);
+      setStatus(t(currentLang, "overlay.status.stateNotReady"), true);
       return;
     }
 
     setStatus("", false);
-    applyVisualSettingsFromOverrides(payload.state.overrides);
+    const rawOverrides = payload.state.overrides;
+    const visualOverrides =
+      rawOverrides && typeof rawOverrides === "object"
+        ? { ...rawOverrides, __roomLocale: payload.state.locale || "ru" }
+        : { __roomLocale: payload.state.locale || "ru" };
+    applyVisualSettingsFromOverrides(visualOverrides);
     const effectiveState = applyOverrides(payload.state, payload.state.overrides);
     const extraTexts = normalizeExtraTexts(payload.state.overrides);
     renderState(effectiveState, extraTexts);
@@ -853,17 +930,17 @@
 
   function connect() {
     if (!roomCode || !token) {
-      setStatus("Нужны room и token в URL", true);
+      setStatus(t(currentLang, "overlay.status.needRoomToken"), true);
       return;
     }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${protocol}//${window.location.host}`);
-    setStatus("Подключение к серверу...", true);
+    setStatus(t(currentLang, "overlay.status.connectingServer"), true);
 
     socket.addEventListener("open", () => {
       reconnectAttempt = 0;
-      setStatus("Подписка на overlay...", true);
+      setStatus(t(currentLang, "overlay.status.subscribing"), true);
       socket.send(JSON.stringify({ type: "overlaySubscribe", payload: { roomCode, token } }));
     });
 
@@ -882,7 +959,12 @@
       if (reconnectTimer) return;
       reconnectAttempt += 1;
       const timeout = Math.min(500 * 2 ** (reconnectAttempt - 1), 10000);
-      setStatus(`Связь потеряна. Переподключение через ${Math.round(timeout / 1000)}с...`, true);
+      setStatus(
+        t(currentLang, "overlay.status.connectionLost", {
+          seconds: Math.round(timeout / 1000),
+        }),
+        true
+      );
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = null;
         connect();
@@ -890,7 +972,7 @@
     });
 
     socket.addEventListener("error", () => {
-      setStatus("Ошибка подключения к overlay", true);
+      setStatus(t(currentLang, "overlay.status.connectionError"), true);
       try {
         socket.close();
       } catch {

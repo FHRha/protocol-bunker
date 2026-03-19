@@ -3,23 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Protocol: Bunker Overlay Control</title>
+    <title data-locale="control.pageTitle">Protocol: Bunker Overlay Control</title>
     <link rel="stylesheet" href="/overlay-assets/overlay-control.css" />
   </head>
   <body>
     <main class="page">
       <header class="topbar">
         <div class="topbar__meta">
-          <h1>Overlay Control</h1>
-          <p id="roomLabel" class="muted">Комната: -</p>
-          <p id="controlConnection" class="hint">Подключено: нет • Роль: - • Комната: -</p>
+          <h1 data-locale="control.title">Overlay Control</h1>
+          <p id="roomLabel" class="muted" data-locale="control.room.labelFallback">Комната: -</p>
+          <p id="controlConnection" class="hint" data-locale="control.connection.fallback">Подключено: нет • Роль: - • Комната: -</p>
           <p id="urlParamsDebug" class="hint" hidden>roomCodeFromUrl: - • tokenPresent: no</p>
         </div>
         <div class="topbar__actions">
-          <span id="dirtyBadge" class="badge">Синхронизировано</span>
-          <button id="saveBtn" type="button" class="btn btn--primary">Save</button>
-          <button id="reloadBtn" type="button" class="btn">Reload</button>
-          <button id="resetPlayerBtn" type="button" class="btn btn--danger">Reset Player</button>
+          <label class="field topbar__locale">
+            <span id="controlLocaleLabel">Язык</span>
+            <select id="controlLocaleSelect">
+              <option value="ru" data-locale="control.locale.ru">Русский</option>
+              <option value="en">English (Beta)</option>
+            </select>
+          </label>
+          <span id="dirtyBadge" class="badge" data-locale="control.dirty.clean">Синхронизировано</span>
+          <button id="saveBtn" type="button" class="btn btn--primary" data-locale="control.button.save">Save</button>
+          <button id="reloadBtn" type="button" class="btn" data-locale="control.button.reload">Reload</button>
+          <button id="resetPlayerBtn" type="button" class="btn btn--danger" data-locale="control.button.resetPlayer">Reset Player</button>
         </div>
       </header>
 
@@ -27,20 +34,20 @@
 
       <section class="layout">
         <aside class="sidebar panel">
-          <h2>Игроки комнаты</h2>
+          <h2 data-locale="control.sidebar.players">Игроки комнаты</h2>
           <label class="field">
-            <span>Выбранный игрок</span>
+            <span data-locale="control.sidebar.selectedPlayer">Выбранный игрок</span>
             <select id="playerSelect"></select>
           </label>
           <div id="sidebarPlayerActions" class="sidebar-player-actions">
-            <button id="presenterKickPlayerBtn" type="button" class="btn btn--danger">Выгнать игрока</button>
-            <p id="kickSelectedLabel" class="hint">Выбран: -</p>
+            <button id="presenterKickPlayerBtn" type="button" class="btn btn--danger" data-locale="control.button.kickPlayer">Выгнать игрока</button>
+            <p id="kickSelectedLabel" class="hint" data-locale="control.sidebar.selectedFallback">Выбран: -</p>
           </div>
           <div id="playersList" class="players-list"></div>
         </aside>
 
         <section class="editor">
-          <div class="control-tabs" role="tablist" aria-label="Режим управления">
+          <div class="control-tabs" role="tablist" aria-label="Режим управления" data-locale-aria-label="control.tabs.aria">
             <button id="gameControlTabBtn" type="button" class="btn control-tab is-active" role="tab" aria-selected="true">
               Контроль игры
             </button>
@@ -51,84 +58,84 @@
 
           <section id="gameControlTab" class="tab-panel">
             <article class="panel" id="presenterPanel">
-              <h2>Управление игрой</h2>
+              <h2 data-locale="control.game.title">Управление игрой</h2>
               <p id="presenterModeState" class="hint" hidden>Presenter mode: off (из state) = false</p>
-              <p id="presenterDisabled" class="hint">
+              <p id="presenterDisabled" class="hint" data-locale="control.presenter.disabled">
                 Режим «Ведущий» выключен в настройках комнаты.
               </p>
               <div id="presenterContent" class="presenter" hidden>
                 <div class="presenter-meta">
-                  <div><strong>Фаза комнаты:</strong> <span id="presenterRoomPhase">-</span></div>
-                  <div><strong>Фаза игры:</strong> <span id="presenterGamePhase">-</span></div>
-                  <div><strong>Раунд:</strong> <span id="presenterRound">-</span></div>
-                  <div><strong>Фаза голосования:</strong> <span id="presenterVotePhase">-</span></div>
+                  <div><strong data-locale="control.presenter.roomPhase">Фаза комнаты:</strong> <span id="presenterRoomPhase">-</span></div>
+                  <div><strong data-locale="control.presenter.gamePhase">Фаза игры:</strong> <span id="presenterGamePhase">-</span></div>
+                  <div><strong data-locale="control.presenter.round">Раунд:</strong> <span id="presenterRound">-</span></div>
+                  <div><strong data-locale="control.presenter.votePhase">Фаза голосования:</strong> <span id="presenterVotePhase">-</span></div>
                 </div>
 
                 <section class="host-block">
                   <div class="host-block__head">
-                    <h3>Замена карты игрока</h3>
-                    <p class="hint">Выбери игрока, карту и тип замены: случайно или конкретной картой из той же колоды.</p>
+                    <h3 data-locale="control.replace.title">Замена карты игрока</h3>
+                    <p class="hint" data-locale="control.replace.hint">Выбери игрока, карту и тип замены: случайно или конкретной картой из той же колоды.</p>
                   </div>
                   <div class="host-grid host-grid--2">
                     <label class="field">
-                      <span>Игрок</span>
+                      <span data-locale="control.replace.player">Игрок</span>
                       <select id="replaceTargetPlayerSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Карта игрока / спецусловие</span>
+                      <span data-locale="control.replace.card">Карта игрока / спецусловие</span>
                       <select id="replaceCardSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Режим замены</span>
+                      <span data-locale="control.replace.mode">Режим замены</span>
                       <select id="replaceModeSelect">
-                        <option value="random">Случайная из колоды</option>
-                        <option value="specific">Конкретная карта</option>
+                        <option value="random" data-locale="control.option.randomFromDeck">Случайная из колоды</option>
+                        <option value="specific" data-locale="control.option.specificCard">Конкретная карта</option>
                       </select>
                     </label>
                     <label class="field">
-                      <span>Конкретная карта</span>
+                      <span data-locale="control.replace.specificCard">Конкретная карта</span>
                       <select id="replaceSpecificCardSelect"></select>
                     </label>
                   </div>
                   <div class="row">
-                    <button id="replaceExecuteBtn" type="button" class="btn btn--primary">Заменить карту</button>
+                    <button id="replaceExecuteBtn" type="button" class="btn btn--primary" data-locale="control.replace.execute">Заменить карту</button>
                     <span id="replaceHint" class="hint"></span>
                   </div>
                 </section>
 
                 <section class="host-block">
                   <div class="host-block__head">
-                    <h3>Голосование и раунд</h3>
-                    <p class="hint">Контроль шагов, голосования и итогового исхода игры.</p>
+                    <h3 data-locale="control.vote.title">Голосование и раунд</h3>
+                    <p class="hint" data-locale="control.vote.hint">Контроль шагов, голосования и итогового исхода игры.</p>
                   </div>
                   <div class="row">
-                    <button id="voteStartGameBtn" type="button" class="btn btn--primary">Начать игру</button>
-                    <button id="voteNextStepBtn" type="button" class="btn">Следующий шаг</button>
-                    <button id="voteSkipStepBtn" type="button" class="btn">Пропустить шаг</button>
-                    <button id="voteStartBtn" type="button" class="btn">Начать голосование</button>
-                    <button id="voteEndBtn" type="button" class="btn">Завершить голосование</button>
-                    <button id="voteSkipRoundBtn" type="button" class="btn">Пропустить раунд</button>
+                    <button id="voteStartGameBtn" type="button" class="btn btn--primary" data-locale="control.command.START_GAME">Начать игру</button>
+                    <button id="voteNextStepBtn" type="button" class="btn" data-locale="control.command.NEXT_STEP">Следующий шаг</button>
+                    <button id="voteSkipStepBtn" type="button" class="btn" data-locale="control.command.SKIP_STEP">Пропустить шаг</button>
+                    <button id="voteStartBtn" type="button" class="btn" data-locale="control.command.START_VOTE">Начать голосование</button>
+                    <button id="voteEndBtn" type="button" class="btn" data-locale="control.command.END_VOTE">Завершить голосование</button>
+                    <button id="voteSkipRoundBtn" type="button" class="btn" data-locale="control.command.SKIP_ROUND">Пропустить раунд</button>
                   </div>
                   <div id="voteOutcomeRow" class="row presenter-outcome" hidden>
-                    <button id="voteOutcomeSurvivedBtn" type="button" class="btn btn--primary">Выжил в бункере</button>
-                    <button id="voteOutcomeFailedBtn" type="button" class="btn btn--danger">Не выжил</button>
-                    <span id="voteOutcomeState" class="hint">Исход не выбран.</span>
+                    <button id="voteOutcomeSurvivedBtn" type="button" class="btn btn--primary" data-locale="control.command.SET_OUTCOME_SURVIVED">Выжил в бункере</button>
+                    <button id="voteOutcomeFailedBtn" type="button" class="btn btn--danger" data-locale="control.command.SET_OUTCOME_FAILED">Не выжил</button>
+                    <span id="voteOutcomeState" class="hint" data-locale="control.vote.outcomeNone">Исход не выбран.</span>
                   </div>
                 </section>
 
                 <section class="host-block">
                   <div class="host-block__head">
-                    <h3>Передача ведущего</h3>
-                    <p class="hint">Передай роль ведущего подключенному игроку в текущей комнате.</p>
+                    <h3 data-locale="control.transfer.title">Передача ведущего</h3>
+                    <p class="hint" data-locale="control.transfer.hint">Передай роль ведущего подключенному игроку в текущей комнате.</p>
                   </div>
                   <div class="host-grid host-grid--2">
                     <label class="field">
-                      <span>Новый ведущий</span>
+                      <span data-locale="control.transfer.target">Новый ведущий</span>
                       <select id="hostTransferTargetSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Действие</span>
-                      <button id="hostTransferBtn" type="button" class="btn">Передать ведущего</button>
+                      <span data-locale="control.transfer.action">Действие</span>
+                      <button id="hostTransferBtn" type="button" class="btn" data-locale="control.command.TRANSFER_HOST">Передать ведущего</button>
                     </label>
                   </div>
                   <div class="row">
@@ -140,12 +147,12 @@
                   <table class="presenter-table">
                     <thead>
                       <tr>
-                        <th>Игрок</th>
-                        <th>Статус</th>
-                        <th>Голосовал</th>
-                        <th>Цель голоса</th>
-                        <th>Голосов против</th>
-                        <th>Раскрыл</th>
+                        <th data-locale="control.table.player">Игрок</th>
+                        <th data-locale="control.table.status">Статус</th>
+                        <th data-locale="control.table.voted">Голосовал</th>
+                        <th data-locale="control.table.voteTarget">Цель голоса</th>
+                        <th data-locale="control.table.votesAgainst">Голосов против</th>
+                        <th data-locale="control.table.revealed">Раскрыл</th>
                       </tr>
                     </thead>
                     <tbody id="presenterPlayersBody"></tbody>
@@ -154,50 +161,50 @@
 
                 <section class="host-block">
                   <div class="host-block__head">
-                    <h3>Карты мира</h3>
-                    <p class="hint">Управляй угрозами и картами бункера: раскрытие, скрытие, замена и количество активных карт.</p>
+                    <h3 data-locale="control.world.title">Карты мира</h3>
+                    <p class="hint" data-locale="control.world.hint">Управляй угрозами и картами бункера: раскрытие, скрытие, замена и количество активных карт.</p>
                   </div>
                   <div class="world-admin-grid">
                     <div class="world-admin-col">
-                      <h4>Видимость карты</h4>
+                      <h4 data-locale="control.world.visibilityTitle">Видимость карты</h4>
                       <label class="field">
-                        <span>Тип карты мира</span>
+                        <span data-locale="control.world.kind">Тип карты мира</span>
                         <select id="worldKindSelect">
-                          <option value="threat">Угроза</option>
-                          <option value="bunker">Бункер</option>
-                          <option value="disaster">Катастрофа</option>
+                          <option value="threat" data-locale="control.world.kind.threat">Угроза</option>
+                          <option value="bunker" data-locale="control.world.kind.bunker">Бункер</option>
+                          <option value="disaster" data-locale="control.world.kind.disaster">Катастрофа</option>
                         </select>
                       </label>
                       <label class="field">
-                        <span>Карта</span>
+                        <span data-locale="control.world.card">Карта</span>
                         <select id="worldIndexSelect"></select>
                       </label>
-                      <button id="worldToggleRevealBtn" type="button" class="btn">Раскрыть/скрыть карту</button>
+                      <button id="worldToggleRevealBtn" type="button" class="btn" data-locale="control.world.toggleReveal">Раскрыть/скрыть карту</button>
                     </div>
 
                     <div class="world-admin-col">
-                      <h4>Замена карты</h4>
+                      <h4 data-locale="control.world.replaceTitle">Замена карты</h4>
                       <label class="field">
-                        <span>Режим замены</span>
+                        <span data-locale="control.world.replaceMode">Режим замены</span>
                         <select id="worldReplaceModeSelect">
-                          <option value="random">Случайная из колоды</option>
-                          <option value="specific">Конкретная карта</option>
+                          <option value="random" data-locale="control.option.randomFromDeck">Случайная из колоды</option>
+                          <option value="specific" data-locale="control.option.specificCard">Конкретная карта</option>
                         </select>
                       </label>
                       <label class="field">
-                        <span>Карта для замены</span>
+                        <span data-locale="control.world.replaceCard">Карта для замены</span>
                         <select id="worldReplaceCardSelect"></select>
                       </label>
-                      <button id="worldReplaceBtn" type="button" class="btn">Заменить карту мира</button>
+                      <button id="worldReplaceBtn" type="button" class="btn" data-locale="control.world.replaceBtn">Заменить карту мира</button>
                     </div>
 
                     <div class="world-admin-col">
-                      <h4>Количество карт</h4>
+                      <h4 data-locale="control.world.countTitle">Количество карт</h4>
                       <label class="field">
-                        <span>Активных карт</span>
+                        <span data-locale="control.world.countInput">Активных карт</span>
                         <input id="worldCountInput" type="number" min="0" step="1" />
                       </label>
-                      <button id="worldSetCountBtn" type="button" class="btn">Изменить количество карт</button>
+                      <button id="worldSetCountBtn" type="button" class="btn" data-locale="control.world.setCountBtn">Изменить количество карт</button>
                     </div>
                   </div>
                   <div class="row">
@@ -207,97 +214,97 @@
 
                 <section class="host-block">
                   <div class="host-block__head">
-                    <h3>Применение спецусловий</h3>
-                    <p class="hint">Ведущий может применить спецусловие игрока или любую карту спецусловия из каталога.</p>
+                    <h3 data-locale="control.special.title">Применение спецусловий</h3>
+                    <p class="hint" data-locale="control.special.hint">Ведущий может применить спецусловие игрока или любую карту спецусловия из каталога.</p>
                   </div>
                   <div class="host-grid host-grid--2">
                     <label class="field">
-                      <span>Игрок-источник</span>
+                      <span data-locale="control.special.actor">Игрок-источник</span>
                       <select id="specialActorPlayerSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Режим</span>
+                      <span data-locale="control.special.mode">Режим</span>
                       <select id="specialSourceModeSelect">
-                        <option value="owned">Из карт игрока</option>
-                        <option value="catalog">Любая карта спецусловий</option>
+                        <option value="owned" data-locale="control.special.mode.owned">Из карт игрока</option>
+                        <option value="catalog" data-locale="control.special.mode.catalog">Любая карта спецусловий</option>
                       </select>
                     </label>
                     <label class="field">
-                      <span>Спецусловие</span>
+                      <span data-locale="control.special.card">Спецусловие</span>
                       <select id="specialPickerSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Целевой игрок (если нужен)</span>
+                      <span data-locale="control.special.targetPlayer">Целевой игрок (если нужен)</span>
                       <select id="specialTargetPlayerSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Карта багажа цели (если нужна)</span>
+                      <span data-locale="control.special.targetBaggage">Карта багажа цели (если нужна)</span>
                       <select id="specialTargetCardSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Индекс карты мира/бункера (если нужен)</span>
+                      <span data-locale="control.special.worldIndex">Индекс карты мира/бункера (если нужен)</span>
                       <select id="specialThreatIndexSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Категория (если нужна)</span>
+                      <span data-locale="control.special.category">Категория (если нужна)</span>
                       <select id="specialCategorySelect">
-                        <option value="">Не выбрано</option>
-                        <option value="profession">Профессия</option>
-                        <option value="health">Здоровье</option>
-                        <option value="hobby">Хобби</option>
-                        <option value="baggage">Багаж</option>
-                        <option value="biology">Биология</option>
-                        <option value="fact1">Факт №1</option>
-                        <option value="fact2">Факт №2</option>
+                        <option value="" data-locale="control.option.none">Не выбрано</option>
+                        <option value="profession" data-locale="overlay.category.profession">Профессия</option>
+                        <option value="health" data-locale="overlay.category.health">Здоровье</option>
+                        <option value="hobby" data-locale="overlay.category.hobby">Хобби</option>
+                        <option value="baggage" data-locale="overlay.category.baggage">Багаж</option>
+                        <option value="biology" data-locale="overlay.category.biology">Биология</option>
+                        <option value="fact1" data-locale="overlay.category.fact1">Факт №1</option>
+                        <option value="fact2" data-locale="overlay.category.fact2">Факт №2</option>
                       </select>
                     </label>
                     <label class="field">
-                      <span>Применить к себе (если поддерживается)</span>
+                      <span data-locale="control.special.useSelf">Применить к себе (если поддерживается)</span>
                       <select id="specialUseSelfSelect">
-                        <option value="">Авто</option>
-                        <option value="true">Да</option>
-                        <option value="false">Нет</option>
+                        <option value="" data-locale="control.option.auto">Авто</option>
+                        <option value="true" data-locale="control.option.yes">Да</option>
+                        <option value="false" data-locale="control.option.no">Нет</option>
                       </select>
                     </label>
                   </div>
                   <label class="field">
-                    <span>Описание карты</span>
+                    <span data-locale="control.special.description">Описание карты</span>
                     <textarea id="specialDescriptionText" rows="3" readonly></textarea>
                   </label>
                   <div class="row">
-                    <button id="specialApplyBtn" type="button" class="btn btn--primary">Применить спецусловие</button>
+                    <button id="specialApplyBtn" type="button" class="btn btn--primary" data-locale="control.special.applyBtn">Применить спецусловие</button>
                     <span id="specialHint" class="hint"></span>
                   </div>
                 </section>
 
                 <section class="host-block">
                   <div class="host-block__head">
-                    <h3>Dev функции</h3>
-                    <p class="hint">Тестовые действия для отладки комнаты и сценария.</p>
+                    <h3 data-locale="control.dev.title">Dev функции</h3>
+                    <p class="hint" data-locale="control.dev.hint">Тестовые действия для отладки комнаты и сценария.</p>
                   </div>
                   <div class="host-grid host-grid--2">
                     <label class="field">
-                      <span>Имя бота</span>
-                      <input id="devBotNameInput" type="text" maxlength="24" placeholder="Тестовый игрок" />
+                      <span data-locale="control.dev.botName">Имя бота</span>
+                      <input id="devBotNameInput" type="text" maxlength="24" placeholder="Тестовый игрок" data-locale-placeholder="control.placeholder.testPlayer" />
                     </label>
                     <label class="field">
-                      <span>Игрок для действия</span>
+                      <span data-locale="control.dev.targetPlayer">Игрок для действия</span>
                       <select id="devTargetPlayerSelect"></select>
                     </label>
                   </div>
                   <div class="row">
-                    <button id="devAddBotBtn" type="button" class="btn btn--primary">Добавить бота</button>
-                    <button id="devRemoveBotBtn" type="button" class="btn">Удалить выбранного</button>
-                    <button id="devKickBtn" type="button" class="btn btn--danger">Выгнать выбранного</button>
-                    <button id="devMarkLeftBtn" type="button" class="btn">Перевести вне бункера</button>
-                    <button id="devSkipRoundBtn" type="button" class="btn">Пропустить раунд</button>
+                    <button id="devAddBotBtn" type="button" class="btn btn--primary" data-locale="control.dev.addBot">Добавить бота</button>
+                    <button id="devRemoveBotBtn" type="button" class="btn" data-locale="control.dev.removeSelected">Удалить выбранного</button>
+                    <button id="devKickBtn" type="button" class="btn btn--danger" data-locale="control.dev.kickSelected">Выгнать выбранного</button>
+                    <button id="devMarkLeftBtn" type="button" class="btn" data-locale="control.dev.markLeft">Перевести вне бункера</button>
+                    <button id="devSkipRoundBtn" type="button" class="btn" data-locale="control.dev.skipRound">Пропустить раунд</button>
                     <span id="devHint" class="hint"></span>
                   </div>
                 </section>
 
                 <details class="advanced presenter-editor">
-                  <summary>Расширенный режим (универсальные действия)</summary>
-                  <h3>Быстрый контроль стола</h3>
+                  <summary data-locale="control.advanced.summary">Расширенный режим (универсальные действия)</summary>
+                  <h3 data-locale="control.quick.title">Быстрый контроль стола</h3>
                   <p class="hint">
                     Выбери действие, затем цель/карту и нажми «Выполнить». Ниже показываются только нужные поля.
                   </p>
@@ -305,66 +312,66 @@
                   <p id="controlGuide" class="hint control-guide">-</p>
                   <div class="presenter-editor-grid">
                     <label class="field">
-                      <span>Игрок-исполнитель</span>
+                      <span data-locale="control.quick.actor">Игрок-исполнитель</span>
                       <select id="controlActorSelect"></select>
                     </label>
                     <label class="field">
-                      <span>Действие</span>
+                      <span data-locale="control.quick.action">Действие</span>
                       <select id="controlScenarioAction">
-                        <option value="revealCard">Раскрыть карту</option>
-                        <option value="applySpecial">Применить спецусловие</option>
-                        <option value="vote">Проголосовать</option>
-                        <option value="continueRound">Следующий шаг (continueRound)</option>
-                        <option value="finalizeVoting">Завершить голосование (finalizeVoting)</option>
-                        <option value="revealWorldThreat">Раскрыть угрозу мира</option>
-                        <option value="setBunkerOutcome">Поставить итог бункера</option>
-                        <option value="markLeftBunker">Перевести игрока во "вне бункера"</option>
-                        <option value="devKickPlayer">DEV: выгнать игрока</option>
-                        <option value="devSkipRound">DEV: пропустить раунд</option>
-                        <option value="devAddPlayer">DEV: добавить бота</option>
-                        <option value="devRemovePlayer">DEV: удалить бота</option>
+                        <option value="revealCard" data-locale="control.quick.action.revealCard">Раскрыть карту</option>
+                        <option value="applySpecial" data-locale="control.quick.action.applySpecial">Применить спецусловие</option>
+                        <option value="vote" data-locale="control.quick.action.vote">Проголосовать</option>
+                        <option value="continueRound" data-locale="control.quick.action.continueRound">Следующий шаг (continueRound)</option>
+                        <option value="finalizeVoting" data-locale="control.quick.action.finalizeVoting">Завершить голосование (finalizeVoting)</option>
+                        <option value="revealWorldThreat" data-locale="control.quick.action.revealWorldThreat">Раскрыть угрозу мира</option>
+                        <option value="setBunkerOutcome" data-locale="control.quick.action.setBunkerOutcome">Поставить итог бункера</option>
+                        <option value="markLeftBunker" data-locale="control.quick.action.markLeftBunker">Перевести игрока во "вне бункера"</option>
+                        <option value="devKickPlayer" data-locale="control.quick.action.devKickPlayer">DEV: выгнать игрока</option>
+                        <option value="devSkipRound" data-locale="control.quick.action.devSkipRound">DEV: пропустить раунд</option>
+                        <option value="devAddPlayer" data-locale="control.quick.action.devAddPlayer">DEV: добавить бота</option>
+                        <option value="devRemovePlayer" data-locale="control.quick.action.devRemovePlayer">DEV: удалить бота</option>
                       </select>
                     </label>
                     <label id="controlTargetRow" class="field">
-                      <span>Целевой игрок</span>
+                      <span data-locale="control.quick.targetPlayer">Целевой игрок</span>
                       <select id="controlTargetSelect"></select>
                     </label>
                     <label id="controlCardRow" class="field">
-                      <span>Карта игрока (или багаж-цель)</span>
+                      <span data-locale="control.quick.card">Карта игрока (или багаж-цель)</span>
                       <select id="controlCardSelect"></select>
                     </label>
                     <label id="controlSpecialRow" class="field">
-                      <span>Спецусловие</span>
+                      <span data-locale="control.quick.special">Спецусловие</span>
                       <select id="controlSpecialSelect"></select>
                     </label>
                     <label id="controlThreatRow" class="field">
-                      <span>Индекс мира/бункера (опционально)</span>
+                      <span data-locale="control.quick.worldIndex">Индекс мира/бункера (опционально)</span>
                       <select id="controlThreatIndex"></select>
                     </label>
                     <label id="controlOutcomeRow" class="field">
-                      <span>Исход бункера</span>
+                      <span data-locale="control.quick.outcome">Исход бункера</span>
                       <select id="controlOutcomeSelect">
-                        <option value="survived">Выжил</option>
-                        <option value="failed">Не выжил</option>
+                        <option value="survived" data-locale="control.option.survived">Выжил</option>
+                        <option value="failed" data-locale="control.option.failed">Не выжил</option>
                       </select>
                     </label>
                     <label id="controlDevNameRow" class="field">
-                      <span>Имя бота (опционально)</span>
-                      <input id="controlDevNameInput" type="text" maxlength="24" placeholder="Тестовый игрок" />
+                      <span data-locale="control.quick.devName">Имя бота (опционально)</span>
+                      <input id="controlDevNameInput" type="text" maxlength="24" placeholder="Тестовый игрок" data-locale-placeholder="control.placeholder.testPlayer" />
                     </label>
                   </div>
                   <div id="controlCardPicker" class="control-pickers" hidden></div>
                   <div id="controlSpecialPicker" class="control-pickers" hidden></div>
                   <div id="controlThreatPicker" class="control-pickers" hidden></div>
                   <details class="advanced">
-                    <summary>Advanced: payload JSON (опционально)</summary>
+                    <summary data-locale="control.quick.advancedPayload">Advanced: payload JSON (опционально)</summary>
                     <label class="field">
-                      <span>Дополнительный payload JSON</span>
+                      <span data-locale="control.quick.payload">Дополнительный payload JSON</span>
                       <textarea id="controlPayloadJson" rows="5" placeholder='{"targetPlayerId":"...","category":"baggage"}'></textarea>
                     </label>
                   </details>
                   <div class="row">
-                    <button id="controlExecuteBtn" type="button" class="btn btn--primary">Выполнить действие</button>
+                    <button id="controlExecuteBtn" type="button" class="btn btn--primary" data-locale="control.quick.execute">Выполнить действие</button>
                     <span id="controlActionHint" class="hint"></span>
                   </div>
                 </details>
@@ -374,7 +381,7 @@
 
           <section id="obsControlTab" class="tab-panel" hidden>
             <article class="panel">
-            <h2>Верхние блоки Overlay</h2>
+            <h2 data-locale="control.obs.topBlocksTitle">Верхние блоки Overlay</h2>
             <p class="hint">
               Эти поля управляют текстом в верхней полосе OBS overlay. Если ручной текст выключен,
               в overlay показывается автоматическое значение из текущего состояния игры.
@@ -382,37 +389,45 @@
 
             <div class="fields-inline">
               <label class="field">
-                <span>Пресет фона (авто под 4/8/12 игроков)</span>
+                <span data-locale="control.obs.backgroundPreset">Пресет фона (авто под 4/8/12 игроков)</span>
                 <select id="backgroundPresetSelect"></select>
                 <span id="backgroundPresetHint" class="meta">Фон не выбран (прозрачный).</span>
               </label>
             </div>
 
             <div class="field">
-              <span>Пресеты URL для OBS</span>
+              <span data-locale="control.obs.urlPresets">Пресеты URL для OBS</span>
               <div id="overlayUrlPresetButtons" class="row"></div>
-              <span id="overlayUrlPresetHint" class="meta">Выбери пресет для быстрого URL в OBS.</span>
+              <span id="overlayUrlPresetHint" class="meta" data-locale="control.urlPreset.selectHint">Выбери пресет для быстрого URL в OBS.</span>
             </div>
             <div class="url-params-grid">
               <label class="field">
-                <span>Тема</span>
+                <span data-locale="control.locale.label">Язык</span>
+                <select id="urlParamLang">
+                  <option value="" data-locale="control.option.autoRu">Авто (ru)</option>
+                  <option value="ru">ru</option>
+                  <option value="en" data-locale="control.option.enBeta">en (beta)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-locale="control.obs.theme">Тема</span>
                 <select id="urlParamTheme">
-                  <option value="">Авто</option>
+                  <option value="" data-locale="control.option.auto">Авто</option>
                   <option value="mint">mint</option>
                   <option value="warm">warm</option>
                   <option value="dark">dark</option>
                 </select>
               </label>
               <label class="field">
-                <span>Scale (0.8-1.6)</span>
+                <span data-locale="control.obs.scale">Scale (0.8-1.6)</span>
                 <input id="urlParamScale" type="number" min="0.8" max="1.6" step="0.01" placeholder="1.3" />
               </label>
               <label class="field">
-                <span>Top (160-320)</span>
+                <span data-locale="control.obs.top">Top (160-320)</span>
                 <input id="urlParamTop" type="number" min="160" max="320" step="1" placeholder="200" />
               </label>
               <label class="field">
-                <span>Debug</span>
+                <span data-locale="control.obs.debug">Debug</span>
                 <select id="urlParamDebug">
                   <option value="">off</option>
                   <option value="1">on (debug=1)</option>
@@ -420,129 +435,129 @@
               </label>
             </div>
             <label class="field">
-              <span>Готовый URL для OBS</span>
+              <span data-locale="control.obs.readyUrl">Готовый URL для OBS</span>
               <input id="overlayUrlPresetValue" type="text" readonly />
             </label>
             <div class="row">
-              <button id="overlayUrlPresetOpenBtn" type="button" class="btn">Open</button>
-              <button id="overlayUrlPresetCopyBtn" type="button" class="btn">Copy</button>
+              <button id="overlayUrlPresetOpenBtn" type="button" class="btn" data-locale="control.button.open">Open</button>
+              <button id="overlayUrlPresetCopyBtn" type="button" class="btn" data-locale="control.button.copy">Copy</button>
             </div>
             <details class="advanced">
-              <summary>Advanced: свой URL шаблон</summary>
+              <summary data-locale="control.obs.advancedTemplate">Advanced: свой URL шаблон</summary>
               <label class="field">
-                <span>Шаблон URL</span>
+                <span data-locale="control.obs.templateLabel">Шаблон URL</span>
                 <input
                   id="overlayUrlPresetTemplate"
                   type="text"
-                  placeholder="https://127.0.0.1:3001/overlay?room={ROOM}&token={TOKEN}&bgPreset={BG_PRESET}"
+                  placeholder="https://127.0.0.1:3001/overlay?room={ROOM}&token={TOKEN}&lang={LANG}&bgPreset={BG_PRESET}"
                 />
               </label>
-              <p class="hint">Поддерживаемые теги: <code>{ROOM}</code>, <code>{TOKEN}</code>, <code>{BG_PRESET}</code>.</p>
+              <p class="hint" data-locale="control.obs.templateTags">Поддерживаемые теги: {ROOM}, {TOKEN}, {LANG}, {BG_PRESET}.</p>
             </details>
 
             <div class="top-grid top-grid--preview">
               <section class="preview-box">
-                <h3>Сейчас в OBS: Бункер</h3>
+                <h3 data-locale="control.obs.currentBunker">Сейчас в OBS: Бункер</h3>
                 <pre id="topCurrentBunker" class="preview-value">-</pre>
               </section>
               <section class="preview-box">
-                <h3>Сейчас в OBS: Катастрофа</h3>
+                <h3 data-locale="control.obs.currentCatastrophe">Сейчас в OBS: Катастрофа</h3>
                 <pre id="topCurrentCatastrophe" class="preview-value">-</pre>
               </section>
               <section class="preview-box">
-                <h3>Сейчас в OBS: Угрозы</h3>
+                <h3 data-locale="control.obs.currentThreats">Сейчас в OBS: Угрозы</h3>
                 <pre id="topCurrentThreats" class="preview-value">-</pre>
               </section>
             </div>
 
             <div class="checks checks--stack">
-              <label title="Включает/выключает применение ручного текста к блоку Бункер. Сам блок в overlay не скрывается.">
-                <input type="checkbox" id="enabled_topBunker" /> Использовать ручной текст для блока «Бункер»
+              <label data-locale-title="control.obs.enableBunker.title" title="Включает/выключает применение ручного текста к блоку Бункер. Сам блок в overlay не скрывается.">
+                <input type="checkbox" id="enabled_topBunker" /> <span data-locale="control.obs.enableBunker.label">Использовать ручной текст для блока «Бункер»</span>
               </label>
-              <label title="Включает/выключает применение ручного текста к блоку Катастрофа. Сам блок в overlay не скрывается.">
-                <input type="checkbox" id="enabled_topCatastrophe" /> Использовать ручной текст для блока «Катастрофа»
+              <label data-locale-title="control.obs.enableCatastrophe.title" title="Включает/выключает применение ручного текста к блоку Катастрофа. Сам блок в overlay не скрывается.">
+                <input type="checkbox" id="enabled_topCatastrophe" /> <span data-locale="control.obs.enableCatastrophe.label">Использовать ручной текст для блока «Катастрофа»</span>
               </label>
-              <label title="Включает/выключает применение ручного текста к блоку Угрозы. Сам блок в overlay не скрывается.">
-                <input type="checkbox" id="enabled_topThreats" /> Использовать ручной текст для блока «Угрозы»
+              <label data-locale-title="control.obs.enableThreats.title" title="Включает/выключает применение ручного текста к блоку Угрозы. Сам блок в overlay не скрывается.">
+                <input type="checkbox" id="enabled_topThreats" /> <span data-locale="control.obs.enableThreats.label">Использовать ручной текст для блока «Угрозы»</span>
               </label>
             </div>
 
             <div class="top-grid">
               <label class="field">
-                <span>Бункер (до 5 строк, до 120 символов в строке)</span>
-                <textarea id="topBunkerLines" rows="5" placeholder="Одна строка = один пункт"></textarea>
+                <span data-locale="control.obs.bunkerInput">Бункер (до 5 строк, до 120 символов в строке)</span>
+                <textarea id="topBunkerLines" rows="5" placeholder="Одна строка = один пункт" data-locale-placeholder="control.placeholder.oneLineOneItem"></textarea>
                 <span id="topBunkerMeta" class="meta">0/5 строк</span>
               </label>
               <label class="field">
-                <span>Катастрофа (до 600 символов)</span>
-                <textarea id="topCatastropheText" rows="5" maxlength="600" placeholder="Текст катастрофы"></textarea>
+                <span data-locale="control.obs.catastropheInput">Катастрофа (до 600 символов)</span>
+                <textarea id="topCatastropheText" rows="5" maxlength="600" placeholder="Текст катастрофы" data-locale-placeholder="control.placeholder.catastropheText"></textarea>
                 <span id="topCatastropheMeta" class="meta">0/600 символов</span>
-                <span class="meta">Источник из данных катастрофы:</span>
+                <span class="meta" data-locale="control.obs.catastropheSource">Источник из данных катастрофы:</span>
                 <pre id="topBaseCatastrophe" class="preview-inline">-</pre>
-                <span id="topCatastropheSource" class="meta">Сейчас используется: авто</span>
+                <span id="topCatastropheSource" class="meta" data-locale="control.obs.catastropheSourceCurrent">Сейчас используется: авто</span>
               </label>
               <label class="field">
-                <span>Угрозы (до 6 строк, до 120 символов в строке)</span>
-                <textarea id="topThreatsLines" rows="5" placeholder="Одна строка = одна угроза"></textarea>
+                <span data-locale="control.obs.threatsInput">Угрозы (до 6 строк, до 120 символов в строке)</span>
+                <textarea id="topThreatsLines" rows="5" placeholder="Одна строка = одна угроза" data-locale-placeholder="control.placeholder.oneLineOneThreat"></textarea>
                 <span id="topThreatsMeta" class="meta">0/6 строк</span>
               </label>
             </div>
             </article>
 
             <article class="panel">
-            <h2 id="playerEditorTitle">Игрок</h2>
+            <h2 id="playerEditorTitle" data-locale="control.playerEditor.title">Игрок</h2>
             <p class="hint">
               Редактируйте только выбранного игрока. Поля ниже применяются к тому, что реально видит зритель на overlay.
             </p>
 
             <div class="checks checks--player">
-              <label title="Включает/выключает отображение имени этого игрока в overlay.">
-                <input type="checkbox" id="playerEnabledName" /> Показывать имя
+              <label data-locale-title="control.playerEditor.showNameTitle" title="Включает/выключает отображение имени этого игрока в overlay.">
+                <input type="checkbox" id="playerEnabledName" /> <span data-locale="control.playerEditor.showName">Показывать имя</span>
               </label>
-              <label title="Включает/выключает блок traits (пол/возраст/ориентация) этого игрока в overlay.">
-                <input type="checkbox" id="playerEnabledTraits" /> Показывать traits
+              <label data-locale-title="control.playerEditor.showTraitsTitle" title="Включает/выключает блок traits (пол/возраст/ориентация) этого игрока в overlay.">
+                <input type="checkbox" id="playerEnabledTraits" /> <span data-locale="control.playerEditor.showTraits">Показывать traits</span>
               </label>
-              <label title="Включает/выключает блок категорий этого игрока в overlay.">
-                <input type="checkbox" id="playerEnabledCategories" /> Показывать категории
+              <label data-locale-title="control.playerEditor.showCategoriesTitle" title="Включает/выключает блок категорий этого игрока в overlay.">
+                <input type="checkbox" id="playerEnabledCategories" /> <span data-locale="control.playerEditor.showCategories">Показывать категории</span>
               </label>
             </div>
 
             <div class="fields-inline">
               <label class="field">
-                <span>Имя на overlay (0..24)</span>
-                <input id="playerName" type="text" maxlength="24" placeholder="Имя игрока" />
+                <span data-locale="control.playerEditor.name">Имя на overlay (0..24)</span>
+                <input id="playerName" type="text" maxlength="24" placeholder="Имя игрока" data-locale-placeholder="control.placeholder.playerName" />
                 <span id="currentPlayerName" class="meta">Сейчас в OBS: -</span>
               </label>
               <label class="field">
-                <span>Пол (0..120)</span>
-                <input id="traitSex" type="text" maxlength="120" placeholder="Например: М" />
+                <span data-locale="control.playerEditor.sex">Пол (0..120)</span>
+                <input id="traitSex" type="text" maxlength="120" placeholder="Например: М" data-locale-placeholder="control.placeholder.sex" />
                 <span id="currentTraitSex" class="meta">Сейчас в OBS: -</span>
               </label>
               <label class="field">
-                <span>Возраст (0..120)</span>
-                <input id="traitAge" type="text" maxlength="120" placeholder="Например: 35" />
+                <span data-locale="control.playerEditor.age">Возраст (0..120)</span>
+                <input id="traitAge" type="text" maxlength="120" placeholder="Например: 35" data-locale-placeholder="control.placeholder.age" />
                 <span id="currentTraitAge" class="meta">Сейчас в OBS: -</span>
               </label>
               <label class="field">
-                <span>Ориентация (0..120)</span>
-                <input id="traitOrient" type="text" maxlength="120" placeholder="Например: гетеро" />
+                <span data-locale="control.playerEditor.orientation">Ориентация (0..120)</span>
+                <input id="traitOrient" type="text" maxlength="120" placeholder="Например: гетеро" data-locale-placeholder="control.placeholder.orientation" />
                 <span id="currentTraitOrient" class="meta">Сейчас в OBS: -</span>
               </label>
             </div>
 
-            <h3 class="sub">Категории</h3>
+            <h3 class="sub" data-locale="control.playerEditor.categories">Категории</h3>
             <div id="categoriesGrid" class="categories-grid"></div>
-            <p class="hint">Кнопка «Случайно» берёт значение из уже видимых категорий игроков в текущем overlay state.</p>
+            <p class="hint" data-locale="control.playerEditor.randomHint">Кнопка «Случайно» берёт значение из уже видимых категорий игроков в текущем overlay state.</p>
 
             <details class="advanced">
-              <summary>Advanced: categories JSON (для выбранного игрока)</summary>
+              <summary data-locale="control.playerEditor.advancedCategories">Advanced: categories JSON (для выбранного игрока)</summary>
               <p class="hint">
                 Формат: <code>Record&lt;CategoryKey, string&gt;</code>. Пустая строка удаляет override. Отсутствующий ключ не меняет базовое значение.
               </p>
               <p id="categoriesAllowedKeys" class="hint">Разрешённые ключи: -</p>
               <div class="row">
-                <button id="insertCategoriesTemplateBtn" type="button" class="btn">Вставить шаблон</button>
-                <button id="applyCategoriesJsonBtn" type="button" class="btn">Применить JSON</button>
+                <button id="insertCategoriesTemplateBtn" type="button" class="btn" data-locale="control.playerEditor.insertTemplate">Вставить шаблон</button>
+                <button id="applyCategoriesJsonBtn" type="button" class="btn" data-locale="control.playerEditor.applyJson">Применить JSON</button>
               </div>
               <label class="field">
                 <span>categories JSON</span>
@@ -552,21 +567,21 @@
             </article>
 
             <article class="panel">
-            <h2>Доп. тексты OBS</h2>
+            <h2 data-locale="control.extraTexts.title">Доп. тексты OBS</h2>
             <p class="hint">
               Это произвольные подписи поверх overlay (например: таймер, служебная строка, заметка ведущего).
             </p>
             <div id="extraTextsList" class="extra-list"></div>
             <div class="row">
-              <button id="addExtraTextBtn" type="button" class="btn">Добавить текстовый блок</button>
+              <button id="addExtraTextBtn" type="button" class="btn" data-locale="control.extraTexts.add">Добавить текстовый блок</button>
             </div>
 
             <details class="advanced">
-              <summary>Advanced: extraTexts JSON</summary>
+              <summary data-locale="control.extraTexts.advanced">Advanced: extraTexts JSON</summary>
               <p class="hint">Формат: <code>Array&lt;{id,text,x,y,align,size,color,shadow,visible}&gt;</code>.</p>
               <div class="row">
-                <button id="syncExtraTextsJsonBtn" type="button" class="btn">Обновить JSON из формы</button>
-                <button id="applyExtraTextsJsonBtn" type="button" class="btn">Применить JSON</button>
+                <button id="syncExtraTextsJsonBtn" type="button" class="btn" data-locale="control.extraTexts.syncJson">Обновить JSON из формы</button>
+                <button id="applyExtraTextsJsonBtn" type="button" class="btn" data-locale="control.extraTexts.applyJson">Применить JSON</button>
               </div>
               <label class="field">
                 <span>extraTexts JSON</span>
@@ -579,6 +594,19 @@
       </section>
     </main>
 
+    <!-- Confirm Modal -->
+    <div id="confirmModal" class="modal-backdrop" hidden>
+      <div class="modal-card">
+        <h3 id="confirmModalTitle" class="modal-title" data-locale="control.confirm.title">Подтверждение</h3>
+        <p id="confirmModalMessage" class="modal-message">Текст подтверждения</p>
+        <div class="modal-actions">
+          <button id="confirmModalCancel" type="button" class="btn" data-locale="control.modal.cancel">Отмена</button>
+          <button id="confirmModalConfirm" type="button" class="btn btn--primary" data-locale="control.modal.confirm">Подтвердить</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/overlay-assets/overlay-locale.js"></script>
     <script src="/overlay-assets/overlay-control.js"></script>
   </body>
 </html>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssetCatalog, ScenarioContext } from "@bunker/shared";
 import { scenario as devScenario } from "../src/dev_test";
+import { tDev } from "../src/devTestLocale";
 
 const makeRng = (seed = 1) => {
   let state = seed >>> 0;
@@ -17,14 +18,22 @@ const makeDeck = (name: string, count: number) =>
     labelShort: `${name} ${idx + 1}`,
   }));
 
+// Use localized deck names via tDev()
+const DECK_PROFESSION = tDev("deck.profession");
+const DECK_HEALTH = tDev("deck.health");
+const DECK_HOBBY = tDev("deck.hobby");
+const DECK_BAGGAGE = tDev("deck.baggage");
+const DECK_FACTS = tDev("deck.fact");
+const DECK_BIOLOGY = tDev("deck.biology");
+
 const makeAssets = (): AssetCatalog => ({
   decks: {
-    Профессия: makeDeck("Профессия", 12),
-    Здоровье: makeDeck("Здоровье", 12),
-    Хобби: makeDeck("Хобби", 12),
-    Багаж: makeDeck("Багаж", 12),
-    Факты: makeDeck("Факты", 12),
-    Биология: makeDeck("Биология", 12),
+    [DECK_PROFESSION]: makeDeck(DECK_PROFESSION, 12),
+    [DECK_HEALTH]: makeDeck(DECK_HEALTH, 12),
+    [DECK_HOBBY]: makeDeck(DECK_HOBBY, 12),
+    [DECK_BAGGAGE]: makeDeck(DECK_BAGGAGE, 12),
+    [DECK_FACTS]: makeDeck(DECK_FACTS, 12),
+    [DECK_BIOLOGY]: makeDeck(DECK_BIOLOGY, 12),
   },
 });
 
@@ -50,6 +59,7 @@ const makeContext = (players: Array<{ playerId: string; name: string }>): Scenar
     maxPlayers: 12,
     finalThreatReveal: "host",
     forcedDisasterId: "random",
+    cardLocale: "ru",
   },
 });
 

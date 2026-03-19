@@ -1,6 +1,7 @@
-﻿import ReactMarkdown from "react-markdown";
-import rulesText from "../content/rules.md?raw";
-import { ru } from "../i18n/ru";
+import ReactMarkdown from "react-markdown";
+import rulesEnText from "../../../locales/ui/rules/en.md?raw";
+import rulesRuText from "../../../locales/ui/rules/ru.md?raw";
+import { getCurrentLocale, useUiLocaleNamespace } from "../localization";
 import Modal from "./Modal";
 
 interface RulesModalProps {
@@ -9,7 +10,9 @@ interface RulesModalProps {
 }
 
 export default function RulesModal({ open, onClose }: RulesModalProps) {
-  const title = "\u041f\u0440\u0430\u0432\u0438\u043b\u0430";
+  const text = useUiLocaleNamespace("rules", { fallbacks: ["common"] });
+  const title = text.t("rulesTitle");
+  const rulesText = getCurrentLocale() === "en" ? rulesEnText : rulesRuText;
 
   return (
     <Modal open={open} title={title} onClose={onClose} dismissible={true} className="rules-modal">
@@ -18,9 +21,10 @@ export default function RulesModal({ open, onClose }: RulesModalProps) {
       </div>
       <div className="modal-actions">
         <button className="ghost" onClick={onClose}>
-          {ru.closeButton}
+          {text.t("closeButton")}
         </button>
       </div>
     </Modal>
   );
 }
+

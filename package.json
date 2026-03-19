@@ -14,6 +14,8 @@
     "sync:icons": "node scripts/sync-icons.mjs",
     "build": "pnpm run sync:icons && pnpm -C shared build && pnpm -C scenarios build && pnpm -C server build && pnpm -C client build",
     "build:all": "pnpm run sync:icons && pnpm -r build",
+    "locale:audit": "node scripts/localization-audit.mjs",
+    "locale:check": "node scripts/localization-audit.mjs --strict",
     "typecheck": "pnpm -C shared typecheck && pnpm -C scenarios typecheck && pnpm -C server typecheck && pnpm -C client typecheck",
     "test:ws": "pnpm -C shared build && pnpm -C scenarios build && node --test tests/ws.integration.test.mjs",
     "test:install": "node --test tests/install-update.test.mjs",

@@ -1,0 +1,22 @@
+{
+  "statusOnline": "Онлайн",
+  "statusOffline": "Оффлайн",
+  "statusReconnecting": "Переподключение",
+  "statusReconnectHint": "Связь потеряна, пробуем восстановить…",
+  "statusOfflineHint": "Нет соединения. Проверь интернет.",
+  "errorReconnectFailed": "Не удалось восстановить игрока. Перезайдите в комнату.",
+  "errorReconnectNetwork": "Не удалось переподключиться. Проверь соединение.",
+  "errorWebSocket": "Соединение с сервером не установлено.",
+  "wsActionDisabledHint": "Недоступно при переподключении.",
+  "wsActionRetryHint": "Переподключение…",
+  "retryButton": "Повторить",
+  "statusAlive": "В игре",
+  "statusEliminated": "Исключён",
+  "statusConnecting": "Подключение...",
+  "errorScreenTitle": "Проблема с подключением",
+  "errorScreenExitToMenu": "Выйти в меню",
+  "errorScreenReconnecting": "Пробуем переподключиться…",
+  "fatalErrorTitle": "Непредвиденная ошибка",
+  "fatalErrorUnknown": "Неизвестная ошибка",
+  "fatalErrorReload": "Перезагрузить"
+}

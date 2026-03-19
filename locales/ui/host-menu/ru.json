@@ -1,0 +1,17 @@
+{
+  "hostMenuTitle": "Меню ведущего",
+  "hostMenuHintDisabled": "Включите «Ведущий» в лобби, чтобы управлять фазами и голосованием.",
+  "hostMenuOpenControl": "Открыть панель управления оверлеем",
+  "hostMenuStartVote": "Старт голосования",
+  "hostMenuNextStep": "Следующий шаг",
+  "hostMenuSkipStep": "Пропустить шаг",
+  "hostMenuEndVote": "Завершить сбор голосов / итоги",
+  "hostMenuSkipRound": "Пропустить раунд",
+  "hostMenuKickSelect": "Выберите игрока",
+  "hostMenuKickPlayer": "Выгнать",
+  "hostMenuVoteDetails": "Кто в кого проголосовал",
+  "hostMenuVoteTotals": "Счёт голосов",
+  "hostMenuNoVotes": "Голосов пока нет.",
+  "hostMenuNoVoteTotals": "Никто ещё не получил голос.",
+  "hostMenuActionSuccess": "Команда ведущего отправлена."
+}

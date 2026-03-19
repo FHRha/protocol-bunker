@@ -1,7 +1,12 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { formatLabelShort, type AssetCatalog, type WorldCard, type WorldFacedCard, type WorldState30 } from "@bunker/shared";
+import {
+  formatLabelShort,
+  type AssetCard,
+  type AssetCatalog,
+  type WorldCard,
+  type WorldFacedCard,
+  type WorldState30,
+} from "@bunker/shared";
+import { buildDeckAccess } from "./deck_identity.js";
 
 type WorldCountRow = { min: number; max: number; bunker: number; threats: number };
 
@@ -12,251 +17,118 @@ const WORLD_COUNTS: WorldCountRow[] = [
   { min: 10, max: 16, bunker: 5, threats: 6 },
 ];
 
-type DisasterTextRow = {
-  title?: string;
-  text?: string;
-  sourceFile?: string;
-  slug?: string;
-};
-
-const DISASTER_TEXTS_PATH = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "server",
-  "data",
-  "world",
-  "disasters.ru.json"
-);
-
-function toNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function normalizeDisasterLookupKey(value: string): string {
-  return value
-    .trim()
-    .toLocaleLowerCase("ru-RU")
-    .replace(/ё/g, "е")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-function addDisasterLookupKey(target: Map<string, string>, keyRaw: string | undefined, text: string): void {
-  const key = toNonEmptyString(keyRaw);
-  if (!key) return;
-  const normalized = normalizeDisasterLookupKey(key);
-  if (!normalized) return;
-  if (!target.has(normalized)) {
-    target.set(normalized, text);
-  }
-}
-
-function loadDisasterTextMap(): Map<string, string> {
-  const result = new Map<string, string>();
-  if (!fs.existsSync(DISASTER_TEXTS_PATH)) {
-    return result;
-  }
-  try {
-    const raw = fs.readFileSync(DISASTER_TEXTS_PATH, "utf8");
-    const parsed = JSON.parse(raw) as Record<string, DisasterTextRow>;
-    for (const [jsonKey, row] of Object.entries(parsed)) {
-      const text = toNonEmptyString(row?.text);
-      if (!text) continue;
-      addDisasterLookupKey(result, jsonKey, text);
-      addDisasterLookupKey(result, formatLabelShort(jsonKey), text);
-      addDisasterLookupKey(result, row?.title, text);
-      addDisasterLookupKey(result, row?.title ? formatLabelShort(row.title) : undefined, text);
-      const sourceFile = toNonEmptyString(row?.sourceFile);
-      if (sourceFile) {
-        const sourceName = sourceFile.split("/").pop()?.replace(/\.[a-z0-9]{2,4}$/i, "");
-        addDisasterLookupKey(result, sourceName, text);
-        addDisasterLookupKey(result, sourceName ? formatLabelShort(sourceName) : undefined, text);
-      }
+const buildAssetPool = (...decks: AssetCard[][]): AssetCard[] => {
+  const byId = new Map<string, AssetCard>();
+  for (const deck of decks) {
+    for (const card of deck) {
+      if (!card?.id || byId.has(card.id)) continue;
+      byId.set(card.id, card);
     }
-  } catch (error) {
-    console.warn("[world_deck] failed to load disaster texts:", error);
   }
-  return result;
-}
-
-const DISASTER_TEXT_MAP = loadDisasterTextMap();
-
-function lookupDisasterText(...candidates: Array<string | undefined>): string | undefined {
-  for (const candidate of candidates) {
-    const value = toNonEmptyString(candidate);
-    if (!value) continue;
-    const mapped = DISASTER_TEXT_MAP.get(normalizeDisasterLookupKey(value));
-    if (mapped) return mapped;
-  }
-  return undefined;
-}
-
-const FALLBACK_BUNKER: WorldCard[] = [
-  {
-    kind: "bunker",
-    id: "bunker_fallback_01",
-    title: "Старый военный бункер",
-    description: "Есть базовые запасы воды и топлива, часть систем требует ремонта.",
-  },
-  {
-    kind: "bunker",
-    id: "bunker_fallback_02",
-    title: "Научный бункер",
-    description: "Усиленная вентиляция и лабораторные зоны, но мало жилых мест.",
-  },
-  {
-    kind: "bunker",
-    id: "bunker_fallback_03",
-    title: "Городское убежище",
-    description: "Рядом инфраструктура, но безопасность средняя.",
-  },
-];
-
-const FALLBACK_DISASTER: WorldCard[] = [
-  {
-    kind: "disaster",
-    id: "disaster_fallback_01",
-    title: "Радиоактивная буря",
-    description: "Поверхность заражена, пребывание вне укрытия опасно.",
-  },
-  {
-    kind: "disaster",
-    id: "disaster_fallback_02",
-    title: "Глобальная эпидемия",
-    description: "Высокий риск заражения, важна изоляция.",
-  },
-  {
-    kind: "disaster",
-    id: "disaster_fallback_03",
-    title: "Климатический коллапс",
-    description: "Резкое ухудшение климата, критична устойчивость ресурсов.",
-  },
-];
-
-const FALLBACK_THREAT: WorldCard[] = [
-  {
-    kind: "threat",
-    id: "threat_fallback_01",
-    title: "Нестабильное оборудование",
-    description: "Системы бункера могут выйти из строя в любой момент.",
-  },
-  {
-    kind: "threat",
-    id: "threat_fallback_02",
-    title: "Ограниченные запасы",
-    description: "Ресурсы рассчитаны на короткий срок.",
-  },
-  {
-    kind: "threat",
-    id: "threat_fallback_03",
-    title: "Внешняя агрессия",
-    description: "Возможны атаки извне, нужна дисциплина и порядок.",
-  },
-];
-
-const pick = (rng: () => number, deck: WorldCard[]): WorldCard => {
-  const index = Math.floor(rng() * deck.length);
-  return deck[index] ?? deck[0]!;
+  return Array.from(byId.values());
 };
 
-const pickFromAssets = (
-  assets: AssetCatalog,
-  deckName: string,
-  kind: WorldCard["kind"],
-  rng: () => number
-): WorldCard | null => {
-  const deck = assets.decks[deckName];
-  if (!deck || deck.length === 0) return null;
+const pickAssetFromDeck = (deck: AssetCard[], rng: () => number): AssetCard | null => {
+  if (deck.length === 0) return null;
   const index = Math.floor(rng() * deck.length);
-  const card = deck[index] ?? deck[0]!;
-  const mappedDisasterText =
-    kind === "disaster"
-      ? lookupDisasterText(card.labelShort, formatLabelShort(card.labelShort), card.id.split("/").pop()?.replace(/\.[a-z0-9]{2,4}$/i, ""))
-      : undefined;
+  return deck[index] ?? deck[0] ?? null;
+};
+
+const makeEmergencyWorldCard = (kind: WorldCard["kind"], index?: number): WorldCard => {
+  const suffix = index !== undefined ? `_${index + 1}` : "";
   return {
     kind,
-    id: card.id,
-    title: card.labelShort,
-    description: card.labelShort,
-    ...(mappedDisasterText ? { text: mappedDisasterText } : {}),
-    imageId: card.id,
+    id: `${kind}_missing${suffix}`,
+    title: formatLabelShort(kind),
+    description: formatLabelShort(kind),
   };
+};
+
+const makeUniqueWorldCardId = (existing: Set<string>, preferredId: string): string => {
+  let candidate = preferredId || `card_${existing.size + 1}`;
+  if (!existing.has(candidate)) {
+    existing.add(candidate);
+    return candidate;
+  }
+  let seq = 2;
+  while (existing.has(`${candidate}__${seq}`)) {
+    seq += 1;
+  }
+  const unique = `${candidate}__${seq}`;
+  existing.add(unique);
+  return unique;
+};
+
+const toWorldCardFromAsset = (kind: WorldCard["kind"], card: AssetCard): WorldCard => ({
+  kind,
+  id: card.id,
+  title: card.labelShort,
+  description: card.labelShort,
+  imageId: card.id,
+});
+
+const pickFromAssets = (
+  deck: AssetCard[],
+  kind: WorldCard["kind"],
+  rng: () => number,
+  fallbackPool: AssetCard[]
+): WorldCard => {
+  const picked = pickAssetFromDeck(deck, rng) ?? pickAssetFromDeck(fallbackPool, rng);
+  if (!picked) return makeEmergencyWorldCard(kind);
+  return toWorldCardFromAsset(kind, picked);
 };
 
 const pickFromAssetsById = (
-  assets: AssetCatalog,
-  deckName: string,
+  deck: AssetCard[],
   kind: WorldCard["kind"],
   cardId: string
 ): WorldCard | null => {
-  const deck = assets.decks[deckName];
-  if (!deck || deck.length === 0) return null;
+  if (deck.length === 0) return null;
   const card = deck.find((entry) => entry.id === cardId);
   if (!card) return null;
-  const mappedDisasterText =
-    kind === "disaster"
-      ? lookupDisasterText(
-          card.labelShort,
-          formatLabelShort(card.labelShort),
-          card.id.split("/").pop()?.replace(/\.[a-z0-9]{2,4}$/i, "")
-        )
-      : undefined;
-  return {
-    kind,
-    id: card.id,
-    title: card.labelShort,
-    description: card.labelShort,
-    ...(mappedDisasterText ? { text: mappedDisasterText } : {}),
-    imageId: card.id,
-  };
-};
-
-const withDisasterText = (card: WorldCard): WorldCard => {
-  if (card.kind !== "disaster") return card;
-  const mappedText = lookupDisasterText(card.title, card.description);
-  const fallbackDescription = toNonEmptyString(card.description);
-  const fallbackTitle = toNonEmptyString(card.title);
-  const hasDistinctDescription =
-    fallbackDescription &&
-    fallbackTitle &&
-    normalizeDisasterLookupKey(fallbackDescription) !== normalizeDisasterLookupKey(fallbackTitle);
-  const text = mappedText ?? (hasDistinctDescription ? fallbackDescription : undefined);
-  if (!text) return card;
-  if (card.text === text) return card;
-  return { ...card, text };
+  return toWorldCardFromAsset(kind, card);
 };
 
 const drawManyFromAssets = (
-  assets: AssetCatalog,
-  deckName: string,
+  deckCards: AssetCard[],
   kind: WorldCard["kind"],
   count: number,
   rng: () => number,
-  fallback: WorldCard[]
+  fallbackPool: AssetCard[]
 ): WorldCard[] => {
-  const deck = assets.decks[deckName]?.slice() ?? [];
+  const deck = deckCards.slice();
+  const backup = fallbackPool.slice();
   const result: WorldCard[] = [];
+  const usedIds = new Set<string>();
+
   for (let i = 0; i < count; i += 1) {
-    if (deck.length === 0) {
-      const picked = pick(rng, fallback);
-      result.push({ ...picked, id: `${picked.id}_${i + 1}` });
+    let picked: AssetCard | null = null;
+    if (deck.length > 0) {
+      const index = Math.floor(rng() * deck.length);
+      const [card] = deck.splice(index, 1);
+      picked = card ?? null;
+    } else if (backup.length > 0) {
+      const index = Math.floor(rng() * backup.length);
+      const [card] = backup.splice(index, 1);
+      picked = card ?? null;
+    }
+
+    if (picked) {
+      const mapped = toWorldCardFromAsset(kind, picked);
+      result.push({
+        ...mapped,
+        id: makeUniqueWorldCardId(usedIds, mapped.id),
+      });
       continue;
     }
-    const index = Math.floor(rng() * deck.length);
-    const [card] = deck.splice(index, 1);
-    if (card) {
-      result.push({
-        kind,
-        id: card.id,
-        title: card.labelShort,
-        description: card.labelShort,
-        imageId: card.id,
-      });
-    }
+
+    const emergency = makeEmergencyWorldCard(kind, i);
+    result.push({
+      ...emergency,
+      id: makeUniqueWorldCardId(usedIds, emergency.id),
+    });
   }
+
   return result;
 };
 
@@ -278,34 +150,32 @@ export const rollWorldFromAssets = (
   playerCount: number,
   forcedDisasterId?: string
 ): WorldState30 => {
+  const deckAccess = buildDeckAccess(assets);
+  // Use deck IDs only - buildDeckAccess will resolve to correct localized label
+  const disasterDeck = deckAccess.getDeckCards("disaster");
+  const bunkerDeck = deckAccess.getDeckCards("bunker");
+  const threatDeck = deckAccess.getDeckCards("threat");
+  const disasterFallbackPool = buildAssetPool(disasterDeck, bunkerDeck, threatDeck);
+  const bunkerFallbackPool = buildAssetPool(bunkerDeck, disasterDeck, threatDeck);
+  const threatFallbackPool = buildAssetPool(threatDeck, bunkerDeck, disasterDeck);
+
   const counts = getWorldCounts(playerCount);
   const forcedDisaster =
     forcedDisasterId && forcedDisasterId !== "random"
-      ? pickFromAssetsById(assets, "Катастрофа", "disaster", forcedDisasterId)
+      ? pickFromAssetsById(disasterDeck, "disaster", forcedDisasterId)
       : null;
-  const pickedDisaster =
-    forcedDisaster ?? pickFromAssets(assets, "Катастрофа", "disaster", rng) ?? pick(rng, FALLBACK_DISASTER);
-  const disaster = withDisasterText(pickedDisaster);
-  const bunkerCards = drawManyFromAssets(
-    assets,
-    "Бункер",
-    "bunker",
-    counts.bunker,
-    rng,
-    FALLBACK_BUNKER
-  ).map((card) => toFaced(card, false));
-  const threats = drawManyFromAssets(
-    assets,
-    "Угроза",
-    "threat",
-    counts.threats + 1,
-    rng,
-    FALLBACK_THREAT
-  ).map((card) => toFaced(card, false));
+  const disaster = forcedDisaster ?? pickFromAssets(disasterDeck, "disaster", rng, disasterFallbackPool);
+
+  const bunker = drawManyFromAssets(bunkerDeck, "bunker", counts.bunker, rng, bunkerFallbackPool).map((card) =>
+    toFaced(card, false)
+  );
+  const threats = drawManyFromAssets(threatDeck, "threat", counts.threats + 1, rng, threatFallbackPool).map((card) =>
+    toFaced(card, false)
+  );
 
   return {
     disaster,
-    bunker: bunkerCards,
+    bunker,
     threats,
     counts,
   };

@@ -1,0 +1,244 @@
+TEMP: зависимости от текущих названий колод/категорий (кириллица)
+Дата: 2026-03-15
+
+Назначение:
+- Чеклист перед миграцией на стабильные cardId/deckId.
+- Здесь перечислены места, где поведение или данные завязаны на текущие имена колод/категорий.
+
+Текущие имена колод/категорий:
+- Профессия
+- Здоровье
+- Хобби
+- Багаж
+- Факты
+- Факт №1
+- Факт №2
+- Биология
+- Особые условия
+- Бункер
+- Катастрофа
+- Угроза
+- Рубашки (папка backs в assets/decks)
+
+==================================================
+1) КРИТИЧЕСКАЯ ЛОГИКА СЦЕНАРИЕВ (поведение игры)
+==================================================
+
+1.1 Classic scenario
+- scenarios/src/classic.ts:35
+  CORE_DECKS = ["Профессия","Здоровье","Хобби","Багаж","Биология"].
+- scenarios/src/classic.ts:36
+  FACTS_DECK = "Факты".
+- scenarios/src/classic.ts:39
+  FACTS labels: "Факт №1", "Факт №2".
+- scenarios/src/classic.ts:43
+  SPECIAL_CATEGORY = "Особые условия".
+- scenarios/src/classic.ts:56
+  CATEGORY_KEY_TO_DECK: ключи payload -> кириллические колоды.
+- scenarios/src/classic.ts:72
+  CATEGORY_LABEL_TO_DECK: label category -> deck/slot.
+- scenarios/src/classic.ts:220
+  resolveChoiceKindFromTargeting: парсинг targeting по словам
+  ("сосед", "слева", "справа", "бункер", "категор").
+- scenarios/src/classic.ts:360
+  Поиск колоды бункера через deckName.toLocaleLowerCase("ru-RU").includes("бункер").
+- scenarios/src/classic.ts:1662
+  Спец-логика по deck === "Здоровье".
+- scenarios/src/classic.ts:1767, 1773, 1779
+  Проверки категорий: "Багаж", "Здоровье", "Профессия".
+- scenarios/src/classic.ts:1784, 1922, 1951, 1974, 1996, 2088
+  Выбор deckName из CATEGORY_KEY_TO_DECK.
+- scenarios/src/classic.ts:1641, 2272, 2307
+  Выбор deck/slot из CATEGORY_LABEL_TO_DECK.
+
+1.2 Dev scenario
+- scenarios/src/dev_test.ts:34
+  CORE_DECKS = ["Профессия","Здоровье","Хобби","Багаж","Биология"].
+- scenarios/src/dev_test.ts:35
+  FACTS_DECK = "Факты".
+- scenarios/src/dev_test.ts:38
+  FACTS labels: "Факт №1", "Факт №2".
+- scenarios/src/dev_test.ts:42
+  SPECIAL_CATEGORY = "Особые условия".
+- scenarios/src/dev_test.ts:60
+  CATEGORY_KEY_TO_DECK: ключи payload -> кириллические колоды.
+- scenarios/src/dev_test.ts:76
+  CATEGORY_LABEL_TO_DECK: label category -> deck/slot.
+- scenarios/src/dev_test.ts:199
+  resolveChoiceKindFromTargeting: парсинг targeting по словам
+  ("сосед", "слева", "справа", "бункер", "категор", "особ").
+- scenarios/src/dev_test.ts:375
+  Поиск колоды бункера через deckName.toLocaleLowerCase("ru-RU").includes("бункер").
+- scenarios/src/dev_test.ts:1657
+  Спец-логика по deck === "Здоровье".
+- scenarios/src/dev_test.ts:1790, 1797, 1806
+  Проверки категорий: "Багаж", "Здоровье", "Профессия".
+- scenarios/src/dev_test.ts:724, 1813, 1963, 1992, 2015, 2037, 2135
+  Выбор deckName из CATEGORY_KEY_TO_DECK.
+- scenarios/src/dev_test.ts:639, 1636, 2312, 2339
+  Выбор deck/slot из CATEGORY_LABEL_TO_DECK.
+
+==================================================
+2) WORLD/THREAT ЛОГИКА (зависимость от имён world-колод)
+==================================================
+
+- scenarios/src/world_deck.ts:284, 287
+  Доступ к колоде "Катастрофа" по строке.
+- scenarios/src/world_deck.ts:291
+  Доступ к колоде "Бункер" по строке.
+- scenarios/src/world_deck.ts:299
+  Доступ к колоде "Угроза" по строке.
+- scenarios/src/world_deck.ts:41
+  normalizeDisasterLookupKey использует ru-RU lowercasing.
+
+- scenarios/src/threat_modifier.ts:3
+  THREAT_MODIFIER_BY_CARD_TITLE завязан на title карт бункера
+  (сейчас там строки в битой кодировке; по сути это title-based match).
+- scenarios/src/threat_modifier.ts:11
+  normalizeTitle uses ru-RU.
+
+==================================================
+3) СПЕЦУСЛОВИЯ: ДАННЫЕ И ПАРСИНГ
+==================================================
+
+- scenarios/classic/SPECIAL_CONDITIONS.json:3+
+  id/file используют пути вида "Особые условия/....jpg".
+- scenarios/classic/SPECIAL_CONDITIONS.json:21+ (uiTargeting)
+  uiTargeting содержит русские/смешанные фразы, от которых зависит выбор цели.
+- scenarios/classic/SPECIAL_CONDITIONS.json: тексты карт содержат категории
+  ("Багаж", "Здоровье", "Профессия", "Факты", "бункер"), и сейчас часть логики
+  извлекается по targeting/тексту.
+
+- scenarios/src/classic.ts:167
+  SPECIAL_CONDITIONS_PATH (источник данных для карты спецусловий).
+- scenarios/src/classic.ts:187
+  normalizeSpecialLookup (ru-нормализация title/id/file).
+- scenarios/src/classic.ts:220
+  resolveChoiceKindFromTargeting (смысл карты по текстовым токенам).
+- scenarios/src/dev_test.ts:199
+  Аналогичный targeting parser.
+
+==================================================
+4) SHARED ЛОГИКА ТАРГЕТИНГА
+==================================================
+
+- shared/src/targeting.ts:12
+  "без цели", "пассивн" (определение no-target).
+- shared/src/targeting.ts:17-21
+  "сосед", "слева", "справа".
+- shared/src/targeting.ts:42
+  "можно себя", "включая себя".
+- shared/src/targeting.ts:46
+  "кроме себя", "не себя".
+- shared/src/targeting.ts:55-61
+  "любой игрок", "любого игрока", etc.
+- shared/src/targeting.ts:67
+  "выберите", "выбери".
+
+Внимание:
+- Пока таргетинг частично текстовый. После миграции лучше перейти на явные поля
+  в JSON (targetScope, requiresTarget, targetKind, allowsSelf и т.п.).
+
+==================================================
+5) SERVER: OVERLAY / WORLD / SUBTITLES
+==================================================
+
+- server/src/index.ts:660
+  assets.decks["Катастрофа"] для forced disaster options.
+- server/src/index.ts:1323
+  OVERLAY_CATEGORIES aliases:
+  "Профессия","Здоровье","Хобби","Фобия","Багаж","Факт №1","Факт №2","Биология".
+- server/src/index.ts:1478
+  readCategoryValue(player, ["Биология"]).
+- server/src/index.ts:1349, 1390
+  ru-RU normalization в overlay helper logic.
+
+- server/src/card_subtitles.ts:5
+  Deck type = "бункер" | "угроза".
+- server/src/card_subtitles.ts:43-44
+  normDeck: deck определяется по стемам ("бунк", "угроз", "bunker", "threat").
+- server/src/card_subtitles.ts:19
+  Источник: server/data/cards_bunker_threats.json.
+
+- server/data/cards_bunker_threats.json:3+
+  deck/path/title/subtitle сейчас на кириллице (файл в битой кодировке).
+  Этот файл влияет на subtitle mapping в overlay.
+
+==================================================
+6) CLIENT: КАТЕГОРИИ/РУБАШКИ/ДОСЬЕ/WORLD LABELS
+==================================================
+
+- client/src/cards.ts:3
+  BACK_DECK_PATH = "decks/Рубашки".
+- client/src/cards.ts:5
+  BACKS_BY_CATEGORY маппинг по кириллическим названиям категорий/world decks.
+- client/src/cards.ts:20
+  LEGACY_BACKS_BY_CATEGORY также завязан на кириллический ключ category.
+
+- client/src/pages/GamePage.tsx:51
+  categoryAliases: internal key -> кириллический label.
+- client/src/pages/GamePage.tsx:71
+  categoryAliasesByChoice (список по label).
+- client/src/pages/GamePage.tsx:82
+  categoryOrder содержит кириллические категории.
+- client/src/pages/GamePage.tsx:92
+  DOSSIER_MAIN_CATEGORY = "Профессия".
+- client/src/pages/GamePage.tsx:93
+  DOSSIER_GRID_ROWS с "Здоровье/Биология/Багаж/Хобби/Факт №1/Факт №2".
+- client/src/pages/GamePage.tsx:1274, 1434
+  Жёсткая проверка entry.category === "Багаж".
+- client/src/pages/GamePage.tsx:2008+, 2518+, 2621+
+  World labels/backCategory используют строки "Бункер/Катастрофа/Угроза".
+
+- client/src/pages/SpectatorTablePage.tsx:12, 52
+  Аналогичные списки/алиасы категорий на кириллице.
+
+- client/src/components/TableLayout.tsx:128, 130, 132
+  UI labels world block: "Бункер", "Катастрофа", "Угроза".
+
+==================================================
+7) PACKAGING/SCRIPTS
+==================================================
+
+- scripts/pack-win-portable.mjs:289
+  backNameRegex по "Рубашк" (кириллический стем).
+- scripts/pack-linux-portable.mjs:278
+  Аналогично.
+- scripts/pack-win-portable.mjs:354
+  Комментарий/логика про legacy layout decks/<Категория>.
+- scripts/pack-linux-portable.mjs:343
+  Аналогично.
+
+==================================================
+8) ТЕСТЫ (обновить после миграции id)
+==================================================
+
+- scenarios/tests/dev_test.spec.ts:22+
+  Test decks названы кириллицей ("Профессия", "Здоровье", ...).
+- scenarios/tests/special_conditions_contract.spec.ts:21+
+  DECK_* constants на кириллице ("Профессия","Катастрофа","Бункер","Угроза","Особые условия").
+- scenarios/tests/targeting_scope.spec.ts:6+
+  Проверки text-targeting на русских фразах ("у любого игрока", "кроме себя").
+
+==================================================
+9) ДОПОЛНИТЕЛЬНО (НЕ ЛОМАЕТ ПОВЕДЕНИЕ, НО ЗАВЯЗАНО НА РУС)
+==================================================
+
+- shared/src/labelFormat.ts:20-21
+  Форматирование слов через ru-RU.
+- client/src/localization/ru.ts, client/src/content/rules.md,
+  server/public/overlay/*.html/*.js
+  Текстовые UI-строки на русском (это локализация, не игровая логика).
+
+==================================================
+Предлагаемая стратегия миграции (кратко)
+==================================================
+
+1) Ввести стабильные deckId/cardId в данных и runtime state.
+2) Перевести сценарии на deckId/categoryKey (без string-match по ru-текстам).
+3) В SPECIAL_CONDITIONS.json заменить текстовый targeting на структурный.
+4) Обновить client cards/back mappings на deckId.
+5) Обновить subtitle/threat-maps на cardId вместо title/path.
+6) Обновить тесты под id-модель.
+
+Этот файл временный. После завершения миграции удалить.

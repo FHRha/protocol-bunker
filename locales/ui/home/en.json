@@ -1,0 +1,9 @@
+{
+  "homeTitle": "Welcome to Protocol: Bunker",
+  "homeSubtitle": "Create a room or join by code. Scenario is selected on create.",
+  "nameTitle": "Your name",
+  "namePlaceholder": "For example, Alex",
+  "createRoomTitle": "Create room",
+  "joinRoomTitle": "Join room",
+  "joinRoomPlaceholder": "Room code"
+}

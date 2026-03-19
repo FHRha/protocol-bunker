@@ -1,0 +1,17 @@
+{
+  "hostMenuTitle": "Host menu",
+  "hostMenuHintDisabled": "Enable \"Host\" in lobby to control phases and voting.",
+  "hostMenuOpenControl": "Open control panel",
+  "hostMenuStartVote": "Start voting",
+  "hostMenuNextStep": "Next step",
+  "hostMenuSkipStep": "Skip step",
+  "hostMenuEndVote": "Finalize voting / results",
+  "hostMenuSkipRound": "Skip round",
+  "hostMenuKickSelect": "Select player",
+  "hostMenuKickPlayer": "Kick",
+  "hostMenuVoteDetails": "Who voted for whom",
+  "hostMenuVoteTotals": "Vote totals",
+  "hostMenuNoVotes": "No votes yet.",
+  "hostMenuNoVoteTotals": "No vote totals yet.",
+  "hostMenuActionSuccess": "Host command sent."
+}

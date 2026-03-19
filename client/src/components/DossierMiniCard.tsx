@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useUiLocaleNamespace } from "../localization";
 
 interface DossierMiniCardOption {
   id: string;
@@ -40,6 +41,8 @@ export default function DossierMiniCard({
   onToggleExpand,
   onSelectOption,
 }: DossierMiniCardProps) {
+  const text = useUiLocaleNamespace("game", { fallbacks: ["common"] });
+
   const valueRef = useRef<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
 
@@ -114,7 +117,7 @@ export default function DossierMiniCard({
               if (inactive) return;
               onToggleExpand?.();
             }}
-            aria-label={expanded ? "Свернуть" : "Развернуть"}
+            aria-label={expanded ? text.t("collapseLabel") : text.t("expandLabel")}
           >
             ▾
           </button>
@@ -149,3 +152,5 @@ export default function DossierMiniCard({
     </div>
   );
 }
+
+

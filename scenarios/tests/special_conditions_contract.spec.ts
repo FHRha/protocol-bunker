@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AssetCatalog, ScenarioAction, ScenarioContext, ScenarioSession } from "@bunker/shared";
 import { scenario as classicScenario } from "../src/classic";
 import { scenario as devScenario } from "../src/dev_test";
+import { tClassic } from "../src/classicLocale";
 
 type SpecialDef = {
   id: string;
@@ -18,12 +19,17 @@ type SpecialDef = {
   };
 };
 
-const DECK_PROFESSION = "Профессия";
-const DECK_HEALTH = "Здоровье";
-const DECK_HOBBY = "Хобби";
-const DECK_BAGGAGE = "Багаж";
-const DECK_FACTS = "Факты";
-const DECK_BIOLOGY = "Биология";
+// Use localized deck names via tClassic()
+const DECK_PROFESSION = tClassic("deck.profession");
+const DECK_HEALTH = tClassic("deck.health");
+const DECK_HOBBY = tClassic("deck.hobby");
+const DECK_BAGGAGE = tClassic("deck.baggage");
+const DECK_FACTS = tClassic("deck.fact");
+const DECK_BIOLOGY = tClassic("deck.biology");
+const DECK_SPECIAL = tClassic("deck.special");
+const DECK_BUNKER = tClassic("deck.bunker");
+const DECK_DISASTER = tClassic("deck.disaster");
+const DECK_THREAT = tClassic("deck.threat");
 
 const CATEGORY_KEY_TO_DECK: Record<string, string> = {
   profession: DECK_PROFESSION,
@@ -67,10 +73,10 @@ const makeAssets = (): AssetCatalog => ({
     [DECK_BAGGAGE]: makeDeck(DECK_BAGGAGE, 24),
     [DECK_FACTS]: makeDeck(DECK_FACTS, 24),
     [DECK_BIOLOGY]: makeDeck(DECK_BIOLOGY, 24),
-    Катастрофа: makeDeck("Катастрофа", 12),
-    Бункер: makeDeck("Бункер", 16),
-    Угроза: makeDeck("Угроза", 16),
-    "Особые условия": makeDeck("Особые условия", 40),
+    [DECK_SPECIAL]: makeDeck(DECK_SPECIAL, 40),
+    [DECK_BUNKER]: makeDeck(DECK_BUNKER, 16),
+    [DECK_DISASTER]: makeDeck(DECK_DISASTER, 12),
+    [DECK_THREAT]: makeDeck(DECK_THREAT, 16),
   },
 });
 
@@ -107,6 +113,7 @@ const makeContext = (playerCount = 5): ScenarioContext => {
       maxPlayers: 12,
       finalThreatReveal: "host",
       forcedDisasterId: "random",
+      cardLocale: "ru",
     },
     onStateChange: () => {},
   };

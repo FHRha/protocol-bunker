@@ -1,0 +1,49 @@
+{
+  "timerKind": {
+    "reveal_discussion": "Post-reveal discussion",
+    "pre_vote": "Pre-vote discussion",
+    "post_vote": "Post-vote discussion"
+  },
+  "trigger": {
+    "active": "active",
+    "onVote": "on voting",
+    "onOwnerEliminated": "on owner elimination",
+    "onRevealOrActive": "on reveal",
+    "secret_onEliminate": "secret condition"
+  },
+  "votePhase": {
+    "voting": "Collecting votes",
+    "voteSpecialWindow": "Special conditions",
+    "voteResolve": "Resolving vote"
+  },
+  "voteReasonCode": {
+    "VOTE_BLOCKED": "Vote is blocked.",
+    "VOTE_FORCED_SELF": "Auto-vote for self (secret condition).",
+    "VOTE_SPENT": "Vote is spent.",
+    "VOTE_TARGET_DISALLOWED": "This candidate is disallowed in revote.",
+    "VOTE_TARGET_UNAVAILABLE": "Candidate is unavailable.",
+    "VOTE_BANNED_AGAINST_TARGET": "Voting against this player is forbidden."
+  },
+  "toastKind": {
+    "roundStart": "Round",
+    "votingStart": "Voting",
+    "elimination": "Elimination",
+    "gameEnd": "Game end",
+    "info": "Info",
+    "playerDisconnected": "Disconnected",
+    "playerReconnected": "Reconnected",
+    "playerLeftBunker": "Left bunker",
+    "_default": "Event"
+  },
+  "phaseText": {
+    "reveal": "Card reveal",
+    "reveal_discussion": "Post-reveal discussion",
+    "voting": "Voting",
+    "resolution": "Resolution",
+    "ended": "Ended"
+  },
+  "boolean": {
+    "true": "yes",
+    "false": "no"
+  }
+}

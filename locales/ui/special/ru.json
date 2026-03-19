@@ -1,0 +1,19 @@
+{
+  "specialTitle": "Особые условия",
+  "specialApplied": "Карта применена.",
+  "specialDialogChooseCategory": "Выберите категорию",
+  "specialDialogChooseSpecial": "Выберите особое условие",
+  "specialDialogChooseBunkerCard": "Выберите карту бункера",
+  "specialDialogLeftPrefix": "Слева: ",
+  "specialDialogRightPrefix": "Справа: ",
+  "specialDialogChooseNeighbor": "Выберите соседа",
+  "specialDialogChoosePlayer": "Выберите игрока",
+  "specialDialogChooseBaggage": "Выберите конкретную карту багажа",
+  "specialDialogStepOwnCard": "1) Ваша карта",
+  "specialDialogStepPlayer": "2) Игрок",
+  "specialDialogStepTargetCard": "3) Карта игрока",
+  "specialDialogLabelTargetCard": "Карта игрока",
+  "specialDialogPlaceholderOwnCard": "Выберите свою карту",
+  "specialDialogPlaceholderPlayer": "Выберите игрока",
+  "specialDialogPlaceholderTargetCard": "Выберите карту игрока"
+}

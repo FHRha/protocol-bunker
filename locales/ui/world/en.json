@@ -1,0 +1,8 @@
+{
+  "worldKindBunker": "Bunker",
+  "worldKindDisaster": "Disaster",
+  "worldKindThreat": "Threat",
+  "worldModalTitle": "World cards",
+  "worldHintTapToReveal": "Tap to reveal",
+  "worldNotLoaded": "World state is not loaded."
+}

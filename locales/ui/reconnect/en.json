@@ -1,0 +1,22 @@
+{
+  "statusOnline": "Online",
+  "statusOffline": "Offline",
+  "statusReconnecting": "Reconnecting",
+  "statusReconnectHint": "Connection lost, trying to recover...",
+  "statusOfflineHint": "No connection. Check internet.",
+  "errorReconnectFailed": "Failed to restore player. Rejoin the room.",
+  "errorReconnectNetwork": "Reconnection failed. Check your connection.",
+  "errorWebSocket": "WebSocket connection is not established.",
+  "wsActionDisabledHint": "Unavailable while reconnecting.",
+  "wsActionRetryHint": "Reconnecting...",
+  "retryButton": "Retry",
+  "statusAlive": "In game",
+  "statusEliminated": "Eliminated",
+  "statusConnecting": "Connecting...",
+  "errorScreenTitle": "Connection problem",
+  "errorScreenExitToMenu": "Exit to menu",
+  "errorScreenReconnecting": "Trying to reconnect...",
+  "fatalErrorTitle": "Unexpected error",
+  "fatalErrorUnknown": "Unknown error",
+  "fatalErrorReload": "Reload"
+}

@@ -1,0 +1,21 @@
+{
+  "lobbyTitle": "Лобби",
+  "lobbyLoading": "Ожидаем данные от сервера...",
+  "roomCodeTitle": "Код комнаты",
+  "showSecret": "Показать",
+  "hideSecret": "Скрыть",
+  "playersTitle": "Игроки",
+  "lobbyKickTitle": "Кикнуть игрока",
+  "lobbyKickSelectPlaceholder": "Выберите игрока",
+  "lobbyKickButton": "Кикнуть",
+  "hostMarker": " (ведущий)",
+  "controlMarker": "",
+  "transferHostTitle": "Передать ведущего",
+  "transferHostSelectPlaceholder": "Нет доступных игроков",
+  "offlineMarker": " (оффлайн)",
+  "startButton": "Старт",
+  "transferHostButton": "Передать ведущего",
+  "transferHostSelectLabel": "Передать ведущего",
+  "transferHostAgreeLabel": "Подтверждаю передачу ведущего",
+  "lobbyKickAgreeLabel": "Подтверждаю удаление выбранного игрока"
+}

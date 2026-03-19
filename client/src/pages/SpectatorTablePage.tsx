@@ -5,19 +5,40 @@ import TableLayout from "../components/TableLayout";
 import Modal from "../components/Modal";
 import { getCardBackUrl, getCardFaceUrl } from "../cards";
 import { shouldShowCardFront } from "../game/cardFacePolicy";
-import { ru } from "../i18n/ru";
+import { useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import { useViewState } from "../hooks/useViewState";
 
-const CATEGORY_ORDER = [
-  "Профессия",
-  "Здоровье",
-  "Хобби",
-  "Багаж",
-  "Факт №1",
-  "Факт №2",
-  "Биология",
-  "Особые условия",
-] as const;
+type SpectatorCategoryKey =
+  | "profession"
+  | "health"
+  | "hobby"
+  | "baggage"
+  | "fact1"
+  | "fact2"
+  | "biology"
+  | "special";
+
+const CATEGORY_ORDER_KEYS: SpectatorCategoryKey[] = [
+  "profession",
+  "health",
+  "hobby",
+  "baggage",
+  "fact1",
+  "fact2",
+  "biology",
+  "special",
+];
+
+const CATEGORY_SYNONYMS: Record<SpectatorCategoryKey, string[]> = {
+  profession: ["profession", "профессия", "prof"],
+  health: ["health", "здоровье", "hp"],
+  hobby: ["hobby", "хобби"],
+  baggage: ["baggage", "багаж", "bag"],
+  fact1: ["fact1", "facts1", "facts", "fact #1", "fact n1", "факт 1", "факт №1", "факты", "fact1"],
+  fact2: ["fact2", "facts2", "fact #2", "fact n2", "факт 2", "факт №2"],
+  biology: ["biology", "биология", "bio"],
+  special: ["special", "special conditions", "особые условия", "особое условие", "спецусловие", "specialconditions"],
+};
 
 type ReadOnlyCard = {
   labelShort: string;
@@ -46,36 +67,31 @@ function parseViewSrcFromHash(hash: string): string | null {
   return decodeBase64UrlUtf8(encoded);
 }
 
-function normalizeCategoryLabel(value: string): string {
+function normalizeCategoryKey(value: string): SpectatorCategoryKey | null {
   const key = String(value ?? "").trim().toLowerCase();
-  const map: Record<string, string> = {
-    profession: "Профессия",
-    health: "Здоровье",
-    hobby: "Хобби",
-    baggage: "Багаж",
-    fact1: "Факт №1",
-    fact2: "Факт №2",
-    facts1: "Факт №1",
-    facts2: "Факт №2",
-    facts: "Факты",
-    biology: "Биология",
-    special: "Особые условия",
-  };
-  return map[key] ?? value;
+  if (!key) return null;
+  for (const [categoryKey, aliases] of Object.entries(CATEGORY_SYNONYMS) as Array<
+    [SpectatorCategoryKey, string[]]
+  >) {
+    if (aliases.some((alias) => alias.toLowerCase() === key)) {
+      return categoryKey;
+    }
+  }
+  return null;
 }
 
-function norm(value: string): string {
-  return String(value ?? "").trim().toLowerCase();
+function categoryLabel(key: SpectatorCategoryKey, categoryLabels: Record<SpectatorCategoryKey, string>): string {
+  return categoryLabels[key] ?? key;
 }
 
-function safeName(player: OverlayPlayerView, index: number): string {
+function safeName(player: OverlayPlayerView, index: number, playerFallbackLabel: (index: number) => string): string {
   const name = String(player.nickname ?? "").trim();
-  return name || `Player ${index + 1}`;
+  return name || playerFallbackLabel(index + 1);
 }
 
-function overlayPlayerToPublic(player: OverlayPlayerView, index: number): PublicPlayerView {
+function overlayPlayerToPublic(player: OverlayPlayerView, index: number, playerFallbackLabel: (index: number) => string): PublicPlayerView {
   const categories: PublicCategorySlot[] = (player.categories ?? []).map((category) => {
-    const label = normalizeCategoryLabel(category.label || category.key);
+    const categoryKey = normalizeCategoryKey(category.key || category.label || "") ?? "special";
     const raw = category as {
       imgUrl?: string;
       imageId?: string;
@@ -89,7 +105,7 @@ function overlayPlayerToPublic(player: OverlayPlayerView, index: number): Public
         ? [{ labelShort: String(category.value).trim(), imgUrl }]
         : [];
     return {
-      category: label,
+      category: categoryKey,
       status: category.revealed ? "revealed" : "hidden",
       cards,
     };
@@ -98,7 +114,7 @@ function overlayPlayerToPublic(player: OverlayPlayerView, index: number): Public
 
   return {
     playerId: player.id,
-    name: safeName(player, index),
+    name: safeName(player, index, playerFallbackLabel),
     status: player.alive ? "alive" : "eliminated",
     connected: player.connected !== false,
     revealedCards: [],
@@ -111,48 +127,54 @@ function overlayPlayerToPublic(player: OverlayPlayerView, index: number): Public
 
 function buildDisplayCategories(player: PublicPlayerView | null): PublicCategorySlot[] {
   if (!player) return [];
-  const map = new Map<string, PublicCategorySlot>();
+  const map = new Map<SpectatorCategoryKey, PublicCategorySlot>();
   for (const category of player.categories) {
-    const label = normalizeCategoryLabel(category.category);
-    const key = norm(label);
-    if (!map.has(key)) {
-      map.set(key, { ...category, category: label });
+    const key = normalizeCategoryKey(category.category);
+    if (key && !map.has(key)) {
+      map.set(key, { ...category, category: key });
     }
   }
 
-  return CATEGORY_ORDER.map((label) => {
-    const hit = map.get(norm(label));
+  return CATEGORY_ORDER_KEYS.map((key) => {
+    const hit = map.get(key);
     if (hit) return hit;
     return {
-      category: label,
+      category: key,
       status: "hidden" as const,
       cards: [],
     };
   });
 }
 
-function buildWorldFromOverlayState(state: {
-  top?: {
-    bunker?: {
-      revealed?: number;
-      total?: number;
-      items?: Array<{ title?: string; subtitle?: string; imageId?: string }>;
+function buildWorldFromOverlayState(
+  state: {
+    top?: {
+      bunker?: {
+        revealed?: number;
+        total?: number;
+        items?: Array<{ title?: string; subtitle?: string; imageId?: string }>;
+      };
+      threats?: {
+        revealed?: number;
+        total?: number;
+        items?: Array<{ title?: string; subtitle?: string; imageId?: string }>;
+      };
+      catastrophe?: { title?: string; text?: string; imageId?: string };
     };
-    threats?: {
-      revealed?: number;
-      total?: number;
-      items?: Array<{ title?: string; subtitle?: string; imageId?: string }>;
-    };
-    catastrophe?: { title?: string; text?: string; imageId?: string };
-  };
-}): WorldState30 {
+  },
+  labels: {
+    worldKindDisaster: string;
+    worldBunkerCard: (index: number) => string;
+    worldThreatCard: (index: number) => string;
+  },
+): WorldState30 {
   const bunkerTotal = Math.max(0, Number(state.top?.bunker?.total ?? 0));
   const bunkerRevealed = Math.max(0, Math.min(bunkerTotal, Number(state.top?.bunker?.revealed ?? 0)));
   const threatsTotal = Math.max(0, Number(state.top?.threats?.total ?? 0));
   const threatsRevealed = Math.max(0, Math.min(threatsTotal, Number(state.top?.threats?.revealed ?? 0)));
   const bunkerItems = Array.isArray(state.top?.bunker?.items) ? state.top?.bunker?.items : [];
   const threatItems = Array.isArray(state.top?.threats?.items) ? state.top?.threats?.items : [];
-  const catastropheTitle = String(state.top?.catastrophe?.title ?? "").trim() || "Катастрофа";
+  const catastropheTitle = String(state.top?.catastrophe?.title ?? "").trim() || labels.worldKindDisaster;
   const catastropheText = String(state.top?.catastrophe?.text ?? "").trim();
 
   return {
@@ -169,8 +191,8 @@ function buildWorldFromOverlayState(state: {
       id: `overlay-bunker-${index + 1}`,
       title:
         index < bunkerRevealed
-          ? String(bunkerItems[index]?.title ?? "").trim() || `Бункер #${index + 1}`
-          : `Бункер #${index + 1}`,
+          ? String(bunkerItems[index]?.title ?? "").trim() || labels.worldBunkerCard(index + 1)
+          : labels.worldBunkerCard(index + 1),
       description: index < bunkerRevealed ? String(bunkerItems[index]?.subtitle ?? "").trim() : "",
       imageId: index < bunkerRevealed ? bunkerItems[index]?.imageId : undefined,
       isRevealed: index < bunkerRevealed,
@@ -180,8 +202,8 @@ function buildWorldFromOverlayState(state: {
       id: `overlay-threat-${index + 1}`,
       title:
         index < threatsRevealed
-          ? String(threatItems[index]?.title ?? "").trim() || `Угроза #${index + 1}`
-          : `Угроза #${index + 1}`,
+          ? String(threatItems[index]?.title ?? "").trim() || labels.worldThreatCard(index + 1)
+          : labels.worldThreatCard(index + 1),
       description: index < threatsRevealed ? String(threatItems[index]?.subtitle ?? "").trim() : "",
       imageId: index < threatsRevealed ? threatItems[index]?.imageId : undefined,
       isRevealed: index < threatsRevealed,
@@ -193,7 +215,9 @@ function buildWorldFromOverlayState(state: {
   };
 }
 
-function SpectatorCategoryCard({ category, hiddenLabel }: { category: PublicCategorySlot; hiddenLabel: string }) {
+function SpectatorCategoryCard({ category, hiddenLabel, cardLocale, categoryLabels }: { category: PublicCategorySlot; hiddenLabel: string; cardLocale: "ru" | "en"; categoryLabels?: Record<SpectatorCategoryKey, string> }) {
+  const categoryKey = normalizeCategoryKey(category.category) ?? "special";
+  const categoryTitle = categoryLabels?.[categoryKey] ?? categoryLabel(categoryKey, categoryLabels ?? { profession: "profession", health: "health", hobby: "hobby", baggage: "baggage", fact1: "fact1", fact2: "fact2", biology: "biology", special: "special" });
   const isRevealed = shouldShowCardFront(
     {
       status: category.status,
@@ -203,9 +227,9 @@ function SpectatorCategoryCard({ category, hiddenLabel }: { category: PublicCate
     { mode: "spectator" }
   );
   const card = category.cards[0] as ReadOnlyCard | undefined;
-  const frontLabel = String(card?.labelShort ?? category.category).trim() || category.category;
+  const frontLabel = String(card?.labelShort ?? categoryTitle).trim() || categoryTitle;
   const faceSrc = getCardFaceUrl(card?.imgUrl);
-  const backSrc = getCardBackUrl(normalizeCategoryLabel(category.category)) || getCardBackUrl("Факты");
+  const backSrc = getCardBackUrl(categoryKey, cardLocale) || getCardBackUrl("facts", cardLocale);
 
   if (isRevealed && faceSrc) {
     return (
@@ -233,8 +257,8 @@ function SpectatorCategoryCard({ category, hiddenLabel }: { category: PublicCate
 
   if (backSrc) {
     return (
-      <div className="card-tile" title={category.category}>
-        <img src={backSrc} alt={category.category} loading="lazy" decoding="async" />
+      <div className="card-tile" title={categoryTitle}>
+        <img src={backSrc} alt={categoryTitle} loading="lazy" decoding="async" />
       </div>
     );
   }
@@ -251,11 +275,13 @@ function SpectatorWorldCardTile({
   imageId,
   label,
   backDeck,
+  cardLocale,
 }: {
   revealed: boolean;
   imageId?: string;
   label: string;
   backDeck?: string;
+  cardLocale: "ru" | "en";
 }) {
   const frontVisible = shouldShowCardFront(
     {
@@ -265,7 +291,7 @@ function SpectatorWorldCardTile({
     { mode: "spectator" }
   );
   const faceSrc = frontVisible ? getCardFaceUrl(imageId) : undefined;
-  const backSrc = backDeck ? getCardBackUrl(backDeck) : undefined;
+  const backSrc = backDeck ? getCardBackUrl(backDeck, cardLocale) : undefined;
 
   if (faceSrc) {
     return (
@@ -299,6 +325,10 @@ function SpectatorWorldCardTile({
 }
 
 export default function SpectatorTablePage() {
+  useUiLocaleNamespacesActivation(["game", "common", "world", "reconnect", "overlay-links", "format", "misc"]);
+  const spectatorText = useUiLocaleNamespace("world", {
+    fallbacks: ["game", "common", "reconnect", "overlay-links", "format", "misc"],
+  });
   const [viewSrc, setViewSrc] = useState<string | null>(() =>
     typeof window === "undefined" ? null : parseViewSrcFromHash(window.location.hash)
   );
@@ -311,6 +341,7 @@ export default function SpectatorTablePage() {
     label: string;
     kind: string;
   } | null>(null);
+  const cardLocale = state?.locale ?? "ru";
 
   useEffect(() => {
     const onHashChange = () => setViewSrc(parseViewSrcFromHash(window.location.hash));
@@ -318,9 +349,55 @@ export default function SpectatorTablePage() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  const spectatorLocale = useMemo(() => ({
+    playerFallback: (index: number) => spectatorText.t("playerFallback", { index }),
+    categoryProfession: spectatorText.t("categoryProfession"),
+    categoryHealth: spectatorText.t("categoryHealth"),
+    categoryHobby: spectatorText.t("categoryHobby"),
+    categoryBaggage: spectatorText.t("categoryBaggage"),
+    categoryFact1: spectatorText.t("categoryFact1"),
+    categoryFact2: spectatorText.t("categoryFact2"),
+    categoryBiology: spectatorText.t("categoryBiology"),
+    categorySpecial: spectatorText.t("categorySpecial"),
+    worldKindDisaster: spectatorText.t("worldKindDisaster"),
+    worldKindBunker: spectatorText.t("worldKindBunker"),
+    worldKindThreat: spectatorText.t("worldKindThreat"),
+    worldBunkerCard: (index: number) => spectatorText.t("worldBunkerCard", { index }),
+    worldThreatCard: (index: number) => spectatorText.t("worldThreatCard", { index }),
+    statusOnline: spectatorText.t("statusOnline"),
+    statusReconnecting: spectatorText.t("statusReconnecting"),
+    statusConnecting: spectatorText.t("statusConnecting"),
+    statusOffline: spectatorText.t("statusOffline"),
+    spectatorLinkTitle: spectatorText.t("spectatorLinkTitle"),
+    spectatorInvalidUrl: spectatorText.t("spectatorInvalidUrl"),
+    exitButton: spectatorText.t("exitButton"),
+    boardTitle: spectatorText.t("boardTitle"),
+    boardSubtitle: spectatorText.t("boardSubtitle"),
+    spectatorInlineMeta: (status: string, players: number) => spectatorText.t("spectatorInlineMeta", { status, players }),
+    selectedPlayerTitle: spectatorText.t("selectedPlayerTitle"),
+    cardHidden: spectatorText.t("cardHidden"),
+    selectedPlayerHint: spectatorText.t("selectedPlayerHint"),
+    worldModalTitle: spectatorText.t("worldModalTitle"),
+    closeButton: spectatorText.t("closeButton"),
+    worldNotLoaded: spectatorText.t("worldNotLoaded"),
+  }), [spectatorText]);
+
+  const playerFallbackLabel = spectatorLocale.playerFallback;
+
+  const categoryLabels = useMemo<Record<SpectatorCategoryKey, string>>(() => ({
+    profession: spectatorText.t("categoryProfession"),
+    health: spectatorText.t("categoryHealth"),
+    hobby: spectatorText.t("categoryHobby"),
+    baggage: spectatorText.t("categoryBaggage"),
+    fact1: spectatorText.t("categoryFact1"),
+    fact2: spectatorText.t("categoryFact2"),
+    biology: spectatorText.t("categoryBiology"),
+    special: spectatorText.t("categorySpecial"),
+  }), [spectatorText]);
+
   const publicPlayers = useMemo<PublicPlayerView[]>(
-    () => (state?.players ?? []).map(overlayPlayerToPublic),
-    [state?.players]
+    () => (state?.players ?? []).map((player, index) => overlayPlayerToPublic(player, index, playerFallbackLabel)),
+    [state?.players, spectatorText.locale]
   );
 
   useEffect(() => {
@@ -339,28 +416,32 @@ export default function SpectatorTablePage() {
   );
   const selectedCategories = useMemo(() => buildDisplayCategories(selectedPlayer), [selectedPlayer]);
 
-  const world = useMemo(() => (state ? buildWorldFromOverlayState(state) : undefined), [state]);
+  const world = useMemo(() => (state ? buildWorldFromOverlayState(state, {
+    worldKindDisaster: spectatorLocale.worldKindDisaster,
+    worldBunkerCard: (index: number) => spectatorText.t("worldBunkerCard", { index }),
+    worldThreatCard: (index: number) => spectatorText.t("worldThreatCard", { index }),
+  }) : undefined), [state, spectatorText.locale]);
   const threatCount = world?.counts.threats;
   const getWorldImage = (imageId?: string) => (imageId ? getCardFaceUrl(imageId) : undefined);
 
   const connectionLabel =
     status === "connected"
-      ? ru.statusOnline
+      ? spectatorLocale.statusOnline
       : status === "reconnecting"
-        ? ru.statusReconnecting
+        ? spectatorLocale.statusReconnecting
         : status === "connecting"
-          ? "Connecting"
-          : ru.statusOffline;
+          ? spectatorLocale.statusConnecting
+          : spectatorLocale.statusOffline;
 
   if (!viewSrc) {
     return (
       <div className="spectateTablePage">
         <section className="panel game-loading">
-          <h3>{ru.spectatorLinkTitle}</h3>
-          <div className="muted">Invalid spectator URL.</div>
+          <h3>{spectatorLocale.spectatorLinkTitle}</h3>
+          <div className="muted">{spectatorLocale.spectatorInvalidUrl}</div>
           <div className="spectatorMissingActions">
             <Link to="/" className="ghost button-small">
-              {ru.exitButton}
+              {spectatorLocale.exitButton}
             </Link>
           </div>
         </section>
@@ -375,10 +456,12 @@ export default function SpectatorTablePage() {
           <div className="spectateCenter">
             <div className="panel-header spectateBoardHeader">
               <div>
-                <h3>{ru.boardTitle}</h3>
-                <div className="muted">{ru.boardSubtitle}</div>
+                <h3>{spectatorLocale.boardTitle}</h3>
+                <div className="muted">{spectatorLocale.boardSubtitle}</div>
               </div>
-              <div className="spectateInlineMeta muted">Status: {connectionLabel} • Players: {publicPlayers.length}</div>
+              <div className="spectateInlineMeta muted">
+                {spectatorLocale.spectatorInlineMeta(connectionLabel, publicPlayers.length)}
+              </div>
             </div>
             {error ? <div className="spectateInlineError">{error}</div> : null}
             <div className="spectateTableContainer">
@@ -395,7 +478,7 @@ export default function SpectatorTablePage() {
           </div>
           <aside className="selected-panel spectator-selected-panel">
             <div className="selected-header">
-              <div className="panel-subtitle">{ru.selectedPlayerTitle}</div>
+              <div className="panel-subtitle">{spectatorLocale.selectedPlayerTitle}</div>
               {selectedPlayer ? <div className="selected-name">{selectedPlayer.name}</div> : null}
             </div>
             {selectedPlayer ? (
@@ -404,12 +487,14 @@ export default function SpectatorTablePage() {
                   <SpectatorCategoryCard
                     key={`${selectedPlayer.playerId}-${category.category}`}
                     category={category}
-                    hiddenLabel={ru.cardHidden}
+                    hiddenLabel={spectatorLocale.cardHidden}
+                    cardLocale={cardLocale}
+                    categoryLabels={categoryLabels}
                   />
                 ))}
               </div>
             ) : (
-              <div className="selected-empty muted">{ru.selectedPlayerHint}</div>
+              <div className="selected-empty muted">{spectatorLocale.selectedPlayerHint}</div>
             )}
           </aside>
         </div>
@@ -417,7 +502,7 @@ export default function SpectatorTablePage() {
 
       <Modal
         open={Boolean(world) && worldModalOpen}
-        title="Карты мира"
+        title={spectatorLocale.worldModalTitle}
         onClose={() => {
           setWorldModalOpen(false);
           setWorldDetail(null);
@@ -434,7 +519,7 @@ export default function SpectatorTablePage() {
               >
                 {world.bunker.map((card, index) => {
                   const isSoloLast = world.bunker.length % 2 === 1 && index === world.bunker.length - 1;
-                  const label = `Бункер #${index + 1}`;
+                  const label = spectatorLocale.worldBunkerCard(index + 1);
                   const revealed = card.isRevealed;
                   const imageId = (card as { imageId?: string }).imageId;
                   const faceUrl = getWorldImage(imageId);
@@ -447,7 +532,7 @@ export default function SpectatorTablePage() {
                       onClick={() => {
                         if (!revealed) return;
                         setWorldDetail({
-                          kind: "Бункер",
+                          kind: spectatorLocale.worldKindBunker,
                           title: card.title || label,
                           imageUrl: faceUrl,
                           label,
@@ -458,7 +543,7 @@ export default function SpectatorTablePage() {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           setWorldDetail({
-                            kind: "Бункер",
+                            kind: spectatorLocale.worldKindBunker,
                             title: card.title || label,
                             imageUrl: faceUrl,
                             label,
@@ -466,13 +551,14 @@ export default function SpectatorTablePage() {
                         }
                       }}
                     >
-                      <div className="world-slot-header">Бункер</div>
+                      <div className="world-slot-header">{spectatorLocale.worldKindBunker}</div>
                       <div className="world-slot-media">
                         <SpectatorWorldCardTile
                           revealed={revealed}
                           imageId={imageId}
                           label={revealed ? card.title || label : label}
-                          backDeck="Бункер"
+                          backDeck="bunker"
+                          cardLocale={cardLocale}
                         />
                       </div>
                       <div className="world-slot-footer">
@@ -488,10 +574,10 @@ export default function SpectatorTablePage() {
                   className="world-center-media"
                   onClick={() =>
                     setWorldDetail({
-                      kind: "Катастрофа",
+                      kind: spectatorLocale.worldKindDisaster,
                       title: world.disaster.title,
                       imageUrl: getWorldImage((world.disaster as { imageId?: string }).imageId),
-                      label: "Катастрофа",
+                      label: spectatorLocale.worldKindDisaster,
                     })
                   }
                   role="button"
@@ -500,8 +586,9 @@ export default function SpectatorTablePage() {
                   <SpectatorWorldCardTile
                     revealed={true}
                     imageId={(world.disaster as { imageId?: string }).imageId}
-                    label={world.disaster.title || "Катастрофа"}
-                    backDeck="Катастрофа"
+                    label={world.disaster.title || spectatorLocale.worldKindDisaster}
+                    backDeck="disaster"
+                    cardLocale={cardLocale}
                   />
                 </div>
               </div>
@@ -512,7 +599,7 @@ export default function SpectatorTablePage() {
               >
                 {world.threats.map((card, index) => {
                   const isSoloLast = world.threats.length % 2 === 1 && index === world.threats.length - 1;
-                  const label = `Угроза #${index + 1}`;
+                  const label = spectatorLocale.worldThreatCard(index + 1);
                   const revealed = card.isRevealed;
                   const imageId = (card as { imageId?: string }).imageId;
                   const faceUrl = getWorldImage(imageId);
@@ -525,7 +612,7 @@ export default function SpectatorTablePage() {
                       onClick={() => {
                         if (!revealed) return;
                         setWorldDetail({
-                          kind: "Угроза",
+                          kind: spectatorLocale.worldKindThreat,
                           title: card.title || label,
                           imageUrl: faceUrl,
                           label,
@@ -536,7 +623,7 @@ export default function SpectatorTablePage() {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           setWorldDetail({
-                            kind: "Угроза",
+                            kind: spectatorLocale.worldKindThreat,
                             title: card.title || label,
                             imageUrl: faceUrl,
                             label,
@@ -544,13 +631,14 @@ export default function SpectatorTablePage() {
                         }
                       }}
                     >
-                      <div className="world-slot-header">Угроза</div>
+                      <div className="world-slot-header">{spectatorLocale.worldKindThreat}</div>
                       <div className="world-slot-media">
                         <SpectatorWorldCardTile
                           revealed={revealed}
                           imageId={imageId}
                           label={revealed ? card.title || label : label}
-                          backDeck="Угроза"
+                          backDeck="threat"
+                          cardLocale={cardLocale}
                         />
                       </div>
                       <div className="world-slot-footer">
@@ -566,7 +654,7 @@ export default function SpectatorTablePage() {
                   <div className="world-detail-card" onClick={(event) => event.stopPropagation()}>
                     <div className="world-detail-header">
                       <div className="world-detail-kind">{worldDetail.kind}</div>
-                      <button className="icon-button" onClick={() => setWorldDetail(null)} aria-label="Закрыть">
+                      <button className="icon-button" onClick={() => setWorldDetail(null)} aria-label={spectatorLocale.closeButton}>
                         ×
                       </button>
                     </div>
@@ -584,9 +672,10 @@ export default function SpectatorTablePage() {
             </div>
           </div>
         ) : (
-          <div className="muted">Условия мира не загружены.</div>
+          <div className="muted">{spectatorLocale.worldNotLoaded}</div>
         )}
       </Modal>
     </div>
   );
 }
+

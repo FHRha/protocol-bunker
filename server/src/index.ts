@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import express from "express";
 import { createServer } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
@@ -36,7 +36,14 @@ import {
 } from "@bunker/shared";
 import { buildAssetCatalog } from "./catalog.js";
 import { createRandomRng } from "./rng.js";
-import { getSubtitleMap, norm, normDeck, type CardDeck, type SubtitleMap } from "./card_subtitles.js";
+import {
+  getSubtitleMap,
+  resolveCardKeyFromAssetId as resolveSubtitleCardKeyFromAssetId,
+  type SubtitleMap,
+} from "./card_subtitles.js";
+import { getDisasterTextByAssetId } from "./world_texts.js";
+import { normalizeServerLocale, tServer, type ServerLocaleCode } from "./serverLocale.js";
+import { localizeScenarioMessage } from "./scenarioLocale.js";
 import { loadScenarios } from "@bunker/scenarios";
 
 interface Player {
@@ -97,6 +104,8 @@ let LISTEN_PORT = PORT;
 const HOST = process.env.HOST ?? "0.0.0.0";
 const ASSETS_PRIMARY = path.resolve(process.cwd(), "assets");
 const ASSETS_FALLBACK = path.resolve(process.cwd(), "..", "assets");
+const LOCALES_PRIMARY = path.resolve(process.cwd(), "locales");
+const LOCALES_FALLBACK = path.resolve(process.cwd(), "..", "locales");
 const CLIENT_DIST_PRIMARY = path.resolve(process.cwd(), "client", "dist");
 const CLIENT_DIST_FALLBACK = path.resolve(process.cwd(), "..", "client", "dist");
 const OVERLAY_PUBLIC_PRIMARY = path.resolve(process.cwd(), "server", "public", "overlay");
@@ -114,6 +123,8 @@ const resolveOptionalPath = (envKey: string, primary: string, fallback: string) 
 
 const assetsResolved = resolveOptionalPath("BUNKER_ASSETS_ROOT", ASSETS_PRIMARY, ASSETS_FALLBACK);
 const ASSETS_ROOT = assetsResolved.path;
+const localesResolved = resolveOptionalPath("BUNKER_LOCALES_ROOT", LOCALES_PRIMARY, LOCALES_FALLBACK);
+const LOCALES_ROOT = localesResolved.path;
 const clientResolved = resolveOptionalPath("BUNKER_CLIENT_DIST", CLIENT_DIST_PRIMARY, CLIENT_DIST_FALLBACK);
 const CLIENT_DIST = clientResolved.path;
 const overlayPublicResolved = fs.existsSync(OVERLAY_PUBLIC_PRIMARY)
@@ -656,8 +667,70 @@ function clampInt(value: number, min: number, max: number): number {
   return clampNumber(Math.round(value), min, max);
 }
 
+const DECK_LABEL_TO_ID: Record<string, string> = {
+  profession: "profession",
+  health: "health",
+  hobby: "hobby",
+  baggage: "baggage",
+  fact: "fact",
+  facts: "fact",
+  biology: "biology",
+  special: "special",
+  bunker: "bunker",
+  disaster: "disaster",
+  threat: "threat",
+  back: "back",
+  профессия: "profession",
+  здоровье: "health",
+  хобби: "hobby",
+  багаж: "baggage",
+  факты: "fact",
+  биология: "biology",
+  "особые условия": "special",
+  бункер: "bunker",
+  катастрофа: "disaster",
+  угроза: "threat",
+  рубашки: "back",
+};
+
+function normalizeDeckLookup(value: string): string {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replace(/ё/g, "е")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function resolveDeckIdFromAssetCard(card: AssetCatalog["decks"][string][number], deckName: string): string | undefined {
+  const fromCard = normalizeDeckLookup(String(card.deckId ?? ""));
+  if (fromCard && DECK_LABEL_TO_ID[fromCard]) return DECK_LABEL_TO_ID[fromCard];
+
+  const fromDeckName = normalizeDeckLookup(deckName);
+  if (fromDeckName && DECK_LABEL_TO_ID[fromDeckName]) return DECK_LABEL_TO_ID[fromDeckName];
+
+  const assetId = String(card.id ?? "").trim();
+  if (!assetId) return undefined;
+  const parts = assetId.split("/").filter(Boolean);
+  if (parts.length < 2) return undefined;
+  const fromPath = normalizeDeckLookup(parts[parts.length - 2] ?? "");
+  if (!fromPath) return undefined;
+  return DECK_LABEL_TO_ID[fromPath];
+}
+
+function findDeckById(assets: AssetCatalog, deckId: string): AssetCatalog["decks"][string] {
+  const target = normalizeDeckLookup(deckId);
+  for (const [deckName, cards] of Object.entries(assets.decks)) {
+    if (!cards.length) continue;
+    if (normalizeDeckLookup(deckName) === target) return cards;
+    const resolved = resolveDeckIdFromAssetCard(cards[0], deckName);
+    if (resolved === target) return cards;
+  }
+  return [];
+}
+
 function buildDisasterOptions(assets: AssetCatalog): Array<{ id: string; title: string }> {
-  const deck = assets.decks["Катастрофа"] ?? [];
+  const deck = findDeckById(assets, "disaster");
   const unique = new Map<string, string>();
   for (const card of deck) {
     const id = card.id?.trim();
@@ -1149,26 +1222,371 @@ if (!fs.existsSync(OVERLAY_PUBLIC_ROOT)) {
   process.exit(1);
 }
 
-const BACK_DECK_DIR_NAME = "Рубашки";
+const BACK_DECK_DIR_NAME = "Back";
 const KNOWN_ASSET_VARIANTS = ["1x", "2x"] as const;
+const DEFAULT_ASSET_LOCALE = "ru";
+const KNOWN_CARD_LOCALES = ["ru", "en"] as const;
+type CardLocaleCode = (typeof KNOWN_CARD_LOCALES)[number];
+type CardLocaleDictionary = {
+  decks: Record<string, string>;
+  cards: Record<string, string>;
+};
 
-function resolveBackDeckAssetPath(fileName: string): string | null {
+const normalizeCardLocale = (value: unknown): CardLocaleCode => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "en" ? "en" : "ru";
+};
+
+const normalizeCardKey = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-");
+
+const transliterateCyrillic = (value: string): string => {
+  const mapping: Record<string, string> = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh",
+    з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
+    п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts",
+    ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu",
+    я: "ya",
+  };
+
+  return value
+    .toLowerCase()
+    .split("")
+    .map((char) => mapping[char] ?? char)
+    .join("");
+};
+
+const toCardIdFromFileName = (fileName: string, deckId: string): string => {
+  const withoutExt = fileName.replace(/\.[a-z0-9]{2,4}$/i, "");
+  const prefix = `${deckId}.`;
+  if (withoutExt.toLowerCase().startsWith(prefix)) {
+    return withoutExt.slice(prefix.length);
+  }
+  return transliterateCyrillic(withoutExt);
+};
+
+function readCardLocaleDictionary(assetsRoot: string, locale: CardLocaleCode): CardLocaleDictionary {
+  const candidatePaths = [
+    path.resolve(assetsRoot, "..", "locales", "cards", `${locale}.json`),
+    path.resolve(assetsRoot, "..", "..", "locales", "cards", `${locale}.json`),
+    path.resolve(assetsRoot, "..", "locales", `${locale}.json`),
+    path.resolve(assetsRoot, "..", "..", "locales", `${locale}.json`),
+    path.join(assetsRoot, "locales", "cards", `${locale}.json`),
+    path.join(assetsRoot, "decks", "locales", `${locale}.json`),
+  ];
+
+  const filePath = candidatePaths.find((candidate) => fs.existsSync(candidate));
+  if (!filePath) {
+    console.warn(`[assets] locale dictionary not found for ${locale}. Checked: ${candidatePaths.join(" | ")}`);
+    return { decks: {}, cards: {} };
+  }
+
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw) as { decks?: unknown; cards?: unknown };
+    const decks =
+      parsed.decks && typeof parsed.decks === "object" ? (parsed.decks as Record<string, string>) : {};
+    const cards =
+      parsed.cards && typeof parsed.cards === "object" ? (parsed.cards as Record<string, string>) : {};
+    return { decks, cards };
+  } catch (error) {
+    console.warn(`[assets] failed to read locale dictionary ${filePath}:`, error);
+    return { decks: {}, cards: {} };
+  }
+}
+
+const CARD_LOCALE_DICTIONARIES: Record<CardLocaleCode, CardLocaleDictionary> = {
+  ru: readCardLocaleDictionary(ASSETS_ROOT, "ru"),
+  en: readCardLocaleDictionary(ASSETS_ROOT, "en"),
+};
+
+function resolveCardKeyFromAssetId(assetId: string): { deckId: string; cardId: string } | null {
+  const normalized = String(assetId ?? "").trim();
+  if (!normalized) return null;
+  const parts = normalized.split("/").filter(Boolean);
+  const decksIndex = parts.findIndex((part) => part.toLowerCase() === "decks");
+  if (decksIndex < 0) return null;
+  const tail = parts.slice(decksIndex + 1);
+  if (tail.length < 2) return null;
+
+  let cursor = 0;
+  const maybeVariant = tail[cursor]?.toLowerCase();
+  if (
+    maybeVariant &&
+    KNOWN_ASSET_VARIANTS.includes(maybeVariant as (typeof KNOWN_ASSET_VARIANTS)[number])
+  ) {
+    cursor += 1;
+  }
+
+  const maybeLocale = tail[cursor]?.toLowerCase();
+  if (maybeLocale && KNOWN_CARD_LOCALES.includes(maybeLocale as CardLocaleCode)) {
+    cursor += 1;
+  }
+
+  const deckSegment = tail[cursor];
+  const fileSegment = tail[tail.length - 1];
+  if (!deckSegment || !fileSegment) return null;
+
+  const deckId = normalizeCardKey(deckSegment);
+  const cardId = normalizeCardKey(toCardIdFromFileName(fileSegment, deckId));
+  if (!deckId || !cardId) return null;
+  return { deckId, cardId };
+}
+
+function resolveAssetIdFromImageUrl(imageUrl?: string): string | undefined {
+  const raw = String(imageUrl ?? "").trim();
+  if (!raw) return undefined;
+  const directPrefix = "/assets/";
+  if (raw.startsWith(directPrefix)) {
+    return raw.slice(directPrefix.length);
+  }
+  try {
+    const parsed = new URL(raw, "http://localhost");
+    if (parsed.pathname.startsWith(directPrefix)) {
+      return decodeURIComponent(parsed.pathname.slice(directPrefix.length));
+    }
+  } catch {
+    // ignore invalid URL
+  }
+  return undefined;
+}
+
+function resolveLocalizedAssetId(assetId: string | undefined, locale: CardLocaleCode): string | undefined {
+  const raw = String(assetId ?? "").trim().replace(/^\/+/, "");
+  if (!raw) return undefined;
+  const parts = raw.split("/").filter(Boolean);
+  const decksIndex = parts.findIndex((part) => part.toLowerCase() === "decks");
+  if (decksIndex < 0) return raw;
+
+  let cursor = decksIndex + 1;
+  const maybeVariant = parts[cursor]?.toLowerCase();
+  const hasVariant = Boolean(
+    maybeVariant &&
+      KNOWN_ASSET_VARIANTS.includes(maybeVariant as (typeof KNOWN_ASSET_VARIANTS)[number])
+  );
+  if (hasVariant) cursor += 1;
+
+  const maybeLocale = parts[cursor]?.toLowerCase();
+  const hasLocale = Boolean(
+    maybeLocale &&
+      KNOWN_CARD_LOCALES.includes(maybeLocale as CardLocaleCode)
+  );
+
+  if (!hasVariant && !hasLocale) {
+    return raw;
+  }
+
+  const candidateParts = [...parts];
+  if (hasLocale) {
+    candidateParts[cursor] = locale;
+  } else if (hasVariant) {
+    candidateParts.splice(cursor, 0, locale);
+  }
+  const candidate = candidateParts.join("/");
+  const candidatePath = path.join(ASSETS_ROOT, ...candidateParts);
+  if (fs.existsSync(candidatePath)) {
+    return candidate;
+  }
+  return raw;
+}
+
+function localizeAssetUrl(imageUrl: string | undefined, locale: CardLocaleCode): string | undefined {
+  const raw = String(imageUrl ?? "").trim();
+  if (!raw) return undefined;
+  const directPrefix = "/assets/";
+  if (raw.startsWith(directPrefix)) {
+    const localized = resolveLocalizedAssetId(raw.slice(directPrefix.length), locale);
+    return localized ? `${directPrefix}${localized}` : raw;
+  }
+  try {
+    const parsed = new URL(raw, "http://localhost");
+    if (!parsed.pathname.startsWith(directPrefix)) {
+      return raw;
+    }
+    const localized = resolveLocalizedAssetId(
+      decodeURIComponent(parsed.pathname.slice(directPrefix.length)),
+      locale
+    );
+    if (!localized) return raw;
+    parsed.pathname = `${directPrefix}${localized}`;
+    return parsed.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function localizeCardLabel(assetId: string | undefined, fallbackLabel: string, locale: CardLocaleCode): string {
+  const dict = CARD_LOCALE_DICTIONARIES[locale];
+  const enDict = CARD_LOCALE_DICTIONARIES.en;
+  if (!dict) return fallbackLabel;
+  const key = assetId ? resolveCardKeyFromAssetId(assetId) : null;
+  if (!key) return fallbackLabel;
+  const cardKey = `${key.deckId}.${key.cardId}`;
+  return dict.cards[cardKey] ?? enDict.cards[cardKey] ?? fallbackLabel;
+}
+
+function localizeDeckLabel(assetId: string | undefined, fallbackLabel: string, locale: CardLocaleCode): string {
+  const dict = CARD_LOCALE_DICTIONARIES[locale];
+  const enDict = CARD_LOCALE_DICTIONARIES.en;
+  if (!dict) return fallbackLabel;
+  const key = assetId ? resolveCardKeyFromAssetId(assetId) : null;
+  if (!key) return fallbackLabel;
+  return dict.decks[key.deckId] ?? enDict.decks[key.deckId] ?? fallbackLabel;
+}
+
+function localizeWorldCardForLocale<T extends { id: string; title: string; description: string; imageId?: string; text?: string }>(
+  card: T,
+  locale: CardLocaleCode
+): T {
+  const lookupAssetId = card.imageId ?? card.id;
+  const localizedText = getDisasterTextByAssetId(lookupAssetId, locale) ?? card.text;
+  return {
+    ...card,
+    title: localizeCardLabel(lookupAssetId, card.title, locale),
+    description: localizeCardLabel(lookupAssetId, card.description, locale),
+    imageId: resolveLocalizedAssetId(card.imageId, locale),
+    ...(localizedText ? { text: localizedText } : {}),
+  };
+}
+
+function localizeWorldStateForLocale(world: WorldState30 | undefined, locale: CardLocaleCode): WorldState30 | undefined {
+  if (!world) return undefined;
+  return {
+    ...world,
+    disaster: localizeWorldCardForLocale(world.disaster, locale),
+    bunker: world.bunker.map((card) => localizeWorldCardForLocale(card, locale)),
+    threats: world.threats.map((card) => localizeWorldCardForLocale(card, locale)),
+  };
+}
+
+function localizeDisasterOptionsForLocale(
+  options: Array<{ id: string; title: string }>,
+  locale: CardLocaleCode
+): Array<{ id: string; title: string }> {
+  return options.map((option) => ({
+    ...option,
+    title: localizeCardLabel(option.id, option.title, locale),
+  }));
+}
+
+function localizeControlDeckCatalogForLocale(
+  catalog: Record<string, Array<{ id: string; labelShort: string }>>,
+  locale: CardLocaleCode
+): Record<string, Array<{ id: string; labelShort: string }>> {
+  return Object.fromEntries(
+    Object.entries(catalog).map(([deckName, cards]) => [
+      localizeDeckLabel(cards[0]?.id, deckName, locale),
+      cards.map((card) => ({
+        id: card.id,
+        labelShort: localizeCardLabel(card.id, card.labelShort, locale),
+      })),
+    ])
+  );
+}
+
+function localizeGameViewForLocale(
+  view: ReturnType<ScenarioSession["getGameView"]>,
+  locale: CardLocaleCode
+): ReturnType<ScenarioSession["getGameView"]> {
+  const localizedHand = view.you.hand.map((card) => ({
+    ...card,
+    labelShort: localizeCardLabel(card.id, card.labelShort ?? "", locale),
+  }));
+  const handLabelByInstanceId = new Map(localizedHand.map((card) => [card.instanceId, card.labelShort] as const));
+
+  return {
+    ...view,
+    lastStageText: view.lastStageText
+      ? localizeScenarioMessage(view.lastStageText, locale)
+      : view.lastStageText,
+    world: localizeWorldStateForLocale(view.world, locale),
+    you: {
+      ...view.you,
+      hand: localizedHand,
+      categories: view.you.categories.map((slot) => ({
+        ...slot,
+        cards: slot.cards.map((card) => ({
+          ...card,
+          labelShort: handLabelByInstanceId.get(card.instanceId) ?? card.labelShort,
+        })),
+      })),
+      specialConditions: view.you.specialConditions.map((special) => ({
+	  ...special,
+	  title: localizeScenarioMessage(special.title, locale),
+	  text: localizeScenarioMessage(special.text, locale),
+      imgUrl: localizeAssetUrl(special.imgUrl, locale),
+	  })),
+    },
+    public: {
+      ...view.public,
+      votesPublic: view.public.votesPublic?.map((vote) => ({
+        ...vote,
+        reason: vote.reason
+          ? localizeScenarioMessage(vote.reason, locale)
+          : vote.reason,
+      })),
+      resolutionNote: view.public.resolutionNote
+        ? localizeScenarioMessage(view.public.resolutionNote, locale)
+        : view.public.resolutionNote,
+      threatModifier: view.public.threatModifier
+        ? {
+            ...view.public.threatModifier,
+            reasons: view.public.threatModifier.reasons.map((reason) =>
+              localizeScenarioMessage(reason, locale)
+            ),
+          }
+        : view.public.threatModifier,
+      players: view.public.players.map((player) => ({
+        ...player,
+        revealedCards: player.revealedCards.map((card) => ({
+          ...card,
+          labelShort: localizeCardLabel(card.id, card.labelShort ?? "", locale),
+        })),
+        categories: player.categories.map((slot) => ({
+          ...slot,
+          cards: slot.cards.map((card) => ({
+            ...card,
+            labelShort: localizeCardLabel(
+              resolveAssetIdFromImageUrl(card.imgUrl),
+              card.labelShort,
+              locale
+            ),
+            imgUrl: localizeAssetUrl(card.imgUrl, locale),
+          })),
+        })),
+      })),
+    },
+  };
+}
+
+const getRoomCardLocale = (room: Room): CardLocaleCode => normalizeCardLocale(room.settings.cardLocale);
+
+function resolveBackDeckAssetPath(fileName: string, requestedLocaleRaw?: string): string | null {
   const safeFileName = path.basename(fileName);
   if (!safeFileName || safeFileName !== fileName) return null;
 
   const decksRoot = path.join(ASSETS_ROOT, "decks");
-  const directPath = path.join(decksRoot, BACK_DECK_DIR_NAME, safeFileName);
-  if (fs.existsSync(directPath)) return directPath;
-
   const requestedVariant = process.env.BUNKER_ASSET_VARIANT?.trim().toLowerCase();
   const candidateVariants = new Set<string>();
   if (requestedVariant) candidateVariants.add(requestedVariant);
   for (const variant of KNOWN_ASSET_VARIANTS) candidateVariants.add(variant);
 
+  const requestedLocale = normalizeCardLocale(
+    requestedLocaleRaw || process.env.BUNKER_ASSET_LOCALE?.trim().toLowerCase() || DEFAULT_ASSET_LOCALE
+  );
+  const localeCandidates = [requestedLocale, ...KNOWN_CARD_LOCALES.filter((locale) => locale !== requestedLocale)];
+
   for (const variant of candidateVariants) {
-    const candidatePath = path.join(decksRoot, variant, BACK_DECK_DIR_NAME, safeFileName);
-    if (fs.existsSync(candidatePath)) {
-      return candidatePath;
+    for (const locale of localeCandidates) {
+      const candidatePath = path.join(decksRoot, variant, locale, BACK_DECK_DIR_NAME, safeFileName);
+      if (fs.existsSync(candidatePath)) {
+        return candidatePath;
+      }
     }
   }
 
@@ -1191,6 +1609,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   maxPlayers: 12,
   finalThreatReveal: "host",
   forcedDisasterId: "random",
+  cardLocale: "ru",
 };
 
 const rooms = new Map<string, Room>();
@@ -1284,6 +1703,7 @@ function generateRoomCode(): string {
 }
 
 function buildRoomState(room: Room): RoomState {
+  const locale = getRoomCardLocale(room);
   if (room.session) {
     try {
       room.world = room.session.getGameView(room.hostId).world;
@@ -1310,26 +1730,67 @@ function buildRoomState(room: Room): RoomState {
     controlId: room.controlId,
     phase: room.phase,
     scenarioMeta: room.scenarioMeta,
-    settings: room.settings,
+    settings: {
+      ...room.settings,
+      cardLocale: locale,
+    },
     ruleset: room.ruleset,
     rulesOverriddenByHost: room.rulesOverriddenByHost,
     rulesPresetCount: room.rulesPresetCount,
-    world: room.world,
+    world: localizeWorldStateForLocale(room.world, locale),
     isDev: room.isDev,
-    disasterOptions: room.disasterOptions,
+    disasterOptions: localizeDisasterOptionsForLocale(room.disasterOptions, locale),
   };
 }
 
-const OVERLAY_CATEGORIES = [
-  { key: "profession", label: "Профессия", aliases: ["Профессия"] },
-  { key: "health", label: "Здоровье", aliases: ["Здоровье"] },
-  { key: "hobby", label: "Хобби", aliases: ["Хобби"] },
-  { key: "phobia", label: "Фобия", aliases: ["Фобия"] },
-  { key: "baggage", label: "Багаж", aliases: ["Багаж"] },
-  { key: "fact1", label: "Факт №1", aliases: ["Факт №1"] },
-  { key: "fact2", label: "Факт №2", aliases: ["Факт №2"] },
-  { key: "biology", label: "Биология", aliases: ["Биология"] },
+// Overlay category configuration with localization keys
+const OVERLAY_CATEGORY_KEYS = [
+  { key: "profession", labelKey: "categoryProfession", aliasesRu: ["Профессия"], aliasesEn: ["Profession"] },
+  { key: "health", labelKey: "categoryHealth", aliasesRu: ["Здоровье"], aliasesEn: ["Health"] },
+  { key: "hobby", labelKey: "categoryHobby", aliasesRu: ["Хобби"], aliasesEn: ["Hobby"] },
+  { key: "phobia", labelKey: "categoryPhobia", aliasesRu: ["Фобия"], aliasesEn: ["Phobia"] },
+  { key: "baggage", labelKey: "categoryBaggage", aliasesRu: ["Багаж"], aliasesEn: ["Baggage"] },
+  { key: "fact1", labelKey: "categoryFact1", aliasesRu: ["Факт №1", "Факт 1"], aliasesEn: ["Fact #1", "Fact 1"] },
+  { key: "fact2", labelKey: "categoryFact2", aliasesRu: ["Факт №2", "Факт 2"], aliasesEn: ["Fact #2", "Fact 2"] },
+  { key: "biology", labelKey: "categoryBiology", aliasesRu: ["Биология"], aliasesEn: ["Biology"] },
 ] as const;
+
+// Runtime overlay categories with localized labels (built per-request)
+interface OverlayCategoryConfig {
+  key: string;
+  label: string;
+  aliases: readonly string[];
+}
+
+function buildOverlayCategories(locale: "ru" | "en"): OverlayCategoryConfig[] {
+  const localeDict = locale === "en"
+    ? {
+        categoryProfession: "Profession",
+        categoryHealth: "Health",
+        categoryHobby: "Hobby",
+        categoryPhobia: "Phobia",
+        categoryBaggage: "Baggage",
+        categoryFact1: "Fact #1",
+        categoryFact2: "Fact #2",
+        categoryBiology: "Biology",
+      }
+    : {
+        categoryProfession: "Профессия",
+        categoryHealth: "Здоровье",
+        categoryHobby: "Хобби",
+        categoryPhobia: "Фобия",
+        categoryBaggage: "Багаж",
+        categoryFact1: "Факт №1",
+        categoryFact2: "Факт №2",
+        categoryBiology: "Биология",
+      };
+  
+  return OVERLAY_CATEGORY_KEYS.map((entry) => ({
+    key: entry.key,
+    label: localeDict[entry.labelKey as keyof typeof localeDict] ?? entry.key,
+    aliases: locale === "en" ? entry.aliasesEn : entry.aliasesRu,
+  }));
+}
 
 function clampLine(value: string, max = 56): string {
   const trimmed = value.trim().replace(/\s+/g, " ");
@@ -1338,9 +1799,13 @@ function clampLine(value: string, max = 56): string {
   return `${trimmed.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
-function normalizeOverlayCatastropheText(value: string | undefined): string {
+function getOverlayHiddenText(locale: "ru" | "en"): string {
+  return locale === "en" ? "hidden" : "скрыто";
+}
+
+function normalizeOverlayCatastropheText(value: string | undefined, locale: "ru" | "en"): string {
   const normalized = sanitizeMultiLine(value ?? "", OVERLAY_MAX_CATA_LEN).trim();
-  return normalized || "скрыто";
+  return normalized || getOverlayHiddenText(locale);
 }
 
 function normalizeDisasterCompareValue(value: string | undefined): string {
@@ -1356,7 +1821,7 @@ function buildOverlayCatastropheBody(worldDisaster: {
   text?: string;
   description?: string;
   title?: string;
-} | null | undefined): string {
+} | null | undefined, locale: "ru" | "en"): string {
   const longText = sanitizeMultiLine(worldDisaster?.text ?? "", OVERLAY_MAX_CATA_LEN).trim();
   const description = sanitizeMultiLine(worldDisaster?.description ?? "", OVERLAY_MAX_CATA_LEN).trim();
   const titleNorm = normalizeDisasterCompareValue(worldDisaster?.title);
@@ -1372,7 +1837,7 @@ function buildOverlayCatastropheBody(worldDisaster: {
       return description;
     }
   }
-  return "скрыто";
+  return getOverlayHiddenText(locale);
 }
 
 function normalizeOverlayCatastropheTitle(
@@ -1394,32 +1859,14 @@ function normalizeOverlayCompareValue(value: string | undefined): string {
 
 function readMappedSubtitle(
   subtitleMap: SubtitleMap,
-  deck: string,
-  titleRaw: string,
+  assetId: string | undefined,
   titleRendered: string
 ): string | undefined {
   if (subtitleMap.size === 0) return undefined;
-  const deckKey = normDeck(deck);
-  const titlesToTry = [
-    norm(titleRaw),
-    norm(titleRendered),
-  ];
-  const expandedTitles = new Set<string>();
-  for (const titleKey of titlesToTry) {
-    if (!titleKey) continue;
-    expandedTitles.add(titleKey);
-    expandedTitles.add(titleKey.replace(/-/g, " "));
-    expandedTitles.add(titleKey.replace(/\s+/g, "-"));
-  }
-  let mappedRaw = "";
-  for (const titleKey of expandedTitles) {
-    const found = subtitleMap.get(`${deckKey}::${titleKey}`);
-    if (found) {
-      mappedRaw = found;
-      break;
-    }
-  }
-  const mapped = sanitizeSingleLine(mappedRaw, OVERLAY_MAX_LINE_LEN)
+  if (!assetId) return "";
+  const cardKey = resolveSubtitleCardKeyFromAssetId(assetId);
+  if (!cardKey) return undefined;
+  const mapped = sanitizeSingleLine(subtitleMap.get(cardKey) ?? "", OVERLAY_MAX_LINE_LEN)
     .trim()
     .replace(/\s+/g, " ");
   if (!mapped) return undefined;
@@ -1429,8 +1876,7 @@ function readMappedSubtitle(
 }
 
 function buildTopItems(
-  cards: Array<{ isRevealed?: boolean; title?: string; description?: string; imageId?: string }>,
-  deck: CardDeck,
+  cards: Array<{ isRevealed?: boolean; title?: string; description?: string; imageId?: string; id?: string }>,
   subtitleMap: SubtitleMap
 ) {
   const revealedCards = cards.filter((card) => card.isRevealed);
@@ -1444,7 +1890,7 @@ function buildTopItems(
     const descNorm = normalizeOverlayCompareValue(description);
     let subtitle = description && description !== "?" && descNorm !== titleNorm ? description : undefined;
     if (!subtitle) {
-      subtitle = readMappedSubtitle(subtitleMap, deck, titleRaw, title);
+      subtitle = readMappedSubtitle(subtitleMap, card.imageId || card.id, title);
     }
     if (subtitle && normalizeOverlayCompareValue(subtitle) === normalizeOverlayCompareValue(title)) {
       subtitle = undefined;
@@ -1453,8 +1899,8 @@ function buildTopItems(
   });
 }
 
-function buildTopLinesFromItems(items: Array<{ title: string }>) {
-  if (!items.length) return ["скрыто"];
+function buildTopLinesFromItems(items: Array<{ title: string }>, locale: "ru" | "en") {
+  if (!items.length) return [getOverlayHiddenText(locale)];
   return items.map((item) => item.title || "?");
 }
 
@@ -1474,46 +1920,59 @@ function readCategoryValue(player: PublicPlayerView, aliases: readonly string[])
   };
 }
 
-function extractBioTags(player: PublicPlayerView) {
-  const bio = readCategoryValue(player, ["Биология"]);
+function extractBioTags(player: PublicPlayerView, locale: "ru" | "en") {
+  const bioAliases = locale === "en" ? ["Biology", "Bio"] : ["Биология"];
+  const orientationAliases = locale === "en" ? ["Orientation"] : ["Ориентация"];
+  
+  const bio = readCategoryValue(player, bioAliases);
   if (!bio.revealed) {
+    const sexLabel = locale === "en" ? "Sex" : "Пол";
+    const ageLabel = locale === "en" ? "Age" : "Возраст";
+    const orientationLabel = locale === "en" ? "Orientation" : "Ориентация";
     return {
-      sex: { label: "Пол", revealed: false, value: "?" },
-      age: { label: "Возраст", revealed: false, value: "?" },
-      orientation: { label: "Ориентация", revealed: false, value: "?" },
+      sex: { label: sexLabel, revealed: false, value: "?" },
+      age: { label: ageLabel, revealed: false, value: "?" },
+      orientation: { label: orientationLabel, revealed: false, value: "?" },
     };
   }
 
   const raw = bio.value;
   const sexMatch = raw.match(/\b([МЖ])\b/i);
   const ageMatch = raw.match(/\b(\d{1,3})\b/);
-  const orientationDirect = readCategoryValue(player, ["Ориентация"]);
+  const orientationDirect = readCategoryValue(player, orientationAliases);
+
+  const sexLabel = locale === "en" ? "Sex" : "Пол";
+  const ageLabel = locale === "en" ? "Age" : "Возраст";
+  const orientationLabel = locale === "en" ? "Orientation" : "Ориентация";
 
   return {
     sex: {
-      label: "Пол",
+      label: sexLabel,
       revealed: Boolean(sexMatch),
       value: sexMatch ? sexMatch[1].toUpperCase() : "?",
     },
     age: {
-      label: "Возраст",
+      label: ageLabel,
       revealed: Boolean(ageMatch),
       value: ageMatch ? ageMatch[1] : "?",
     },
     orientation: orientationDirect.revealed
-      ? { label: "Ориентация", revealed: true, value: orientationDirect.value }
-      : { label: "Ориентация", revealed: false, value: "?" },
+      ? { label: orientationLabel, revealed: true, value: orientationDirect.value }
+      : { label: orientationLabel, revealed: false, value: "?" },
   };
 }
 
 async function getOverlayState(room: Room): Promise<OverlayState | null> {
+  const roomLocale = getRoomCardLocale(room);
+  const overlayCategories = buildOverlayCategories(roomLocale);
   const fallback = {
     roomId: room.code,
+    locale: roomLocale,
     playerCount: room.players.size,
     top: {
-      bunker: { revealed: 0, total: 0, lines: ["скрыто"] },
-      catastrophe: { text: "скрыто", title: undefined, imageId: undefined },
-      threats: { revealed: 0, total: 0, lines: ["скрыто"] },
+      bunker: { revealed: 0, total: 0, lines: [getOverlayHiddenText(roomLocale)] },
+      catastrophe: { text: getOverlayHiddenText(roomLocale), title: undefined, imageId: undefined },
+      threats: { revealed: 0, total: 0, lines: [getOverlayHiddenText(roomLocale)] },
     },
     players: room.joinOrder
       .map((id) => room.players.get(id))
@@ -1524,11 +1983,11 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
         connected: player!.connected,
         alive: !player!.leftBunker,
         tags: {
-          sex: { label: "Пол", revealed: false, value: "?" },
-          age: { label: "Возраст", revealed: false, value: "?" },
-          orientation: { label: "Ориентация", revealed: false, value: "?" },
+          sex: { label: roomLocale === "en" ? "Sex" : "Пол", revealed: false, value: "?" },
+          age: { label: roomLocale === "en" ? "Age" : "Возраст", revealed: false, value: "?" },
+          orientation: { label: roomLocale === "en" ? "Orientation" : "Ориентация", revealed: false, value: "?" },
         },
-        categories: OVERLAY_CATEGORIES.map((entry) => ({
+        categories: overlayCategories.map((entry) => ({
           key: entry.key,
           label: entry.label,
           revealed: false,
@@ -1543,28 +2002,30 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
   }
 
   try {
-    const subtitleMap = await getSubtitleMap();
+    const locale = getRoomCardLocale(room);
+    const subtitleMap = await getSubtitleMap(locale);
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) return fallback;
-    const view = room.session.getGameView(anchorId);
+    const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale);
     const world = view.world;
     const bunkerOpened = world?.bunker.filter((card) => card.isRevealed).length ?? 0;
     const bunkerTotal = world?.counts.bunker ?? 0;
     const threatOpened = world?.threats.filter((card) => card.isRevealed).length ?? 0;
     const threatTotal = world?.counts.threats ?? 0;
-    const bunkerItems = buildTopItems(world?.bunker ?? [], "бункер", subtitleMap);
-    const threatItems = buildTopItems(world?.threats ?? [], "угроза", subtitleMap);
-    const bunkerLines = buildTopLinesFromItems(bunkerItems);
-    const threatLines = buildTopLinesFromItems(threatItems);
+    const bunkerItems = buildTopItems(world?.bunker ?? [], subtitleMap);
+    const threatItems = buildTopItems(world?.threats ?? [], subtitleMap);
+    const bunkerLines = buildTopLinesFromItems(bunkerItems, roomLocale);
+    const threatLines = buildTopLinesFromItems(threatItems, roomLocale);
     const catastropheTitle = normalizeOverlayCatastropheTitle(
       world?.disaster.title,
       world?.disaster.description,
       (world?.disaster as { labelShort?: string } | undefined)?.labelShort
     );
-    const catastropheText = normalizeOverlayCatastropheText(buildOverlayCatastropheBody(world?.disaster));
+    const catastropheText = normalizeOverlayCatastropheText(buildOverlayCatastropheBody(world?.disaster, roomLocale), roomLocale);
 
     return {
       roomId: room.code,
+      locale: roomLocale,
       playerCount: view.public.players.length,
       top: {
         bunker: { revealed: bunkerOpened, total: bunkerTotal, lines: bunkerLines, items: bunkerItems },
@@ -1577,7 +2038,7 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
       },
       players: view.public.players.map((player) => {
         const roomPlayer = room.players.get(player.playerId);
-        const categories = OVERLAY_CATEGORIES.map((entry) => {
+        const categories = overlayCategories.map((entry) => {
           const value = readCategoryValue(player, entry.aliases);
           return {
             key: entry.key,
@@ -1593,7 +2054,7 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
           nickname: player.name,
           connected: roomPlayer?.connected ?? true,
           alive: player.status === "alive",
-          tags: extractBioTags(player),
+          tags: extractBioTags(player, roomLocale),
           categories,
         };
       }),
@@ -1753,7 +2214,8 @@ function buildOverlayPresenterState(room: Room) {
   try {
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) return base;
-    const view = room.session.getGameView(anchorId);
+    const locale = getRoomCardLocale(room);
+    const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale);
     const votesByPlayer = new Map((view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.status]));
     const voteTargetNameByVoter = new Map(
       (view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.targetName ?? ""])
@@ -1790,7 +2252,10 @@ function buildOverlayPresenterState(room: Room) {
         imgUrl?: string;
       }> = [];
       try {
-        const personalView = room.session!.getGameView(publicPlayer.playerId);
+        const personalView = localizeGameViewForLocale(
+          room.session!.getGameView(publicPlayer.playerId),
+          locale
+        );
         hand = personalView.you.hand.map((card) => ({
           instanceId: String(card.instanceId ?? card.id ?? `${publicPlayer.playerId}-card`),
           id: String(card.id ?? ""),
@@ -1936,9 +2401,11 @@ function buildOverlayPresenterState(room: Room) {
 }
 
 async function buildOverlayControlState(room: Room) {
+  const roomLocale = getRoomCardLocale(room);
   const overlayState = await getOverlayState(room);
+  const overlayCategories = buildOverlayCategories(roomLocale);
   const categoriesMap = new Map<string, string>();
-  for (const category of OVERLAY_CATEGORIES) {
+  for (const category of overlayCategories) {
     categoriesMap.set(category.key, category.label);
   }
   for (const player of overlayState?.players ?? []) {
@@ -1965,9 +2432,10 @@ async function buildOverlayControlState(room: Room) {
 
   return {
     roomCode: room.code,
+    cardLocale: getRoomCardLocale(room),
     categories,
     players,
-    deckCatalog: controlDeckCatalog,
+    deckCatalog: localizeControlDeckCatalogForLocale(controlDeckCatalog, getRoomCardLocale(room)),
     overrides: room.overlayOverrides ?? {},
     overlayState: overlayState ?? undefined,
     presenterModeEnabled: Boolean(room.settings.enablePresenterMode),
@@ -2000,6 +2468,58 @@ function diffTopLevel<T extends object>(prev: T | undefined, next: T): Partial<T
 function send(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify(message));
+}
+
+function getSocketLocale(ws: WebSocket, room?: Room): ServerLocaleCode {
+  if (room) {
+    return normalizeServerLocale(room.settings.cardLocale);
+  }
+  const info = connectionInfo.get(ws);
+  if (!info) return "ru";
+  const resolvedRoom = rooms.get(info.roomCode);
+  return normalizeServerLocale(resolvedRoom?.settings.cardLocale);
+}
+
+function tServerForRoom(
+  room: Room | undefined,
+  key: string,
+  vars?: Record<string, unknown>
+): string {
+  const locale = room ? normalizeServerLocale(room.settings.cardLocale) : "ru";
+  return tServer(locale, key, vars);
+}
+
+function localizeScenarioMessageForRoom(room: Room, message: string): string {
+  return localizeScenarioMessage(message, normalizeServerLocale(room.settings.cardLocale));
+}
+
+function sendLocalizedError(
+  ws: WebSocket,
+  options: {
+    key: string;
+    room?: Room;
+    code?: string;
+    vars?: Record<string, unknown>;
+    extra?: Record<string, unknown>;
+  }
+): void {
+  const locale = getSocketLocale(ws, options.room);
+  send(ws, {
+    type: "error",
+    payload: {
+      ...(options.extra ?? {}),
+      ...(options.code ? { code: options.code } : {}),
+      message: tServer(locale, options.key, options.vars),
+    },
+  });
+}
+
+function sendReconnectForbidden(ws: WebSocket, room?: Room): void {
+  sendLocalizedError(ws, {
+    key: "error.reconnectForbidden",
+    room,
+    code: "RECONNECT_FORBIDDEN",
+  });
 }
 
 async function sendOverlayState(room: Room, ws: WebSocket, role: Role = "VIEW") {
@@ -2082,9 +2602,10 @@ function sendGameView(room: Room, player: Player): void {
   if (!room.session || !player.ws) return;
   if (room.sessionPlayerIds && !room.sessionPlayerIds.has(player.playerId)) {
     devLog("gameView skip: player not in session", { room: room.code, playerId: player.playerId });
-    send(player.ws, {
-      type: "error",
-      payload: { message: "Не удалось восстановить игрока. Перезайдите в комнату." },
+    sendLocalizedError(player.ws, {
+      key: "error.playerRestoreFailedRejoin",
+      room,
+      code: "PLAYER_RESTORE_FAILED",
     });
     return;
   }
@@ -2114,27 +2635,28 @@ function sendGameView(room: Room, player: Player): void {
         players: enrichedPlayers,
       },
     };
+    const localizedPayload = localizeGameViewForLocale(payload, getRoomCardLocale(room));
     if (!room.lastGameViews) {
       room.lastGameViews = new Map();
     }
     const lastView = room.lastGameViews.get(player.playerId);
     if (player.needsFullGameView || !lastView) {
-      send(player.ws, { type: "gameView", payload });
+      send(player.ws, { type: "gameView", payload: localizedPayload });
       player.needsFullGameView = false;
     } else {
-      const patch = diffTopLevel(lastView, payload);
+      const patch = diffTopLevel(lastView, localizedPayload);
       if (patch) {
         send(player.ws, { type: "statePatch", payload: { gameView: patch } });
       }
       player.needsFullGameView = false;
     }
-    room.lastGameViews.set(player.playerId, payload);
+    room.lastGameViews.set(player.playerId, localizedPayload);
     devLog("gameView sent", { room: room.code, playerId: player.playerId });
   } catch (error) {
     console.error("[server] Scenario getGameView failed", error);
-    send(player.ws, {
-      type: "error",
-      payload: { message: "Ошибка сценария. Попробуйте переподключиться." },
+    sendLocalizedError(player.ws, {
+      key: "error.scenarioStateFailed",
+      room,
     });
   }
 }
@@ -2381,7 +2903,16 @@ function transferHost(
   }
   broadcastRoomState(room);
   const hostName = room.players.get(nextHostId)?.name ?? "игрок";
-  broadcastEvent(room, buildSystemEvent(room, "info", `Новый хост: ${hostName}.`));
+  broadcastEvent(
+    room,
+    buildSystemEvent(
+      room,
+      "info",
+      tServerForRoom(room, "info.hostTransferred", {
+        hostName,
+      })
+    )
+  );
   for (const player of room.players.values()) {
     if (player.ws) {
       send(player.ws, { type: "hostChanged", payload: { newHostId: nextHostId, reason } });
@@ -2404,9 +2935,10 @@ function scheduleHostTransfer(room: Room, reason: "disconnect_timeout" | "left_b
       buildSystemEvent(
         room,
         "info",
-        `Хост ${hostPlayer.name} отключился. Если не вернётся за ${Math.floor(
-          HOST_GRACE_MS / 1000
-        )} секунд, хост будет передан.`
+        tServerForRoom(room, "info.hostDisconnectedTransferIn", {
+          hostName: hostPlayer.name,
+          seconds: String(Math.floor(HOST_GRACE_MS / 1000)),
+        })
       )
     );
   }
@@ -2453,7 +2985,13 @@ function markPlayerLeftBunker(room: Room, player: Player) {
   broadcastGameViews(room);
   broadcastEvent(
     room,
-    buildSystemEvent(room, "playerLeftBunker", `Игрок ${player.name} покинул бункер.`)
+    buildSystemEvent(
+      room,
+      "playerLeftBunker",
+      tServerForRoom(room, "info.playerLeftBunker", {
+        playerName: player.name,
+      })
+    )
   );
 }
 
@@ -2526,7 +3064,16 @@ function attachPlayer(room: Room, payload: ClientHelloPayload, ws: WebSocket, ex
   if (room.hostId === player.playerId && room.hostTransferTimer) {
     clearTimeout(room.hostTransferTimer);
     room.hostTransferTimer = undefined;
-    broadcastEvent(room, buildSystemEvent(room, "info", `Хост ${player.name} вернулся. Передача хоста отменена.`));
+    broadcastEvent(
+      room,
+      buildSystemEvent(
+        room,
+        "info",
+        tServerForRoom(room, "info.hostReturnedTransferCanceled", {
+          hostName: player.name,
+        })
+      )
+    );
   }
   player.ws = ws;
   player.connected = true;
@@ -2557,18 +3104,17 @@ function attachPlayer(room: Room, payload: ClientHelloPayload, ws: WebSocket, ex
   if (existing && wasDisconnected) {
     broadcastEvent(
       room,
-      buildSystemEvent(room, "playerReconnected", `Игрок ${player.name} вернулся.`)
+      buildSystemEvent(
+        room,
+        "playerReconnected",
+        tServerForRoom(room, "info.playerReconnected", {
+          playerName: player.name,
+        })
+      )
     );
   }
 
   return player;
-}
-
-function buildReconnectForbidden(): ServerMessage {
-  return {
-    type: "error",
-    payload: { code: "RECONNECT_FORBIDDEN", message: "Истекло время на переподключение." },
-  };
 }
 
 async function main() {
@@ -2608,7 +3154,7 @@ async function main() {
       next();
       return;
     }
-    const resolvedPath = resolveBackDeckAssetPath(req.params.fileName);
+    const resolvedPath = resolveBackDeckAssetPath(req.params.fileName, String(req.query.locale ?? ""));
     if (!resolvedPath) {
       next();
       return;
@@ -2617,6 +3163,7 @@ async function main() {
   });
 
   app.use("/assets", express.static(ASSETS_ROOT));
+  app.use("/locales", express.static(LOCALES_ROOT));
   app.use(LINK_PATHS.overlayAssets, express.static(OVERLAY_PUBLIC_ROOT));
   if (SERVE_CLIENT && fs.existsSync(CLIENT_DIST)) {
     app.use(express.static(CLIENT_DIST, { index: false }));
@@ -2625,7 +3172,7 @@ async function main() {
   app.get(LINK_PATHS.overlayView, (_req, res) => {
     const overlayHtml = path.join(OVERLAY_PUBLIC_ROOT, "overlay.html");
     if (!fs.existsSync(overlayHtml)) {
-      res.status(404).type("text/plain").send("Overlay page not found");
+      res.status(404).type("text/plain").send(tServerForRoom(undefined, "error.overlayPageNotFound"));
       return;
     }
     res.sendFile(overlayHtml);
@@ -2638,12 +3185,12 @@ async function main() {
     const token = String(req.query.token ?? "").trim();
     const room = rooms.get(roomCode);
     if (!room || !isOverlayEditAuthorized(room, token)) {
-      res.status(403).type("text/plain").send("Forbidden");
+      res.status(403).type("text/plain").send(tServerForRoom(room, "error.forbidden"));
       return;
     }
     const controlHtml = path.join(OVERLAY_PUBLIC_ROOT, "overlay-control.html");
     if (!fs.existsSync(controlHtml)) {
-      res.status(404).type("text/plain").send("Overlay control page not found");
+      res.status(404).type("text/plain").send(tServerForRoom(room, "error.overlayControlPageNotFound"));
       return;
     }
     res.sendFile(controlHtml);
@@ -2673,12 +3220,12 @@ async function main() {
     const token = String(req.query.token ?? "").trim();
     const room = rooms.get(roomCode);
     if (!room) {
-      res.status(404).json({ ok: false, message: "Room not found" });
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
       return;
     }
     const tokenRole = getRoleForToken(room, token);
     if (tokenRole === null || !canControl(tokenRole)) {
-      res.status(403).json({ ok: false, message: "Forbidden" });
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
       return;
     }
     try {
@@ -2690,7 +3237,7 @@ async function main() {
       });
     } catch (error) {
       console.error("[overlay-control] failed to build state:", error);
-      res.status(500).json({ ok: false, message: "Failed to build overlay control state" });
+      res.status(500).json({ ok: false, message: tServerForRoom(room, "error.overlayControlStateBuildFailed") });
     }
   });
 
@@ -2702,11 +3249,11 @@ async function main() {
     const token = String(payload.token ?? "").trim();
     const room = rooms.get(roomCode);
     if (!room) {
-      res.status(404).json({ ok: false, message: "Room not found" });
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
       return;
     }
     if (!isOverlayEditAuthorized(room, token)) {
-      res.status(403).json({ ok: false, message: "Forbidden" });
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
       return;
     }
     const normalized = normalizeOverlayOverrides(payload.overrides, room);
@@ -2714,7 +3261,7 @@ async function main() {
     if (!parsed.success) {
       res.status(400).json({
         ok: false,
-        message: "Invalid overrides payload",
+        message: tServerForRoom(room, "error.overlayOverridesInvalidPayload"),
       });
       return;
     }
@@ -2737,18 +3284,20 @@ async function main() {
     const token = String(payload.token ?? "").trim();
 
     if (!roomCode || !token) {
-      res.status(400).json({ ok: false, message: "roomCode and token are required" });
+      res
+        .status(400)
+        .json({ ok: false, message: tServerForRoom(undefined, "error.overlayLinksRequireRoomAndToken") });
       return;
     }
 
     const room = rooms.get(roomCode);
     if (!room) {
-      res.status(404).json({ ok: false, message: "Room not found" });
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
       return;
     }
 
     if (!isOverlayEditAuthorized(room, token)) {
-      res.status(403).json({ ok: false, message: "Forbidden" });
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
       return;
     }
 
@@ -2797,12 +3346,26 @@ async function main() {
     | "TRANSFER_HOST"
     | "SCENARIO_ACTION";
 
-  const startGameAsControl = (room: Room): { ok: boolean; message?: string } => {
+  type ControlCommandError = { errorKey: string; errorVars?: Record<string, unknown> };
+  type ControlCommandResult =
+    | { ok: true }
+    | { ok: false; messageKey?: string; messageVars?: Record<string, unknown>; message?: string };
+
+  const controlError = (
+    messageKey: string,
+    messageVars?: Record<string, unknown>
+  ): ControlCommandResult => ({
+    ok: false,
+    messageKey,
+    messageVars,
+  });
+
+  const startGameAsControl = (room: Room): ControlCommandResult => {
     if (room.phase !== "lobby") {
-      return { ok: false, message: "Игра уже начата" };
+      return controlError("error.control.gameAlreadyStarted");
     }
     if (isClassicRoom(room) && room.players.size < MIN_CLASSIC_PLAYERS) {
-      return { ok: false, message: "Нужно минимум 4 игрока." };
+      return controlError("error.control.minPlayersRequired", { minPlayers: MIN_CLASSIC_PLAYERS });
     }
 
     updateRulesetIfAuto(room);
@@ -2822,7 +3385,11 @@ async function main() {
       hostId: room.hostId,
       ruleset: room.ruleset,
       onStateChange: () => broadcastGameViews(room),
-      onEvent: (event) => broadcastEvent(room, event),
+      onEvent: (event) =>
+        broadcastEvent(room, {
+          ...event,
+          message: localizeScenarioMessageForRoom(room, event.message),
+        }),
     };
     room.sessionContext = sessionContext;
     room.session = room.scenarioModule.createSession(sessionContext);
@@ -2840,12 +3407,16 @@ async function main() {
   const parseControlScenarioAction = (
     typeRaw: string,
     payloadRaw: Record<string, unknown>
-  ): ScenarioAction | { error: string } => {
+  ): ScenarioAction | ControlCommandError => {
     const actionType = String(typeRaw ?? "").trim();
     const payload = isRecord(payloadRaw) ? payloadRaw : {};
-    const requireNonEmpty = (value: unknown, message: string): string | { error: string } => {
+    const requireNonEmpty = (
+      value: unknown,
+      errorKey: string,
+      errorVars?: Record<string, unknown>
+    ): string | ControlCommandError => {
       const next = String(value ?? "").trim();
-      return next ? next : { error: message };
+      return next ? next : { errorKey, errorVars };
     };
     const toNumber = (value: unknown): number | null => {
       const parsed = Number(value);
@@ -2854,12 +3425,12 @@ async function main() {
 
     switch (actionType) {
       case "revealCard": {
-        const cardId = requireNonEmpty(payload.cardId, "Нужно указать cardId.");
+        const cardId = requireNonEmpty(payload.cardId, "error.control.cardIdRequired");
         if (typeof cardId !== "string") return cardId;
         return { type: "revealCard", payload: { cardId } };
       }
       case "vote": {
-        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "Нужно выбрать цель голосования.");
+        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "error.control.voteTargetRequired");
         if (typeof targetPlayerId !== "string") return targetPlayerId;
         return { type: "vote", payload: { targetPlayerId } };
       }
@@ -2868,7 +3439,7 @@ async function main() {
       case "applySpecial": {
         const specialInstanceId = requireNonEmpty(
           payload.specialInstanceId,
-          "Нужно выбрать specialInstanceId."
+          "error.control.specialInstanceIdRequired"
         );
         if (typeof specialInstanceId !== "string") return specialInstanceId;
         const nestedPayload = isRecord(payload.payload) ? payload.payload : {};
@@ -2888,28 +3459,28 @@ async function main() {
       case "revealWorldThreat": {
         const index = toNumber(payload.index);
         if (index === null || !Number.isInteger(index) || index < 0) {
-          return { error: "Нужен корректный индекс угрозы (index)." };
+          return { errorKey: "error.control.threatIndexInvalid" };
         }
         return { type: "revealWorldThreat", payload: { index } };
       }
       case "setBunkerOutcome": {
         const outcome = String(payload.outcome ?? "").trim();
         if (outcome !== "survived" && outcome !== "failed") {
-          return { error: "Неверный исход. Допустимо: survived | failed." };
+          return { errorKey: "error.control.bunkerOutcomeInvalid" };
         }
         return { type: "setBunkerOutcome", payload: { outcome } };
       }
       case "devSkipRound":
         return { type: "devSkipRound", payload: {} };
       case "devKickPlayer": {
-        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "Нужно выбрать игрока для кика.");
+        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "error.control.kickTargetRequired");
         if (typeof targetPlayerId !== "string") return targetPlayerId;
         return { type: "devKickPlayer", payload: { targetPlayerId } };
       }
       case "markLeftBunker": {
         const targetPlayerId = requireNonEmpty(
           payload.targetPlayerId,
-          "Нужно выбрать игрока для перевода в \"вне бункера\"."
+          "error.control.markLeftBunkerTargetRequired"
         );
         if (typeof targetPlayerId !== "string") return targetPlayerId;
         return { type: "markLeftBunker", payload: { targetPlayerId } };
@@ -2925,9 +3496,9 @@ async function main() {
         return { type: "devRemovePlayer", payload: targetPlayerId ? { targetPlayerId } : {} };
       }
       case "adminReplacePlayerCard": {
-        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "Нужно выбрать игрока.");
+        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "error.control.targetPlayerRequired");
         if (typeof targetPlayerId !== "string") return targetPlayerId;
-        const cardInstanceId = requireNonEmpty(payload.cardInstanceId, "Нужно выбрать карту игрока.");
+        const cardInstanceId = requireNonEmpty(payload.cardInstanceId, "error.control.playerCardRequired");
         if (typeof cardInstanceId !== "string") return cardInstanceId;
         const targetAreaRaw = String(payload.targetArea ?? "hand").trim().toLowerCase();
         const targetArea = targetAreaRaw === "special" ? "special" : "hand";
@@ -2948,11 +3519,11 @@ async function main() {
       case "adminSetWorldCardReveal": {
         const kind = String(payload.kind ?? "").trim().toLowerCase();
         if (kind !== "bunker" && kind !== "threat") {
-          return { error: "kind должен быть bunker или threat." };
+          return { errorKey: "error.control.worldKindBunkerThreatRequired" };
         }
         const index = toNumber(payload.index);
         if (index === null || !Number.isInteger(index) || index < 0) {
-          return { error: "Нужен корректный индекс карты мира (index)." };
+          return { errorKey: "error.control.worldCardIndexInvalid" };
         }
         return {
           type: "adminSetWorldCardReveal",
@@ -2966,14 +3537,14 @@ async function main() {
       case "adminReplaceWorldCard": {
         const kind = String(payload.kind ?? "").trim().toLowerCase();
         if (kind !== "bunker" && kind !== "threat" && kind !== "disaster") {
-          return { error: "kind должен быть bunker, threat или disaster." };
+          return { errorKey: "error.control.worldKindBunkerThreatDisasterRequired" };
         }
         const replacementModeRaw = String(payload.replacementMode ?? "random").trim().toLowerCase();
         const replacementMode = replacementModeRaw === "specific" ? "specific" : "random";
         const replacementCardId = String(payload.replacementCardId ?? "").trim();
         const index = toNumber(payload.index);
         if (kind !== "disaster" && (index === null || !Number.isInteger(index) || index < 0)) {
-          return { error: "Для bunker/threat нужен корректный index." };
+          return { errorKey: "error.control.worldIndexRequiredForBunkerThreat" };
         }
         return {
           type: "adminReplaceWorldCard",
@@ -2988,21 +3559,21 @@ async function main() {
       case "adminSetWorldCount": {
         const kind = String(payload.kind ?? "").trim().toLowerCase();
         if (kind !== "bunker" && kind !== "threat") {
-          return { error: "kind должен быть bunker или threat." };
+          return { errorKey: "error.control.worldKindBunkerThreatRequired" };
         }
         const count = toNumber(payload.count);
         if (count === null || !Number.isInteger(count) || count < 0) {
-          return { error: "Нужно корректное целое количество карт (count)." };
+          return { errorKey: "error.control.worldCountInvalid" };
         }
         return { type: "adminSetWorldCount", payload: { kind, count } };
       }
       case "adminApplySpecial": {
-        const actorPlayerId = requireNonEmpty(payload.actorPlayerId, "Нужно выбрать игрока-источник.");
+        const actorPlayerId = requireNonEmpty(payload.actorPlayerId, "error.control.actorPlayerRequired");
         if (typeof actorPlayerId !== "string") return actorPlayerId;
         const specialInstanceId = String(payload.specialInstanceId ?? "").trim();
         const specialId = String(payload.specialId ?? "").trim();
         if (!specialInstanceId && !specialId) {
-          return { error: "Нужно выбрать спецусловие (instanceId или specialId)." };
+          return { errorKey: "error.control.specialSelectionRequired" };
         }
         const nestedPayload = isRecord(payload.payload) ? payload.payload : {};
         const fallbackPayload = { ...payload };
@@ -3023,7 +3594,10 @@ async function main() {
         };
       }
       default:
-        return { error: `Неподдерживаемое сценарное действие: ${actionType}` };
+        return {
+          errorKey: "error.control.unsupportedScenarioAction",
+          errorVars: { actionType: actionType || "unknown" },
+        };
     }
   };
 
@@ -3036,7 +3610,7 @@ async function main() {
       scenarioActionType?: string;
       scenarioPayload?: Record<string, unknown>;
     }
-  ): { ok: boolean; message?: string } => {
+  ): ControlCommandResult => {
     if (command === "START_GAME") {
       return startGameAsControl(room);
     }
@@ -3045,19 +3619,19 @@ async function main() {
       const requestedTargetId = String(options?.targetPlayerId ?? "").trim();
       if (requestedTargetId) {
         if (requestedTargetId === room.hostId) {
-          return { ok: false, message: "Этот игрок уже ведущий." };
+          return controlError("error.alreadyHost");
         }
         const requestedTarget = room.players.get(requestedTargetId);
         if (!requestedTarget) {
-          return { ok: false, message: "Выбранный игрок не найден." };
+          return controlError("error.targetPlayerNotFound");
         }
         if (!requestedTarget.connected) {
-          return { ok: false, message: "Нельзя передать ведущего офлайн-игроку." };
+          return controlError("error.cannotTransferHostOffline");
         }
       }
       const nextHostId = requestedTargetId || pickNextHost(room, room.hostId);
       if (!nextHostId) {
-        return { ok: false, message: "Нет другого игрока для передачи роли." };
+        return controlError("error.noOtherPlayerForHostTransfer");
       }
       transferHost(room, "manual", room.hostId, requestedTargetId || undefined);
       return { ok: true };
@@ -3066,14 +3640,14 @@ async function main() {
     if (command === "KICK_PLAYER" && room.phase === "lobby") {
       const targetPlayerId = String(options?.targetPlayerId ?? "").trim();
       if (!targetPlayerId) {
-        return { ok: false, message: "Нужно выбрать игрока." };
+        return controlError("error.control.targetPlayerRequired");
       }
       if (targetPlayerId === room.controlId) {
-        return { ok: false, message: "Нельзя выгнать создателя комнаты (CONTROL)." };
+        return controlError("error.control.cannotKickControl");
       }
       const target = room.players.get(targetPlayerId);
       if (!target) {
-        return { ok: false, message: "Игрок не найден." };
+        return controlError("error.targetPlayerNotFound");
       }
       if (target.ws) {
         try {
@@ -3092,18 +3666,18 @@ async function main() {
     if (command === "SCENARIO_ACTION") {
       const actionType = String(options?.scenarioActionType ?? "").trim();
       if (!actionType) {
-        return { ok: false, message: "Не указан тип сценарного действия." };
+        return controlError("error.control.scenarioActionTypeRequired");
       }
       const parsedScenarioAction = parseControlScenarioAction(actionType, options?.scenarioPayload ?? {});
-      if ("error" in parsedScenarioAction) {
-        return { ok: false, message: parsedScenarioAction.error };
+      if ("errorKey" in parsedScenarioAction) {
+        return controlError(parsedScenarioAction.errorKey, parsedScenarioAction.errorVars);
       }
 
       if (!room.session || room.phase !== "game") {
         if (parsedScenarioAction.type === "devAddPlayer") {
           const bot = addLobbyBotPlayer(room, parsedScenarioAction.payload.name);
           if (!bot) {
-            return { ok: false, message: "Не удалось добавить бота (проверь лимит игроков)." };
+            return controlError("error.control.addBotFailed");
           }
           broadcastRoomState(room);
           return { ok: true };
@@ -3115,14 +3689,14 @@ async function main() {
         ) {
           const targetPlayerId = String(parsedScenarioAction.payload.targetPlayerId ?? "").trim();
           if (!targetPlayerId) {
-            return { ok: false, message: "Нужно выбрать игрока." };
+            return controlError("error.control.targetPlayerRequired");
           }
           if (targetPlayerId === room.controlId) {
-            return { ok: false, message: "Нельзя удалить создателя комнаты (CONTROL)." };
+            return controlError("error.control.cannotKickControl");
           }
           const target = room.players.get(targetPlayerId);
           if (!target) {
-            return { ok: false, message: "Игрок не найден." };
+            return controlError("error.targetPlayerNotFound");
           }
           if (target.ws) {
             try {
@@ -3138,7 +3712,7 @@ async function main() {
           return { ok: true };
         }
 
-        return { ok: false, message: "Это действие доступно только после старта игры." };
+        return controlError("error.control.availableAfterGameStart");
       }
 
       const explicitActorId = String(options?.actorPlayerId ?? "").trim();
@@ -3154,11 +3728,11 @@ async function main() {
               allowAnyPresentPlayer: true,
             }) || room.hostId;
       if (!room.players.has(actorPlayerId)) {
-        return { ok: false, message: "Выбранный игрок-исполнитель не найден в комнате." };
+        return controlError("error.control.actorNotFoundInRoom");
       }
       const result = room.session.handleAction(actorPlayerId, parsedScenarioAction);
       if (result.error) {
-        return { ok: false, message: result.error };
+        return { ok: false, message: localizeScenarioMessageForRoom(room, result.error) };
       }
       if (result.stateChanged) {
         broadcastGameViews(room);
@@ -3167,18 +3741,18 @@ async function main() {
     }
 
     if (!room.session || room.phase !== "game") {
-      return { ok: false, message: "Игра не найдена" };
+      return controlError("error.gameNotFound");
     }
 
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) {
-      return { ok: false, message: "Нет активного ведущего." };
+      return controlError("error.control.noActiveHost");
     }
     let hostView: ReturnType<ScenarioSession["getGameView"]>;
     try {
       hostView = room.session.getGameView(anchorId);
     } catch {
-      return { ok: false, message: "Не удалось определить текущую фазу." };
+      return controlError("error.control.phaseDetectFailed");
     }
     const continueActorId =
       room.settings.continuePermission === "revealer_only"
@@ -3196,7 +3770,7 @@ async function main() {
       } else if (hostView.phase === "voting" && hostView.public.votePhase === "voteSpecialWindow") {
         scenarioAction = { type: "finalizeVoting", payload: {} };
       } else {
-        return { ok: false, message: "Этот шаг сейчас нельзя пропустить." };
+        return controlError("error.control.skipStepUnavailable");
       }
     } else if (command === "SKIP_ROUND") {
       scenarioAction = { type: "devSkipRound", payload: {} };
@@ -3207,16 +3781,16 @@ async function main() {
     } else if (command === "KICK_PLAYER") {
       const targetPlayerId = String(options?.targetPlayerId ?? "").trim();
       if (!targetPlayerId) {
-        return { ok: false, message: "Нужно выбрать игрока." };
+        return controlError("error.control.targetPlayerRequired");
       }
       if (targetPlayerId === room.controlId) {
-        return { ok: false, message: "Нельзя выгнать создателя комнаты (CONTROL)." };
+        return controlError("error.control.cannotKickControl");
       }
       scenarioAction = { type: "devKickPlayer", payload: { targetPlayerId } };
     }
 
     if (!scenarioAction) {
-      return { ok: false, message: "Неизвестная команда управления." };
+      return controlError("error.control.unknownCommand");
     }
 
     const actorId =
@@ -3226,7 +3800,7 @@ async function main() {
       }) || room.hostId;
     const result = room.session.handleAction(actorId, scenarioAction);
     if (result.error) {
-      return { ok: false, message: result.error };
+      return { ok: false, message: localizeScenarioMessageForRoom(room, result.error) };
     }
     if (result.stateChanged) {
       broadcastGameViews(room);
@@ -3251,23 +3825,25 @@ async function main() {
         : {};
 
     if (!roomCode || !token || !action) {
-      res.status(400).json({ ok: false, message: "roomCode, token and action are required" });
+      res
+        .status(400)
+        .json({ ok: false, message: tServerForRoom(undefined, "error.overlayActionRequireRoomTokenAction") });
       return;
     }
 
     const room = rooms.get(roomCode);
     if (!room) {
-      res.status(404).json({ ok: false, message: "Room not found" });
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
       return;
     }
 
     const tokenRole = getRoleForToken(room, token);
     if (tokenRole === null || !canControl(tokenRole)) {
-      res.status(403).json({ ok: false, message: "Forbidden" });
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
       return;
     }
     if (!room.settings.enablePresenterMode) {
-      res.status(400).json({ ok: false, message: "Presenter mode is disabled for this room." });
+      res.status(400).json({ ok: false, message: tServerForRoom(room, "error.presenterModeDisabled") });
       return;
     }
 
@@ -3278,7 +3854,12 @@ async function main() {
       scenarioPayload,
     });
     if (!result.ok) {
-      res.status(400).json({ ok: false, message: result.message ?? "Action rejected" });
+      const localizedMessage = result.message
+        ? result.message
+        : result.messageKey
+          ? tServerForRoom(room, result.messageKey, result.messageVars)
+          : tServerForRoom(room, "error.actionRejected");
+      res.status(400).json({ ok: false, message: localizedMessage });
       return;
     }
 
@@ -3396,13 +3977,17 @@ async function main() {
       try {
           parsedJson = JSON.parse(data.toString());
         } catch {
-          send(ws, { type: "error", payload: { message: "Неверный JSON" } });
+          sendLocalizedError(ws, {
+            key: "error.invalidJson",
+          });
           return;
         }
 
       const parsed = ClientMessageSchema.safeParse(parsedJson);
       if (!parsed.success) {
-        send(ws, { type: "error", payload: { message: "Неверный формат сообщения" } });
+        sendLocalizedError(ws, {
+          key: "error.invalidMessageFormat",
+        });
         return;
       }
 
@@ -3420,19 +4005,25 @@ async function main() {
           });
           if (IDENTITY_MODE === "dev_tab" && !payload.tabId && !payload.playerToken) {
             logProtocol("hello rejected", { reason: "missing_tabId", mode: IDENTITY_MODE });
-            send(ws, { type: "error", payload: { message: "tabId обязателен в dev_tab режиме" } });
+            sendLocalizedError(ws, {
+              key: "error.tabIdRequiredDev",
+            });
             return;
           }
           if (payload.create) {
             if (!payload.scenarioId) {
               logProtocol("hello rejected", { reason: "missing_scenarioId" });
-              send(ws, { type: "error", payload: { message: "Нужен scenarioId" } });
+              sendLocalizedError(ws, {
+                key: "error.scenarioIdRequired",
+              });
               return;
             }
             const scenarioModule = scenarioMap.get(payload.scenarioId);
             if (!scenarioModule) {
               logProtocol("hello rejected", { reason: "scenario_not_found", scenarioId: payload.scenarioId });
-              send(ws, { type: "error", payload: { message: "Сценарий не найден" } });
+              sendLocalizedError(ws, {
+                key: "error.scenarioNotFound",
+              });
               return;
             }
             const initialRuleset = buildAutoRuleset(MIN_CLASSIC_PLAYERS);
@@ -3446,7 +4037,10 @@ async function main() {
               scenarioId: scenarioModule.meta.id,
               scenarioMeta: scenarioModule.meta,
               scenarioModule,
-              settings: { ...DEFAULT_SETTINGS },
+              settings: {
+			   ...DEFAULT_SETTINGS,
+			   cardLocale: normalizeCardLocale(payload.locale),
+			  },
               disasterOptions: buildDisasterOptions(assets),
               ruleset: initialRuleset,
               rulesOverriddenByHost: false,
@@ -3489,15 +4083,22 @@ async function main() {
 
           if (!payload.roomCode) {
             logProtocol("hello rejected", { reason: "missing_roomCode" });
-            send(ws, { type: "error", payload: { message: "Нужен roomCode" } });
+            sendLocalizedError(ws, {
+              key: "error.roomCodeRequired",
+            });
             return;
           }
 
           const room = rooms.get(payload.roomCode.toUpperCase());
           if (!room) {
             logProtocol("hello rejected", { reason: "room_not_found", roomCode: payload.roomCode.toUpperCase() });
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
+          }
+          if (payload.locale) {
+            room.settings.cardLocale = normalizeCardLocale(payload.locale);
           }
 
           // Overlay Control websocket must never create a separate "CONTROL" player.
@@ -3512,7 +4113,10 @@ async function main() {
           if (isOverlayControlCompanionByToken) {
             const controlPlayer = room.players.get(room.controlId);
             if (!controlPlayer) {
-              send(ws, { type: "error", payload: { message: "CONTROL игрок не найден в комнате." } });
+              sendLocalizedError(ws, {
+                key: "error.controlPlayerNotFoundInRoom",
+                room,
+              });
               return;
             }
             connectionInfo.set(ws, { roomCode: room.code, playerId: controlPlayer.playerId });
@@ -3523,7 +4127,10 @@ async function main() {
             send(ws, { type: "roomState", payload: buildRoomState(room) });
             if (room.phase === "game" && room.session) {
               try {
-                const payloadView = room.session.getGameView(controlPlayer.playerId);
+                const payloadView = localizeGameViewForLocale(
+                  room.session.getGameView(controlPlayer.playerId),
+                  getRoomCardLocale(room)
+                );
                 send(ws, { type: "gameView", payload: payloadView });
               } catch {
                 // ignore transient gameView errors for companion sockets
@@ -3562,7 +4169,10 @@ async function main() {
             send(ws, { type: "roomState", payload: buildRoomState(room) });
             if (room.phase === "game" && room.session) {
               try {
-                const payloadView = room.session.getGameView(existingPlayer.playerId);
+                const payloadView = localizeGameViewForLocale(
+                  room.session.getGameView(existingPlayer.playerId),
+                  getRoomCardLocale(room)
+                );
                 send(ws, { type: "gameView", payload: payloadView });
               } catch {
                 // ignore transient gameView errors for companion sockets
@@ -3578,7 +4188,7 @@ async function main() {
             ) {
               // allow reconnect during grace window
             } else {
-              send(ws, buildReconnectForbidden());
+              sendReconnectForbidden(ws, room);
               return;
             }
           }
@@ -3587,7 +4197,7 @@ async function main() {
             const status = getScenarioStatus(room, existing.playerId);
             if (status === "eliminated" && existing.disconnectedAt) {
               if (Date.now() - existing.disconnectedAt > DISCONNECT_GRACE_MS) {
-                send(ws, buildReconnectForbidden());
+                sendReconnectForbidden(ws, room);
                 return;
               }
             }
@@ -3596,9 +4206,10 @@ async function main() {
             const remainingMs = computeKickRemainingMs(existing);
             if (remainingMs <= 0) {
               markPlayerLeftBunker(room, existing);
-              send(ws, {
-                type: "error",
-                payload: { message: "Игрок покинул бункер. Перезайдите в комнату как новый игрок." },
+              sendLocalizedError(ws, {
+                key: "error.leftBunkerRejoinAsNew",
+                room,
+                code: "LEFT_BUNKER",
               });
               return;
             }
@@ -3606,16 +4217,22 @@ async function main() {
 
           if (!existing && room.phase === "lobby" && room.players.size >= getEffectiveMaxPlayers(room)) {
             const maxPlayers = getEffectiveMaxPlayers(room);
-            const message = `Комната заполнена (макс ${maxPlayers}).`;
-            send(ws, { type: "error", payload: { message, code: "ROOM_FULL", maxPlayers } });
+            sendLocalizedError(ws, {
+              key: "error.roomFull",
+              room,
+              code: "ROOM_FULL",
+              vars: { maxPlayers },
+              extra: { maxPlayers },
+            });
             return;
           }
 
           if (!existing && room.phase === "game") {
             devLog("reconnect failed: player not found", { room: room.code });
-            send(ws, {
-              type: "error",
-              payload: { message: "Не удалось восстановить игрока. Перезайдите в комнату." },
+            sendLocalizedError(ws, {
+              key: "error.playerRestoreFailedRejoin",
+              room,
+              code: "PLAYER_RESTORE_FAILED",
             });
             return;
           }
@@ -3642,12 +4259,18 @@ async function main() {
           const payload = message.payload;
           const room = rooms.get(payload.roomCode.toUpperCase());
           if (!room) {
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
           }
           const existing = findPlayerBySessionId(room, payload.sessionId);
           if (!existing) {
-            send(ws, { type: "error", payload: { message: "Не удалось восстановить игрока." } });
+            sendLocalizedError(ws, {
+              key: "error.playerRestoreFailed",
+              room,
+              code: "PLAYER_RESTORE_FAILED",
+            });
             return;
           }
 
@@ -3658,7 +4281,7 @@ async function main() {
             ) {
               // allow reconnect during grace window
             } else {
-              send(ws, buildReconnectForbidden());
+              sendReconnectForbidden(ws, room);
               return;
             }
           }
@@ -3667,7 +4290,7 @@ async function main() {
             const status = getScenarioStatus(room, existing.playerId);
             if (status === "eliminated" && existing.disconnectedAt) {
               if (Date.now() - existing.disconnectedAt > DISCONNECT_GRACE_MS) {
-                send(ws, buildReconnectForbidden());
+                sendReconnectForbidden(ws, room);
                 return;
               }
             }
@@ -3677,9 +4300,10 @@ async function main() {
             const remainingMs = computeKickRemainingMs(existing);
             if (remainingMs <= 0) {
               markPlayerLeftBunker(room, existing);
-              send(ws, {
-                type: "error",
-                payload: { message: "Игрок покинул бункер. Перезайдите в комнату как новый игрок." },
+              sendLocalizedError(ws, {
+                key: "error.leftBunkerRejoinAsNew",
+                room,
+                code: "LEFT_BUNKER",
               });
               return;
             }
@@ -3711,7 +4335,11 @@ async function main() {
           if (!room) {
             send(ws, {
               type: "overlayState",
-              payload: { ok: false, unauthorized: true, message: "Room not found." },
+              payload: {
+                ok: false,
+                unauthorized: true,
+                message: tServerForRoom(undefined, "error.overlaySubscribeRoomNotFound"),
+              },
             });
             return;
           }
@@ -3720,7 +4348,12 @@ async function main() {
           if (role === null || (role !== "VIEW" && !canControl(role))) {
             send(ws, {
               type: "overlayState",
-              payload: { ok: false, unauthorized: true, roomCode, message: "Unauthorized." },
+              payload: {
+                ok: false,
+                unauthorized: true,
+                roomCode,
+                message: tServerForRoom(room, "error.overlaySubscribeUnauthorized"),
+              },
             });
             return;
           }
@@ -3731,85 +4364,169 @@ async function main() {
         case "startGame": {
           const info = connectionInfo.get(ws);
           if (!info) {
-            send(ws, { type: "error", payload: { message: "Вы не в комнате" } });
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
             return;
           }
           const room = rooms.get(info.roomCode);
           if (!room) {
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
           }
           const role = getRoleForPlayer(room, info.playerId);
           if (!canControl(role)) {
-            send(ws, { type: "error", payload: { message: "Только CONTROL может начать игру" } });
+            sendLocalizedError(ws, {
+              key: "error.onlyControlStartGame",
+              room,
+            });
             return;
           }
           const result = startGameAsControl(room);
           if (!result.ok) {
-            send(ws, { type: "error", payload: { message: result.message ?? "Не удалось начать игру" } });
+            if (result.messageKey) {
+              sendLocalizedError(ws, {
+                key: result.messageKey,
+                room,
+                vars: result.messageVars,
+              });
+              return;
+            }
+            if (result.message) {
+              send(ws, { type: "error", payload: { message: result.message } });
+              return;
+            }
+            sendLocalizedError(ws, {
+              key: "error.startGameFailed",
+              room,
+            });
             return;
+          }
+          return;
+        }
+        case "updateLocale": {
+          const info = connectionInfo.get(ws);
+          if (!info) {
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
+            return;
+          }
+          const room = rooms.get(info.roomCode);
+          if (!room) {
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
+            return;
+          }
+          room.settings.cardLocale = normalizeCardLocale(message.payload.locale);
+          room.lastRoomState = undefined;
+          room.lastGameViews?.clear();
+          for (const player of room.players.values()) {
+            player.needsFullState = true;
+            player.needsFullGameView = true;
+          }
+          broadcastRoomState(room);
+          if (room.session) {
+            broadcastGameViews(room);
           }
           return;
         }
         case "updateSettings": {
           const info = connectionInfo.get(ws);
           if (!info) {
-            send(ws, { type: "error", payload: { message: "Вы не в комнате" } });
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
             return;
           }
           const room = rooms.get(info.roomCode);
           if (!room) {
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
           }
           if (room.phase !== "lobby") {
-            send(ws, { type: "error", payload: { message: "Настройки доступны только в лобби." } });
+            sendLocalizedError(ws, {
+              key: "error.settingsLobbyOnly",
+              room,
+            });
             return;
           }
           const role = getRoleForPlayer(room, info.playerId);
           if (!canControl(role)) {
-            send(ws, { type: "error", payload: { message: "Только CONTROL может менять настройки." } });
+            sendLocalizedError(ws, {
+              key: "error.onlyControlChangeSettings",
+              room,
+            });
             return;
           }
           const minAllowedPlayers = isClassicRoom(room) ? MIN_CLASSIC_PLAYERS : 2;
           const nextMaxPlayers = clampInt(message.payload.maxPlayers, minAllowedPlayers, MAX_CLASSIC_PLAYERS);
           if (nextMaxPlayers < room.players.size) {
-            send(ws, { type: "error", payload: { message: "Лимит игроков меньше текущего числа." } });
+            sendLocalizedError(ws, {
+              key: "error.maxPlayersLowerThanCurrent",
+              room,
+            });
             return;
           }
           room.settings = {
-            ...message.payload,
-            maxPlayers: nextMaxPlayers,
-            forcedDisasterId: normalizeForcedDisasterId(
-              message.payload.forcedDisasterId,
-              room.disasterOptions
-            ),
-          };
-          broadcastRoomState(room);
-          return;
+			  ...message.payload,
+			  maxPlayers: nextMaxPlayers,
+			  forcedDisasterId: normalizeForcedDisasterId(
+				message.payload.forcedDisasterId,
+				room.disasterOptions
+			  ),
+			  cardLocale: normalizeCardLocale(message.payload.cardLocale),
+			};
+			broadcastRoomState(room);
+			if (room.session) {
+			  room.lastGameViews?.clear();
+			  for (const player of room.players.values()) {
+				player.needsFullGameView = true;
+			  }
+			  broadcastGameViews(room);
+			}
+			return;
         }
         case "updateRules": {
           const info = connectionInfo.get(ws);
           if (!info) {
-            send(ws, { type: "error", payload: { message: "Вы не в комнате" } });
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
             return;
           }
           const room = rooms.get(info.roomCode);
           if (!room) {
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
           }
           if (!isClassicRoom(room)) {
-            send(ws, { type: "error", payload: { message: "Правила доступны только для Classic." } });
+            sendLocalizedError(ws, {
+              key: "error.rulesClassicOnly",
+              room,
+            });
             return;
           }
           if (room.phase !== "lobby") {
-            send(ws, { type: "error", payload: { message: "Правила можно менять только в лобби." } });
+            sendLocalizedError(ws, {
+              key: "error.rulesLobbyOnly",
+              room,
+            });
             return;
           }
           const role = getRoleForPlayer(room, info.playerId);
           if (!canControl(role)) {
-            send(ws, { type: "error", payload: { message: "Только CONTROL может менять правила." } });
+            sendLocalizedError(ws, {
+              key: "error.onlyControlChangeRules",
+              room,
+            });
             return;
           }
 
@@ -3843,38 +4560,57 @@ async function main() {
         case "requestHostTransfer": {
           const info = connectionInfo.get(ws);
           if (!info) {
-            send(ws, { type: "error", payload: { message: "Вы не в комнате" } });
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
             return;
           }
           const room = rooms.get(info.roomCode);
           if (!room) {
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
           }
           const role = getRoleForPlayer(room, info.playerId);
           if (!canControl(role)) {
-            send(ws, { type: "error", payload: { message: "Только CONTROL может передать роль." } });
+            sendLocalizedError(ws, {
+              key: "error.onlyControlTransferRole",
+              room,
+            });
             return;
           }
           const requestedTargetId = String(message.payload.targetPlayerId ?? "").trim();
           if (requestedTargetId) {
             if (requestedTargetId === room.hostId) {
-              send(ws, { type: "error", payload: { message: "Этот игрок уже ведущий." } });
+              sendLocalizedError(ws, {
+                key: "error.alreadyHost",
+                room,
+              });
               return;
             }
             const requestedTarget = room.players.get(requestedTargetId);
             if (!requestedTarget) {
-              send(ws, { type: "error", payload: { message: "Выбранный игрок не найден." } });
+              sendLocalizedError(ws, {
+                key: "error.targetPlayerNotFound",
+                room,
+              });
               return;
             }
             if (!requestedTarget.connected) {
-              send(ws, { type: "error", payload: { message: "Нельзя передать ведущего офлайн-игроку." } });
+              sendLocalizedError(ws, {
+                key: "error.cannotTransferHostOffline",
+                room,
+              });
               return;
             }
           }
           const nextHostId = requestedTargetId || pickNextHost(room, room.hostId);
           if (!nextHostId) {
-            send(ws, { type: "error", payload: { message: "Нет другого игрока для передачи роли." } });
+            sendLocalizedError(ws, {
+              key: "error.noOtherPlayerForHostTransfer",
+              room,
+            });
             return;
           }
           transferHost(room, "manual", room.hostId, requestedTargetId || undefined);
@@ -3887,31 +4623,47 @@ async function main() {
         case "kickFromLobby": {
           const info = connectionInfo.get(ws);
           if (!info) {
-            send(ws, { type: "error", payload: { message: "Вы не в комнате" } });
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
             return;
           }
           const room = rooms.get(info.roomCode);
           if (!room) {
-            send(ws, { type: "error", payload: { message: "Комната не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.roomNotFound",
+            });
             return;
           }
           if (room.phase !== "lobby") {
-            send(ws, { type: "error", payload: { message: "Команда доступна только в лобби." } });
+            sendLocalizedError(ws, {
+              key: "error.commandLobbyOnly",
+              room,
+            });
             return;
           }
           const role = getRoleForPlayer(room, info.playerId);
           if (!canControl(role)) {
-            send(ws, { type: "error", payload: { message: "Только CONTROL может кикать игроков." } });
+            sendLocalizedError(ws, {
+              key: "error.onlyControlKick",
+              room,
+            });
             return;
           }
           const targetId = message.payload.targetPlayerId;
           if (targetId === room.hostId) {
-            send(ws, { type: "error", payload: { message: "Нельзя кикнуть хоста." } });
+            sendLocalizedError(ws, {
+              key: "error.cannotKickHost",
+              room,
+            });
             return;
           }
           const target = room.players.get(targetId);
           if (!target) {
-            send(ws, { type: "error", payload: { message: "Игрок не найден." } });
+            sendLocalizedError(ws, {
+              key: "error.targetPlayerNotFound",
+              room,
+            });
             return;
           }
           if (target.ws) {
@@ -3945,12 +4697,17 @@ async function main() {
         case "devRemovePlayer": {
           const info = connectionInfo.get(ws);
           if (!info) {
-            send(ws, { type: "error", payload: { message: "Вы не в комнате" } });
+            sendLocalizedError(ws, {
+              key: "error.notInRoom",
+            });
             return;
           }
           const room = rooms.get(info.roomCode);
           if (!room || !room.session) {
-            send(ws, { type: "error", payload: { message: "Игра не найдена" } });
+            sendLocalizedError(ws, {
+              key: "error.gameNotFound",
+              room,
+            });
             return;
           }
           const role = getRoleForPlayer(room, info.playerId);
@@ -3964,7 +4721,11 @@ async function main() {
           const continueRequiresControl =
             message.type === "continueRound" && Boolean(room.settings.enablePresenterMode);
           if ((controlOnlyActions.has(message.type) || continueRequiresControl) && !canControl(role)) {
-            send(ws, { type: "error", payload: { message: "Действие доступно только роли CONTROL." } });
+            sendLocalizedError(ws, {
+              key: "error.actionControlOnly",
+              room,
+              code: "PERMISSION_DENIED",
+            });
             return;
           }
           if (
@@ -3974,7 +4735,11 @@ async function main() {
               message.type === "revealWorldThreat") &&
             !canPlayerAction(role)
           ) {
-            send(ws, { type: "error", payload: { message: "Недостаточно прав для действия игрока." } });
+            sendLocalizedError(ws, {
+              key: "error.actionPlayerPermission",
+              room,
+              code: "PERMISSION_DENIED",
+            });
             return;
           }
 
@@ -3982,28 +4747,43 @@ async function main() {
             (message.type === "devAddPlayer" || message.type === "devRemovePlayer") &&
             !(DEV_SCENARIOS_ENABLED && room.scenarioMeta.devOnly)
           ) {
-            send(ws, { type: "error", payload: { message: "Dev-команды доступны только в dev-сценариях." } });
+            sendLocalizedError(ws, {
+              key: "error.devCommandsOnlyDevScenarios",
+              room,
+            });
             return;
           }
 
           if (message.type === "devSkipRound") {
             if (IDENTITY_MODE !== "dev_tab") {
-              send(ws, { type: "error", payload: { message: "Dev-режим выключен." } });
+              sendLocalizedError(ws, {
+                key: "error.devModeDisabled",
+                room,
+              });
               return;
             }
             if (room.scenarioMeta.id !== CLASSIC_SCENARIO_ID) {
-              send(ws, { type: "error", payload: { message: "Команда доступна только в Classic." } });
+              sendLocalizedError(ws, {
+                key: "error.commandClassicOnly",
+                room,
+              });
               return;
             }
           }
 
           if (message.type === "devKickPlayer") {
             if (IDENTITY_MODE !== "dev_tab") {
-              send(ws, { type: "error", payload: { message: "Dev-режим выключен." } });
+              sendLocalizedError(ws, {
+                key: "error.devModeDisabled",
+                room,
+              });
               return;
             }
             if (room.scenarioMeta.id !== CLASSIC_SCENARIO_ID) {
-              send(ws, { type: "error", payload: { message: "Команда доступна только в Classic." } });
+              sendLocalizedError(ws, {
+                key: "error.commandClassicOnly",
+                room,
+              });
               return;
             }
           }
@@ -4038,7 +4818,7 @@ async function main() {
           }
           const result = room.session.handleAction(actorId, action);
           if (result.error) {
-            send(ws, { type: "error", payload: { message: result.error } });
+            send(ws, { type: "error", payload: { message: localizeScenarioMessageForRoom(room, result.error) } });
             return;
           }
           if (result.stateChanged) {
@@ -4047,7 +4827,9 @@ async function main() {
           return;
         }
         default: {
-          send(ws, { type: "error", payload: { message: "Неизвестное сообщение" } });
+          sendLocalizedError(ws, {
+            key: "error.unknownMessage",
+          });
         }
       }
     });
@@ -4090,7 +4872,10 @@ async function main() {
               buildSystemEvent(
                 room,
                 "playerDisconnected",
-                `Игрок ${player.name} вышел. Осталось ${formatRemaining(remainingMs)} до исключения.`
+                tServerForRoom(room, "info.playerDisconnectedGrace", {
+                  playerName: player.name,
+                  remaining: formatRemaining(remainingMs),
+                })
               )
             );
           }
@@ -4132,7 +4917,10 @@ async function main() {
               buildSystemEvent(
                 room,
                 "playerDisconnected",
-                `Игрок ${player.name} отсутствует. Осталось ${formatRemaining(remainingMsTick)} до исключения.`
+                tServerForRoom(room, "info.playerMissingGrace", {
+                  playerName: player.name,
+                  remaining: formatRemaining(remainingMsTick),
+                })
               )
             );
           }, 60000);
@@ -4186,6 +4974,3 @@ main().catch((error) => {
   console.error("Failed to start server", error);
   process.exit(1);
 });
-
-
-

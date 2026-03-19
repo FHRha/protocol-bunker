@@ -1,0 +1,9 @@
+{
+  "votingTitle": "Голосование",
+  "votingSpecialAlert": "Во время голосования можно применить карты особых условий.",
+  "votingModalTitle": "Голосование",
+  "votingSummaryNone": "Вы ещё не голосовали.",
+  "votingWindowHint": "Окно спецусловий: можно применить карты, влияющие на голосование.",
+  "votingResolveTitle": "Итоги голосования",
+  "votingResolveEmpty": "Ожидаем итоги..."
+}

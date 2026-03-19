@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicPlayerView, WorldState30 } from "@bunker/shared";
-import { ru } from "../i18n/ru";
+import { useUiLocaleNamespace } from "../localization";
 
 interface TableLayoutProps {
   players: PublicPlayerView[];
@@ -28,6 +28,8 @@ export default function TableLayout({
   worldThreatsTotal,
   onWorldClick,
 }: TableLayoutProps) {
+  const text = useUiLocaleNamespace("game", { fallbacks: ["common", "world", "format", "misc"] });
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const [now, setNow] = useState(() => Date.now());
@@ -125,16 +127,16 @@ export default function TableLayout({
             {world ? (
               <button type="button" className="table-world" onClick={onWorldClick}>
                 <div className="table-world-title">
-                  Бункер: {world.bunker.filter((card) => card.isRevealed).length}/{world.counts.bunker}
+                  {text.t("tableWorldBunkerLabel", { revealed: world.bunker.filter((card) => card.isRevealed).length, total: world.counts.bunker })}
                 </div>
-                <div className="table-world-title">Катастрофа: {world.disaster.title}</div>
+                <div className="table-world-title">{text.t("tableWorldDisasterLabel", { title: world.disaster.title })}</div>
                 <div className="table-world-title">
-                  Угрозы:{" "}
+                  {text.t("tableWorldThreatsPrefix")}{" "}
                   {revealedThreatCount > 0
                     ? `${revealedThreatCount}/${threatDenominator}`
-                    : "скрыто"}
+                    : text.t("cardHidden").toLowerCase()}
                 </div>
-                <div className="table-world-hint">Нажми на центр стола, чтобы посмотреть карточки</div>
+                <div className="table-world-hint">{text.t("tableWorldHint")}</div>
               </button>
             ) : null}
           </div>
@@ -146,7 +148,7 @@ export default function TableLayout({
             const top = y - cardSize / 2;
             const isYou = player.playerId === youId;
             const isSelected = player.playerId === selectedId;
-            const label = isYou ? `${player.name} (${ru.youBadge})` : player.name;
+            const label = isYou ? `${player.name} (${text.t("youBadge")})` : player.name;
             const elapsed = now - lastUpdateRef.current;
             const remainingMs =
               player.kickRemainingMs && elapsed > 0
@@ -178,9 +180,9 @@ export default function TableLayout({
                 }}
                 onClick={() => onSelect?.(player.playerId)}
               >
-                <div className="seat-name">{label || `Игрок ${index + 1}`}</div>
+                <div className="seat-name">{label || text.t("playerFallback", { index: index + 1 })}</div>
                 {remainingText ? (
-                  <div className="seat-remaining">{ru.leftTimeLabel(remainingText)}</div>
+                  <div className="seat-remaining">{text.t("leftTimeLabel", { time: remainingText })}</div>
                 ) : null}
               </button>
             );
@@ -190,3 +192,4 @@ export default function TableLayout({
     </div>
   );
 }
+

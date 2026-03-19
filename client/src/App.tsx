@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type {
   GameEvent,
@@ -11,8 +11,12 @@ import type {
 import { BunkerClient, type ConnectionStatus } from "./wsClient";
 import { API_BASE, DEV_TAB_IDENTITY, IDENTITY_MODE, WS_URL } from "./config";
 import { initTabIdentity, tokenKey } from "./storage";
-import { ru } from "./i18n/ru";
-import { APP_NAME } from "./config/branding";
+import {
+  getCurrentLocale,
+  setCurrentLocale,
+  type LocaleCode,
+  useUiLocaleNamespace,
+} from "./localization";
 import Modal from "./components/Modal";
 import EyeIcon from "./components/EyeIcon";
 import AnimatedRouteContainer from "./components/AnimatedRouteContainer";
@@ -22,16 +26,34 @@ import HomePage from "./pages/HomePage";
 import LobbyPage from "./pages/LobbyPage";
 import GamePage from "./pages/GamePage";
 import SpectatorTablePage from "./pages/SpectatorTablePage";
+import { useUiLocaleNamespacesActivation } from "./localization/useUiLocaleNamespacesActivation";
 
 const THEME_STORAGE_KEY = "bunker.theme";
 const STREAMER_MODE_KEY = "bunker.streamerMode";
 const SHOW_ROOM_CODE_KEY = "bunker.showRoomCode";
-const TOAST_DURATION_MS = 4000;
+const TOAST_POSITION_KEY = "bunker.toastPosition";
+const UI_SCALE_KEY = "bunker.uiScale";
+const REDUCE_MOTION_KEY = "bunker.reduceMotion";
+const CONFIRM_DANGEROUS_KEY = "bunker.confirmDangerousActions";
+const CONFIRM_EXIT_KEY = "bunker.confirmExitGame";
+const COMPACT_MODE_KEY = "bunker.compactMode";
+const AUTO_COPY_ROOM_CODE_KEY = "bunker.autoCopyRoomCode";
+const SHOW_SPECTATOR_LINKS_KEY = "bunker.showSpectatorLinks";
+const SHOW_HINTS_KEY = "bunker.showHints";
+const TOAST_DURATION_KEY = "bunker.toastDurationMs";
 const MAX_EVENTS = 20;
 const SNAPSHOT_TIMEOUT_MS = 8000;
 const SESSION_ID_KEY = "bunker.sessionId";
 
-type ThemeMode = "light" | "dark";
+type ThemeMode =
+  | "dark-mint"
+  | "light-paper"
+  | "cyber-amber"
+  | "steel-blue"
+  | "crimson-night";
+type ToastPosition = "top-right" | "top-left" | "bottom-right" | "bottom-left";
+type UiScale = "90" | "100" | "110";
+type ToastDuration = "3000" | "4000" | "6000";
 type UiToast = { id: string; message: string; variant: "danger" | "success" | "info" };
 type RulesUpdatePayload = {
   mode: "auto" | "manual";
@@ -40,15 +62,26 @@ type RulesUpdatePayload = {
 };
 
 type SessionIntent =
-  | { mode: "create"; name: string; scenarioId: string; tabId?: string }
+  | { mode: "create"; name: string; scenarioId: string; locale: LocaleCode; tabId?: string }
   | { mode: "join"; name: string; roomCode: string; playerToken?: string; tabId?: string }
   | { mode: "reconnect"; name: string; roomCode: string; playerToken?: string; tabId?: string };
 
+
 function getInitialTheme(): ThemeMode {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark-mint";
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  if (stored === "light" || stored === "dark") return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  if (
+    stored === "dark-mint" ||
+    stored === "light-paper" ||
+    stored === "cyber-amber" ||
+    stored === "steel-blue" ||
+    stored === "crimson-night"
+  ) {
+    return stored;
+  }
+  if (stored === "dark") return "dark-mint";
+  if (stored === "light") return "light-paper";
+  return "dark-mint";
 }
 
 function getInitialStreamerMode(): boolean {
@@ -62,6 +95,82 @@ function getInitialShowRoomCode(): boolean {
   if (stored === "1") return true;
   if (stored === "0") return false;
   return localStorage.getItem(STREAMER_MODE_KEY) === "0";
+}
+
+function getInitialToastPosition(): ToastPosition {
+  if (typeof window === "undefined") return "top-right";
+  const stored = localStorage.getItem(TOAST_POSITION_KEY);
+  if (
+    stored === "top-right" ||
+    stored === "top-left" ||
+    stored === "bottom-right" ||
+    stored === "bottom-left"
+  ) {
+    return stored;
+  }
+  return "top-right";
+}
+
+function getInitialUiScale(): UiScale {
+  if (typeof window === "undefined") return "100";
+  const stored = localStorage.getItem(UI_SCALE_KEY);
+  if (stored === "90" || stored === "100" || stored === "110") {
+    return stored;
+  }
+  return "100";
+}
+
+function getInitialReduceMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(REDUCE_MOTION_KEY) === "1";
+}
+
+function getInitialConfirmDangerousActions(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(CONFIRM_DANGEROUS_KEY);
+  if (stored === "0") return false;
+  return true;
+}
+
+function getInitialConfirmExitGame(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(CONFIRM_EXIT_KEY);
+  if (stored === "0") return false;
+  return true;
+}
+
+function getInitialToastDuration(): ToastDuration {
+  if (typeof window === "undefined") return "4000";
+  const stored = localStorage.getItem(TOAST_DURATION_KEY);
+  if (stored === "3000" || stored === "4000" || stored === "6000") return stored;
+  return "4000";
+}
+
+function getInitialCompactMode(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(COMPACT_MODE_KEY);
+  if (stored === "0") return false;
+  if (stored === "1") return true;
+  return true;
+}
+
+function getInitialAutoCopyRoomCode(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(AUTO_COPY_ROOM_CODE_KEY) === "1";
+}
+
+function getInitialShowSpectatorLinks(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(SHOW_SPECTATOR_LINKS_KEY);
+  if (stored === "0") return false;
+  return true;
+}
+
+function getInitialShowHints(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(SHOW_HINTS_KEY);
+  if (stored === "0") return false;
+  return true;
 }
 
 function fallbackCopy(value: string): boolean {
@@ -89,7 +198,7 @@ function isSuspiciousLabel(value: string): boolean {
   const normalized = value.trim();
   if (!normalized) return true;
   if (/[\u0000-\u001f\u007f]/.test(normalized)) return true;
-  const mojibakeChunks = normalized.match(/[РС][\u0400-\u04ff]/g);
+  const mojibakeChunks = normalized.match(/[Р РЎ][\u0400-\u04ff]/g);
   return Boolean(mojibakeChunks && mojibakeChunks.length >= 2);
 }
 
@@ -110,6 +219,102 @@ function getOrCreateSessionId(useSessionStorage: boolean): string {
 }
 
 export default function App() {
+  useUiLocaleNamespacesActivation(["app", "common", "reconnect", "dev", "misc", "lobby", "game", "overlay-links", "room-settings", "rules", "format", "maps", "world", "special", "voting"]);
+  const appNs = useUiLocaleNamespace("app", {
+    fallbacks: ["common", "reconnect", "dev", "misc", "lobby", "game", "overlay-links", "room-settings", "rules", "format", "maps", "world", "special", "voting"],
+  });
+  const appLocale = useMemo(() => {
+    const getString = (key: string) => appNs.t(key);
+    const getFn = <T extends (...args: any[]) => any>(key: string, fallback: T): T => {
+      const raw = appNs.getRaw(key);
+      return (typeof raw === "function" ? raw : fallback) as T;
+    };
+
+    return {
+      themeDarkMint: getString("themeDarkMint"),
+      themeLightPaper: getString("themeLightPaper"),
+      themeCyberAmber: getString("themeCyberAmber"),
+      themeSteelBlue: getString("themeSteelBlue"),
+      themeCrimsonNight: getString("themeCrimsonNight"),
+      roleControl: getString("roleControl"),
+      roleHost: getString("roleHost"),
+      rolePlayer: getString("rolePlayer"),
+      statusOnline: getString("statusOnline"),
+      statusReconnecting: getString("statusReconnecting"),
+      statusOffline: getString("statusOffline"),
+      statusReconnectHint: getString("statusReconnectHint"),
+      statusOfflineHint: getString("statusOfflineHint"),
+      devSkipRoundButton: getString("devSkipRoundButton"),
+      errorReconnectNetwork: getString("errorReconnectNetwork"),
+      errorReconnectFailed: getString("errorReconnectFailed"),
+      wsActionRetryHint: getString("wsActionRetryHint"),
+      hostChangedYou: getString("hostChangedYou"),
+      roomFullUnknown: getString("roomFullUnknown"),
+      genericPlayer: getString("genericPlayer"),
+      copyFailed: getString("copyFailed"),
+      notificationTitle: getString("notificationTitle"),
+      hiddenValue: getString("hiddenValue"),
+      showSecret: getString("showSecret"),
+      hideSecret: getString("hideSecret"),
+      spectatorLinkTitle: getString("spectatorLinkTitle"),
+      copiedButton: getString("copiedButton"),
+      copyButton: getString("copyButton"),
+      transferHostButton: getString("transferHostButton"),
+      exitButton: getString("exitButton"),
+      settingsTitle: getString("settingsTitle"),
+      settingsGameSectionTitle: getString("settingsGameSectionTitle"),
+      streamerModeLabel: getString("streamerModeLabel"),
+      settingsShowRoomCodeInLobby: getString("settingsShowRoomCodeInLobby"),
+      settingsToastPosition: getString("settingsToastPosition"),
+      toastPosTopRight: getString("toastPosTopRight"),
+      toastPosTopLeft: getString("toastPosTopLeft"),
+      toastPosBottomRight: getString("toastPosBottomRight"),
+      toastPosBottomLeft: getString("toastPosBottomLeft"),
+      settingsToastDuration: getString("settingsToastDuration"),
+      toastDuration3s: getString("toastDuration3s"),
+      toastDuration4s: getString("toastDuration4s"),
+      toastDuration6s: getString("toastDuration6s"),
+      settingsUiScale: getString("settingsUiScale"),
+      settingsReduceMotion: getString("settingsReduceMotion"),
+      settingsConfirmDangerous: getString("settingsConfirmDangerous"),
+      settingsConfirmExit: getString("settingsConfirmExit"),
+      settingsCompactMode: getString("settingsCompactMode"),
+      settingsAutoCopyRoomCode: getString("settingsAutoCopyRoomCode"),
+      settingsShowSpectatorLinks: getString("settingsShowSpectatorLinks"),
+      settingsShowHints: getString("settingsShowHints"),
+      settingsResetUi: getString("settingsResetUi"),
+      settingsLocaleSectionTitle: getString("settingsLocaleSectionTitle"),
+      localeRu: getString("localeRu"),
+      localeEnBeta: getString("localeEnBeta"),
+      themeTitle: getString("themeTitle"),
+      retryButton: getString("retryButton"),
+      closeButton: getString("closeButton"),
+      confirmActionTitle: getString("confirmActionTitle"),
+      modalCancel: getString("modalCancel"),
+      modalApply: getString("modalApply"),
+      transferHostTitle: getString("transferHostTitle"),
+      transferHostSelectPlaceholder: getString("transferHostSelectPlaceholder"),
+      transferHostSelectLabel: getString("transferHostSelectLabel"),
+      transferHostAgreeLabel: getString("transferHostAgreeLabel"),
+      exitConfirmTitle: getString("exitConfirmTitle"),
+      exitConfirmText: getString("exitConfirmText"),
+      devKickTitle: getString("devKickTitle"),
+      devKickNoTargets: getString("devKickNoTargets"),
+      devKickSelectPlaceholder: getString("devKickSelectPlaceholder"),
+      devKickAgreeLabel: getString("devKickAgreeLabel"),
+      devKickConfirm: getString("devKickConfirm"),
+      devKickButton: getString("devKickButton"),
+      devBadge: getString("devBadge"),
+      roomFull: getFn("roomFull", (maxPlayers: number) => appNs.t("roomFull", { maxPlayers })),
+      hostChangedOther: getFn("hostChangedOther", (name: string) => appNs.t("hostChangedOther", { name })),
+      toastKind: getFn("toastKind", (kind: string) => appNs.t(`toastKind.${kind}`) || kind),
+      roomPill: getFn("roomPill", (code: string) => appNs.t("roomPill", { code })),
+      scenarioPill: getFn("scenarioPill", (name: string) => appNs.t("scenarioPill", { name })),
+      confirmSkipRound: getString("confirmSkipRound"),
+      confirmKickFromLobby: getString("confirmKickFromLobby"),
+      confirmTransferHost: getString("confirmTransferHost"),
+    };
+  }, [appNs]);
   const client = useMemo(() => new BunkerClient(WS_URL), []);
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,12 +331,39 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
   const [streamerMode, setStreamerMode] = useState<boolean>(() => getInitialStreamerMode());
   const [showRoomCode, setShowRoomCode] = useState<boolean>(() => getInitialShowRoomCode());
+  const [toastPosition, setToastPosition] = useState<ToastPosition>(() => getInitialToastPosition());
+  const [uiScale, setUiScale] = useState<UiScale>(() => getInitialUiScale());
+  const [reduceMotion, setReduceMotion] = useState<boolean>(() => getInitialReduceMotion());
+  const [confirmDangerousActions, setConfirmDangerousActions] = useState<boolean>(() =>
+    getInitialConfirmDangerousActions()
+  );
+  const [confirmExitGame, setConfirmExitGame] = useState<boolean>(() => getInitialConfirmExitGame());
+  const [toastDuration, setToastDuration] = useState<ToastDuration>(() => getInitialToastDuration());
+  const [compactMode, setCompactMode] = useState<boolean>(() => getInitialCompactMode());
+  const [autoCopyRoomCode, setAutoCopyRoomCode] = useState<boolean>(() => getInitialAutoCopyRoomCode());
+  const [showSpectatorLinks, setShowSpectatorLinks] = useState<boolean>(() =>
+    getInitialShowSpectatorLinks()
+  );
+  const [showHints, setShowHints] = useState<boolean>(() => getInitialShowHints());
+  const [locale, setLocale] = useState<LocaleCode>(() => getCurrentLocale());
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [settingsSectionsCollapsed, setSettingsSectionsCollapsed] = useState<{
+    game: boolean;
+    locale: boolean;
+  }>({ game: false, locale: false });
   const [eventLog, setEventLog] = useState<GameEvent[]>([]);
   const [toasts, setToasts] = useState<GameEvent[]>([]);
   const [uiToasts, setUiToasts] = useState<UiToast[]>([]);
   const [devKickModalOpen, setDevKickModalOpen] = useState(false);
+  const [transferHostModalOpen, setTransferHostModalOpen] = useState(false);
+  const [exitConfirmModalOpen, setExitConfirmModalOpen] = useState(false);
+  const [dangerConfirmMessage, setDangerConfirmMessage] = useState<string | null>(null);
   const [devKickTargetId, setDevKickTargetId] = useState("");
+  const [devKickAgree, setDevKickAgree] = useState(false);
+  const [transferHostTargetId, setTransferHostTargetId] = useState("");
+  const [transferHostAgree, setTransferHostAgree] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.matchMedia("(max-width: 1250px)").matches : false
@@ -140,6 +372,16 @@ export default function App() {
     typeof window !== "undefined" ? window.matchMedia("(max-width: 600px)").matches : false
   );
   const [mobileDossierError, setMobileDossierError] = useState<string | null>(null);
+  const THEME_OPTIONS: Array<{ id: ThemeMode; label: string }> = useMemo(
+    () => [
+      { id: "dark-mint", label: appLocale.themeDarkMint },
+      { id: "light-paper", label: appLocale.themeLightPaper },
+      { id: "cyber-amber", label: appLocale.themeCyberAmber },
+      { id: "steel-blue", label: appLocale.themeSteelBlue },
+      { id: "crimson-night", label: appLocale.themeCrimsonNight },
+    ],
+    [appLocale]
+  );
 
   const intentRef = useRef<SessionIntent | null>(null);
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,6 +393,10 @@ export default function App() {
   const lastHelloAtRef = useRef<number | null>(null);
   const reconnectPendingRef = useRef(false);
   const dossierActionRef = useRef(false);
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
+  const themeMenuRef = useRef<HTMLDivElement | null>(null);
+  const autoCopiedRoomCodeRef = useRef<string | null>(null);
+  const dangerConfirmResolveRef = useRef<((value: boolean) => void) | null>(null);
   const isHost = roomState?.hostId === playerId;
   const isControl = roomState?.controlId === playerId;
   const presenterModeEnabled = Boolean(roomState?.settings.enablePresenterMode);
@@ -167,13 +413,14 @@ export default function App() {
   const showRolePillCompact = showRolePill && isMobile;
   const showDevIdentityBadge = roomState ? Boolean(roomState.isDev) : DEV_TAB_IDENTITY;
   const wsInteractive = connectionStatus === "connected";
-  const roleLabel = isControl ? ru.roleControl : isHost ? ru.roleHost : ru.rolePlayer;
+  const toastDurationMs = Number(toastDuration);
+  const roleLabel = isControl ? appLocale.roleControl : isHost ? appLocale.roleHost : appLocale.rolePlayer;
   const statusLabel =
     connectionStatus === "connected"
-      ? ru.statusOnline
+      ? appLocale.statusOnline
       : connectionStatus === "reconnecting"
-        ? ru.statusReconnecting
-        : ru.statusOffline;
+        ? appLocale.statusReconnecting
+        : appLocale.statusOffline;
   const statusClass =
     connectionStatus === "connected"
       ? "online"
@@ -182,15 +429,17 @@ export default function App() {
         : "offline";
   const statusHint =
     connectionStatus === "reconnecting"
-      ? ru.statusReconnectHint
+      ? appLocale.statusReconnectHint
       : connectionStatus === "disconnected"
-        ? ru.statusOfflineHint
+        ? appLocale.statusOfflineHint
         : null;
   const devKickCandidates =
     gameView?.public.players.filter(
       (player) => player.status === "alive" && player.playerId !== playerId
     ) ?? [];
-  const devSkipRoundButtonLabel = safeLabel(ru.devSkipRoundButton, "DEV");
+  const transferHostCandidates =
+    roomState?.players.filter((player) => player.playerId !== roomState.hostId) ?? [];
+  const devSkipRoundButtonLabel = safeLabel(appLocale.devSkipRoundButton, "DEV");
 
   const clearSnapshotTimer = () => {
     if (snapshotTimerRef.current) {
@@ -206,7 +455,7 @@ export default function App() {
     awaitingRoomStateRef.current = true;
     awaitingGameViewRef.current = expectGameView;
     snapshotTimerRef.current = setTimeout(() => {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
       reconnectPendingRef.current = false;
     }, SNAPSHOT_TIMEOUT_MS);
   };
@@ -232,30 +481,42 @@ export default function App() {
     client.disconnect();
   };
 
-  const isReconnectError = (message: string) =>
-    message.includes("Не удалось восстановить игрока") ||
-    message.includes("Игрок не найден") ||
-    message.includes("Вы не в комнате") ||
-    message.includes("Комната не найдена") ||
-    message.includes("Игра не найдена");
+  const messageIncludesAny = (message: string, tokens: string[]): boolean => {
+    const lowered = String(message ?? "").toLowerCase();
+    return tokens.some((token) => lowered.includes(token.toLowerCase()));
+  };
+
+  const isReconnectError = (message: string, code?: string) =>
+    code === "PLAYER_RESTORE_FAILED" ||
+    messageIncludesAny(message, [
+      appLocale.errorReconnectFailed,
+      "failed to restore player",
+      "failed to restore player",
+      "Player not found",
+      "You are not in room",
+      "Room not found",
+      "Game not found",
+    ]);
 
   const buildHelloPayload = (intent: SessionIntent) => {
     const effectiveSessionId = sessionIdRef.current ?? sessionId ?? undefined;
     if (intent.mode === "create") {
-      return {
-        name: intent.name,
-        create: true,
-        scenarioId: intent.scenarioId,
-        tabId: intent.tabId,
-        sessionId: effectiveSessionId,
-      };
-    }
+	  return {
+		name: intent.name,
+		create: true,
+		scenarioId: intent.scenarioId,
+		locale: intent.locale,
+		tabId: intent.tabId,
+		sessionId: effectiveSessionId,
+	  };
+	}
     return {
       name: intent.name,
       roomCode: intent.roomCode,
       playerToken: intent.playerToken,
       tabId: intent.tabId,
       sessionId: effectiveSessionId,
+      locale,
     };
   };
 
@@ -305,8 +566,22 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    document.title = APP_NAME;
-  }, []);
+  document.title = appNs.t("appTitle");
+  }, [appNs, locale]);
+
+  useEffect(() => {
+    setCurrentLocale(locale);
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  useEffect(() => {
+    if (connectionStatus !== "connected") return;
+    try {
+      client.send({ type: "updateLocale", payload: { locale } });
+    } catch {
+      // ignore transient reconnect race
+    }
+  }, [client, connectionStatus, locale]);
 
   useEffect(() => {
     localStorage.setItem(STREAMER_MODE_KEY, streamerMode ? "1" : "0");
@@ -324,10 +599,131 @@ export default function App() {
   }, [showRoomCode]);
 
   useEffect(() => {
+    localStorage.setItem(TOAST_POSITION_KEY, toastPosition);
+  }, [toastPosition]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_SCALE_KEY, uiScale);
+    document.documentElement.dataset.uiScale = uiScale;
+  }, [uiScale]);
+
+  useEffect(() => {
+    localStorage.setItem(REDUCE_MOTION_KEY, reduceMotion ? "1" : "0");
+    document.documentElement.dataset.motion = reduceMotion ? "off" : "on";
+  }, [reduceMotion]);
+
+  useEffect(() => {
+    localStorage.setItem(CONFIRM_DANGEROUS_KEY, confirmDangerousActions ? "1" : "0");
+  }, [confirmDangerousActions]);
+
+  useEffect(() => {
+    localStorage.setItem(CONFIRM_EXIT_KEY, confirmExitGame ? "1" : "0");
+  }, [confirmExitGame]);
+
+  useEffect(() => {
+    localStorage.setItem(TOAST_DURATION_KEY, toastDuration);
+  }, [toastDuration]);
+
+  useEffect(() => {
+    localStorage.setItem(COMPACT_MODE_KEY, compactMode ? "1" : "0");
+  }, [compactMode]);
+
+  useEffect(() => {
+    localStorage.setItem(AUTO_COPY_ROOM_CODE_KEY, autoCopyRoomCode ? "1" : "0");
+  }, [autoCopyRoomCode]);
+
+  useEffect(() => {
+    localStorage.setItem(SHOW_SPECTATOR_LINKS_KEY, showSpectatorLinks ? "1" : "0");
+  }, [showSpectatorLinks]);
+
+  useEffect(() => {
+    localStorage.setItem(SHOW_HINTS_KEY, showHints ? "1" : "0");
+  }, [showHints]);
+
+  useEffect(
+    () => () => {
+      if (dangerConfirmResolveRef.current) {
+        dangerConfirmResolveRef.current(false);
+        dangerConfirmResolveRef.current = null;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
     if (!roomCodeCopied) return;
     const timer = window.setTimeout(() => setRoomCodeCopied(false), 1200);
     return () => window.clearTimeout(timer);
   }, [roomCodeCopied]);
+
+  useEffect(() => {
+    setTransferHostTargetId((prev) =>
+      transferHostCandidates.some((player) => player.playerId === prev)
+        ? prev
+        : (transferHostCandidates[0]?.playerId ?? "")
+    );
+    if (transferHostCandidates.length === 0) {
+      setTransferHostAgree(false);
+    }
+  }, [transferHostCandidates]);
+
+  useEffect(() => {
+    if (!transferHostModalOpen) return;
+    if (!isGameRoute || !isControl || isSpectateRoute || isLobbyRoute) {
+      setTransferHostModalOpen(false);
+      setTransferHostAgree(false);
+    }
+  }, [isControl, isGameRoute, isLobbyRoute, isSpectateRoute, transferHostModalOpen]);
+
+  useEffect(() => {
+    if (!autoCopyRoomCode) {
+      autoCopiedRoomCodeRef.current = null;
+    }
+  }, [autoCopyRoomCode]);
+
+  useEffect(() => {
+    if (!roomState?.roomCode) return;
+    if (!autoCopyRoomCode) return;
+    if (!isLobbyRoute) return;
+    if (!isControl) return;
+    if (autoCopiedRoomCodeRef.current === roomState.roomCode) return;
+    void (async () => {
+      const ok = await copyRoomCodeToClipboard({ silent: true, markCopied: false });
+      if (ok) {
+        autoCopiedRoomCodeRef.current = roomState.roomCode;
+      }
+    })();
+  }, [autoCopyRoomCode, isControl, isLobbyRoute, roomState?.roomCode]);
+
+  useEffect(() => {
+    setSettingsMenuOpen(false);
+    setThemeMenuOpen(false);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(target)) {
+        setSettingsMenuOpen(false);
+      }
+      if (themeMenuRef.current && !themeMenuRef.current.contains(target)) {
+        setThemeMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSettingsMenuOpen(false);
+        setThemeMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -405,7 +801,9 @@ export default function App() {
     if (event.kind !== "playerDisconnected") return false;
     const view = gameViewRef.current;
     if (!view) return false;
-    const match = event.message.match(/Игрок\s+(.+?)\s+(вышел|отсутствует|покинул)/i);
+    const match = event.message.match(
+      /(?:Игрок|Player)\s+(.+?)\s+(?:вышел|отсутствует|покинул|disconnected|missing|left)/i
+    );
     if (!match) return false;
     const name = match[1].trim();
     const found = view.public.players.find((player) => player.name === name);
@@ -418,7 +816,7 @@ export default function App() {
     setToasts((prev) => [...prev, event]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((toast) => toast.id !== event.id));
-    }, TOAST_DURATION_MS);
+    }, toastDurationMs);
 
     const isPlayerStatusEvent =
       event.kind === "playerDisconnected" ||
@@ -440,7 +838,7 @@ export default function App() {
     setUiToasts((prev) => [...prev, { id, message, variant }]);
     setTimeout(() => {
       setUiToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, TOAST_DURATION_MS);
+    }, toastDurationMs);
   };
 
   const ensureSessionId = () => {
@@ -457,7 +855,7 @@ export default function App() {
 
   const ensureWsInteractive = () => {
     if (wsInteractive) return true;
-    pushUiToast(ru.wsActionRetryHint, "info");
+    pushUiToast(appLocale.wsActionRetryHint, "info");
     return false;
   };
 
@@ -549,13 +947,13 @@ export default function App() {
           setRoomState((prev) => (prev ? { ...prev, hostId: newHostId } : prev));
           if (newHostId === playerId) {
             setErrorMessage(null);
-            pushUiToast(ru.hostChangedYou, "success");
+            pushUiToast(appLocale.hostChangedYou, "success");
             return;
           }
           const candidate =
             roomStateRef.current?.players.find((player) => player.playerId === newHostId) ??
             gameViewRef.current?.public.players.find((player) => player.playerId === newHostId);
-          pushUiToast(ru.hostChangedOther(candidate?.name ?? "игрок"), "info");
+          pushUiToast(appLocale.hostChangedOther(candidate?.name ?? appLocale.genericPlayer), "info");
           return;
         }
         case "error": {
@@ -563,11 +961,14 @@ export default function App() {
           const code = message.payload.code;
           const maxPlayers = message.payload.maxPlayers;
           const isPermissionError =
-            msg.includes("Действие доступно только роли CONTROL.") ||
-            msg.includes("Недостаточно прав для действия игрока.") ||
-            msg.includes("Только CONTROL может") ||
-            msg.includes("Только хост может") ||
-            msg.includes("Только ведущий может");
+            code === "PERMISSION_DENIED" ||
+            messageIncludesAny(msg, [
+              "action is available only for control role",
+              "insufficient permissions for player action",
+              "only control can",
+              "only host can",
+              "only presenter can",
+            ]);
           if (isMobileNarrow && dossierActionRef.current) {
             setMobileDossierError(msg);
             dossierActionRef.current = false;
@@ -578,11 +979,14 @@ export default function App() {
             pushUiToast(msg, "danger");
             return;
           }
-          if (code === "ROOM_FULL" || msg.includes("Комната заполнена")) {
+          if (
+            code === "ROOM_FULL" ||
+            messageIncludesAny(msg, [appLocale.roomFullUnknown, "room is full"])
+          ) {
             const roomFullMessage =
               typeof maxPlayers === "number" && Number.isFinite(maxPlayers)
-                ? ru.roomFull(maxPlayers)
-                : ru.roomFullUnknown;
+                ? appLocale.roomFull(maxPlayers)
+                : appLocale.roomFullUnknown;
             pushUiToast(roomFullMessage, "danger");
             hardResetSession({ clearLastRoom: true });
             navigate("/");
@@ -594,12 +998,12 @@ export default function App() {
             navigate("/");
             return;
           }
-          if (msg.includes("покинул бункер")) {
+          if (code === "LEFT_BUNKER" || messageIncludesAny(msg, ["left bunker"])) {
             hardResetSession({ clearLastRoom: true, preserveError: true });
             navigate("/");
             return;
           }
-          if (isReconnectError(msg)) {
+          if (isReconnectError(msg, code)) {
             // Keep token/session for quick retry; clear only on explicit "left bunker" timeout.
             hardResetSession({ preserveError: true });
             navigate("/");
@@ -639,14 +1043,28 @@ export default function App() {
   }, [client, isMobileNarrow]);
 
   useEffect(() => {
-    if (!roomState) return;
+    const roomCode = roomState?.roomCode;
+    const phase = roomState?.phase;
+    if (!roomCode || !phase) return;
     if (isSpectateRoute) return;
-    if (roomState.phase === "lobby") {
-      navigate(`/lobby?room=${roomState.roomCode}`);
-    } else {
-      navigate(`/game?room=${roomState.roomCode}`);
+
+    const targetPath = phase === "lobby" ? "/lobby" : "/game";
+    const targetSearch = `?room=${encodeURIComponent(roomCode)}`;
+    const currentSearch = location.search || "";
+
+    if (location.pathname === targetPath && currentSearch === targetSearch) {
+      return;
     }
-  }, [isSpectateRoute, navigate, roomState]);
+
+    navigate(`${targetPath}${targetSearch}`, { replace: true });
+  }, [
+    isSpectateRoute,
+    location.pathname,
+    location.search,
+    navigate,
+    roomState?.phase,
+    roomState?.roomCode,
+  ]);
 
   useEffect(() => {
     if (!roomState) return;
@@ -681,7 +1099,7 @@ export default function App() {
     };
     intentRef.current = intent;
     void sendHelloWithIntent(intent).catch(() => {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
     });
   }, [client, location.pathname, location.search, playerId, roomState, tabId]);
 
@@ -733,20 +1151,21 @@ export default function App() {
       }
     }
     if (DEV_TAB_IDENTITY && !effectiveTabId) {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
       return;
     }
     const intent: SessionIntent = {
-      mode: "create",
-      name,
-      scenarioId,
-      tabId: DEV_TAB_IDENTITY ? effectiveTabId : undefined,
-    };
+	  mode: "create",
+	  name,
+	  scenarioId,
+	  locale,
+	  tabId: DEV_TAB_IDENTITY ? effectiveTabId : undefined,
+	};
     intentRef.current = intent;
     try {
       await sendHelloWithIntent(intent);
     } catch {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
     }
   };
 
@@ -762,7 +1181,7 @@ export default function App() {
     }
     const token = DEV_TAB_IDENTITY ? undefined : localStorage.getItem(tokenKey(roomCode)) ?? undefined;
     if (DEV_TAB_IDENTITY && !effectiveTabId) {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
       return;
     }
     const intent: SessionIntent = {
@@ -776,7 +1195,7 @@ export default function App() {
     try {
       await sendHelloWithIntent(intent);
     } catch {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
     }
   };
 
@@ -784,6 +1203,22 @@ export default function App() {
     if (!ensureWsInteractive()) return;
     setErrorMessage(null);
     client.send({ type: "startGame", payload: {} });
+  };
+
+  const confirmDangerousAction = async (message: string): Promise<boolean> => {
+    if (!confirmDangerousActions) return true;
+    if (dangerConfirmResolveRef.current) return false;
+    return new Promise<boolean>((resolve) => {
+      dangerConfirmResolveRef.current = resolve;
+      setDangerConfirmMessage(message);
+    });
+  };
+
+  const resolveDangerousActionConfirm = (value: boolean) => {
+    const resolve = dangerConfirmResolveRef.current;
+    dangerConfirmResolveRef.current = null;
+    setDangerConfirmMessage(null);
+    resolve?.(value);
   };
 
   const handleRevealCard = (cardId: string) => {
@@ -841,19 +1276,22 @@ export default function App() {
     client.send({ type: "setBunkerOutcome", payload: { outcome } });
   };
 
-  const handleDevSkipRound = () => {
+  const handleDevSkipRound = async () => {
     if (!ensureWsInteractive()) return;
+    if (!(await confirmDangerousAction(appLocale.confirmSkipRound))) return;
     setErrorMessage(null);
     client.send({ type: "devSkipRound", payload: {} });
   };
 
-  const handleDevKickPlayer = () => {
+  const handleDevKickPlayer = async () => {
     if (!ensureWsInteractive()) return;
     if (!devKickTargetId) return;
+    if (!devKickAgree) return;
     setErrorMessage(null);
     client.send({ type: "devKickPlayer", payload: { targetPlayerId: devKickTargetId } });
     setDevKickModalOpen(false);
     setDevKickTargetId("");
+    setDevKickAgree(false);
   };
 
   const handleUpdateSettings = (settings: GameSettings) => {
@@ -868,20 +1306,47 @@ export default function App() {
     client.send({ type: "updateRules", payload });
   };
 
-  const handleKickFromLobby = (targetPlayerId: string) => {
+  const handleKickFromLobby = async (
+    targetPlayerId: string,
+    options?: { skipConfirm?: boolean }
+  ) => {
     if (!ensureWsInteractive()) return;
+    if (!options?.skipConfirm) {
+      if (!(await confirmDangerousAction(appLocale.confirmKickFromLobby))) return;
+    }
     setErrorMessage(null);
     client.send({ type: "kickFromLobby", payload: { targetPlayerId } });
   };
 
-  const handleRequestHostTransfer = (targetPlayerId?: string) => {
+  const handleRequestHostTransfer = async (
+    targetPlayerId?: string,
+    options?: { skipConfirm?: boolean }
+  ) => {
     if (!ensureWsInteractive()) return;
+    if (!options?.skipConfirm) {
+      if (!(await confirmDangerousAction(appLocale.confirmTransferHost))) return;
+    }
     setErrorMessage(null);
     const normalizedTargetId = String(targetPlayerId ?? "").trim();
     client.send({
       type: "requestHostTransfer",
       payload: normalizedTargetId ? { targetPlayerId: normalizedTargetId } : {},
     });
+  };
+
+  const openTransferHostModal = () => {
+    if (!ensureWsInteractive()) return;
+    setErrorMessage(null);
+    setTransferHostAgree(false);
+    setTransferHostModalOpen(true);
+  };
+
+  const handleTransferHostFromModal = async () => {
+    const targetPlayerId = String(transferHostTargetId || "").trim();
+    if (!targetPlayerId || !transferHostAgree) return;
+    await handleRequestHostTransfer(targetPlayerId, { skipConfirm: true });
+    setTransferHostModalOpen(false);
+    setTransferHostAgree(false);
   };
 
   const handleDevAddPlayer = (name?: string) => {
@@ -896,14 +1361,38 @@ export default function App() {
     client.send({ type: "devRemovePlayer", payload: { targetPlayerId } });
   };
 
-  const handleExitGame = () => {
+  const performExitGame = () => {
     setErrorMessage(null);
     hardResetSession();
     navigate("/");
   };
 
-  const handleCopyRoomCode = async () => {
-    if (!roomState) return;
+  const handleExitGame = () => {
+    if (confirmExitGame) {
+      setExitConfirmModalOpen(true);
+      return;
+    }
+    performExitGame();
+  };
+
+  const handleResetUiSettings = () => {
+    setTheme("dark-mint");
+    setStreamerMode(true);
+    setShowRoomCode(false);
+    setToastPosition("top-right");
+    setToastDuration("4000");
+    setUiScale("100");
+    setReduceMotion(false);
+    setConfirmDangerousActions(true);
+    setConfirmExitGame(true);
+    setCompactMode(false);
+    setAutoCopyRoomCode(false);
+    setShowSpectatorLinks(true);
+    setShowHints(true);
+  };
+
+  const copyRoomCodeToClipboard = async (options?: { silent?: boolean; markCopied?: boolean }) => {
+    if (!roomState) return false;
     let copied = false;
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       try {
@@ -917,10 +1406,26 @@ export default function App() {
       copied = fallbackCopy(roomState.roomCode);
     }
     if (!copied) {
-      window.alert(ru.copyFailed);
-      return;
+      if (!options?.silent) {
+        window.alert(appLocale.copyFailed);
+      }
+      return false;
     }
-    setRoomCodeCopied(true);
+    if (options?.markCopied !== false) {
+      setRoomCodeCopied(true);
+    }
+    return true;
+  };
+
+  const handleCopyRoomCode = async () => {
+    await copyRoomCodeToClipboard({ silent: false, markCopied: true });
+  };
+
+  const toggleSettingsSection = (section: "game" | "locale") => {
+    setSettingsSectionsCollapsed((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   };
 
   const handleRetry = async () => {
@@ -932,7 +1437,7 @@ export default function App() {
     try {
       await sendHelloWithIntent(intent);
     } catch {
-      setErrorMessage(ru.errorReconnectNetwork);
+      setErrorMessage(appLocale.errorReconnectNetwork);
     }
   };
 
@@ -942,7 +1447,7 @@ export default function App() {
     ? [
         ...visibleUiToasts.map((toast) => ({
           id: `ui-${toast.id}`,
-          title: ru.notificationTitle,
+          title: appLocale.notificationTitle,
           message: toast.message,
           variant: toast.variant ?? "",
           onClose: () => removeUiToast(toast.id),
@@ -956,7 +1461,7 @@ export default function App() {
                 : "";
           return {
             id: `event-${toast.id}`,
-            title: ru.toastKind(toast.kind),
+            title: appLocale.toastKind(toast.kind),
             message: toast.message,
             variant,
             onClose: () => removeToast(toast.id),
@@ -966,7 +1471,7 @@ export default function App() {
     : [];
   const roomCodeHidden = Boolean(roomState && isLobbyRoute && streamerMode && !showRoomCode);
   const roomCodeLabel = roomState
-    ? ru.roomPill(roomCodeHidden ? ru.hiddenValue : roomState.roomCode)
+    ? appLocale.roomPill(roomCodeHidden ? appLocale.hiddenValue : roomState.roomCode)
     : "";
   const showErrorScreen = Boolean(errorMessage && (isLobbyRoute || isGameRoute));
   const exitToMenu = () => {
@@ -977,13 +1482,13 @@ export default function App() {
 
   return (
     <ErrorBoundary onReset={() => hardResetSession({ clearLastRoom: true })}>
-      <div className="app">
+      <div className={`app${compactMode ? " app--compact" : ""}`}>
       <header className="topbar">
         <div className="topbar-left">
           <div className="brand">
-            {APP_NAME}
+            {appNs.t("appTitle")}
           </div>
-          {showDevIdentityBadge ? <span className="pill">{ru.devBadge}</span> : null}
+          {showDevIdentityBadge ? <span className="pill">{appLocale.devBadge}</span> : null}
           {showConnectionStatus ? (
             <>
               <span className={`status ${statusClass}`}>{statusLabel}</span>
@@ -1001,15 +1506,21 @@ export default function App() {
               </button>
               {showRolePill ? <span className="pill role-pill">{roleLabel}</span> : null}
               {showDevKick ? (
-                <button className="ghost button-small" onClick={() => setDevKickModalOpen(true)}>
-                  {ru.devKickButton}
+                <button
+                  className="ghost button-small"
+                  onClick={() => {
+                    setDevKickAgree(false);
+                    setDevKickModalOpen(true);
+                  }}
+                >
+                  {appLocale.devKickButton}
                 </button>
               ) : null}
             </div>
           ) : showRolePill && !showRolePillCompact ? (
             <span className="pill role-pill">{roleLabel}</span>
           ) : isSpectateRoute ? (
-            <span className="pill role-pill">{ru.spectatorLinkTitle}</span>
+            <span className="pill role-pill">{appLocale.spectatorLinkTitle}</span>
           ) : null}
         </div>
         <div className="topbar-rightArea">
@@ -1018,33 +1529,25 @@ export default function App() {
               <div className={`topbar-room${isLobbyRoute ? " topbar-room-lobby" : ""}`}>
                 <span
                   className={`topbar-room-code${roomCodeHidden ? " maskedText" : ""}`}
-                  title={roomCodeHidden ? ru.showSecret : roomState.roomCode}
+                  title={roomCodeHidden ? appLocale.showSecret : roomState.roomCode}
                 >
                   {roomCodeLabel}
                 </span>
-                <span>{ru.scenarioPill(roomState.scenarioMeta.name)}</span>
+                <span>{appLocale.scenarioPill(roomState.scenarioMeta.name)}</span>
                 {isLobbyRoute ? (
                   <div className="topbar-room-controls">
                     <button
                       type="button"
                       className="ghost iconButton"
-                      aria-label={roomCodeHidden ? ru.showSecret : ru.hideSecret}
-                      title={roomCodeHidden ? ru.showSecret : ru.hideSecret}
+                      aria-label={roomCodeHidden ? appLocale.showSecret : appLocale.hideSecret}
+                      title={roomCodeHidden ? appLocale.showSecret : appLocale.hideSecret}
                       onClick={() => setShowRoomCode((prev) => !prev)}
                     >
                       <EyeIcon open={!roomCodeHidden} />
                     </button>
                     <button type="button" className="ghost button-small" onClick={handleCopyRoomCode}>
-                      {roomCodeCopied ? ru.copiedButton : ru.copyButton}
+                      {roomCodeCopied ? appLocale.copiedButton : appLocale.copyButton}
                     </button>
-                    <label className="topbar-streamer-toggle">
-                      <input
-                        type="checkbox"
-                        checked={streamerMode}
-                        onChange={(event) => setStreamerMode(event.target.checked)}
-                      />
-                      <span>{ru.streamerModeLabel}</span>
-                    </label>
                   </div>
                 ) : null}
               </div>
@@ -1052,21 +1555,273 @@ export default function App() {
           </div>
           <div className="topbar-rightStack">
             {roomState && isControl && !isSpectateRoute && !isLobbyRoute ? (
-              <button className="ghost button-small" onClick={() => handleRequestHostTransfer()}>
-                {ru.transferHostButton}
+              <button className="ghost button-small" onClick={openTransferHostModal}>
+                {appLocale.transferHostButton}
               </button>
             ) : null}
             {roomState ? (
               <button className="primary topbar-exit-button" onClick={handleExitGame}>
-                {ru.exitButton}
+                {appLocale.exitButton}
               </button>
             ) : null}
-            <button
-              className="ghost topbar-theme-button"
-              onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
-            >
-              {theme === "light" ? ru.themeToggleDark : ru.themeToggleLight}
-            </button>
+            <div className="topbar-popover" ref={settingsMenuRef}>
+              <button
+                className="ghost topbar-icon-toggle"
+                aria-label={appLocale.settingsTitle}
+                title={appLocale.settingsTitle}
+                onClick={() => {
+                  setSettingsMenuOpen((prev) => !prev);
+                  setThemeMenuOpen(false);
+                }}
+              >
+                <svg
+                  className="topbar-icon-svg"
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M29 12.256h-1.88c-0.198-0.585-0.405-1.072-0.643-1.541l0.031 0.067 1.338-1.324c0.35-0.3 0.57-0.742 0.57-1.236 0-0.406-0.149-0.778-0.396-1.063l0.002 0.002-3.178-3.178c-0.283-0.246-0.654-0.395-1.061-0.395-0.494 0-0.937 0.221-1.234 0.57l-0.002 0.002-1.332 1.33c-0.402-0.206-0.888-0.413-1.39-0.586l-0.082-0.025 0.009-1.88c0.003-0.04 0.005-0.086 0.005-0.133 0-0.854-0.66-1.554-1.498-1.617l-0.005-0h-4.496c-0.844 0.063-1.505 0.763-1.505 1.617 0 0.047 0.002 0.093 0.006 0.139l-0-0.006v1.879c-0.585 0.198-1.071 0.404-1.54 0.641l0.067-0.031-1.324-1.336c-0.299-0.352-0.742-0.573-1.236-0.573-0.407 0-0.778 0.15-1.063 0.397l0.002-0.002-3.179 3.179c-0.246 0.283-0.396 0.655-0.396 1.061 0 0.494 0.221 0.937 0.57 1.234l0.002 0.002 1.329 1.329c-0.207 0.403-0.414 0.891-0.587 1.395l-0.024 0.082-1.88-0.009c-0.04-0.003-0.086-0.005-0.133-0.005-0.854 0-1.554 0.661-1.617 1.499l-0 0.005v4.495c0.062 0.844 0.763 1.505 1.617 1.505 0.047 0 0.093-0.002 0.139-0.006l-0.006 0h1.88c0.198 0.585 0.404 1.072 0.642 1.541l-0.03-0.066-1.335 1.32c-0.351 0.3-0.572 0.744-0.572 1.239 0 0.407 0.149 0.779 0.396 1.064l-0.002-0.002 3.179 3.178c0.249 0.246 0.591 0.399 0.97 0.399 0.007 0 0.014-0 0.021-0h-0.001c0.515-0.013 0.977-0.231 1.308-0.576l0.001-0.001 1.33-1.33c0.403 0.207 0.891 0.414 1.395 0.587l0.082 0.025-0.009 1.878c-0.003 0.04-0.005 0.086-0.005 0.132 0 0.854 0.661 1.555 1.499 1.617l0.005 0h4.496c0.843-0.064 1.503-0.763 1.503-1.617 0-0.047-0.002-0.093-0.006-0.139l0 0.006v-1.881c0.585-0.198 1.073-0.405 1.543-0.643l-0.067 0.031 1.321 1.333c0.332 0.344 0.793 0.562 1.304 0.574l0.002 0h0.002c0.006 0 0.013 0 0.019 0 0.378 0 0.72-0.151 0.971-0.395l3.177-3.177c0.244-0.249 0.395-0.591 0.395-0.968 0-0.009-0-0.017-0-0.026l0 0.001c-0.012-0.513-0.229-0.973-0.572-1.304l-0.001-0.001-1.331-1.332c0.206-0.401 0.412-0.887 0.586-1.389l0.025-0.083 1.879 0.009c0.04 0.003 0.086 0.005 0.132 0.005 0.855 0 1.555-0.661 1.617-1.5l0-0.005v-4.495c-0.063-0.844-0.763-1.504-1.618-1.504-0.047 0-0.093 0.002-0.138 0.006l0.006-0zM29.004 18.25l-2.416-0.012c-0.02 0-0.037 0.01-0.056 0.011-0.198 0.024-0.372 0.115-0.501 0.249l-0 0c-0.055 0.072-0.103 0.153-0.141 0.24l-0.003 0.008c-0.005 0.014-0.016 0.024-0.02 0.039-0.24 0.844-0.553 1.579-0.944 2.264l0.026-0.049c-0.054 0.1-0.086 0.218-0.086 0.344 0 0.001 0 0.003 0 0.004v-0c-0 0.016 0.003 0.028 0.004 0.045 0.006 0.187 0.08 0.355 0.199 0.481l-0-0 0.009 0.023 1.707 1.709c0.109 0.109 0.137 0.215 0.176 0.176l-3.102 3.133c-0.099-0.013-0.186-0.061-0.248-0.13l-0-0-1.697-1.713c-0.008-0.009-0.022-0.005-0.03-0.013-0.121-0.112-0.28-0.183-0.456-0.193l-0.002-0c-0.02-0.003-0.044-0.005-0.068-0.006l-0.001-0c-0.125 0-0.243 0.032-0.345 0.088l0.004-0.002c-0.636 0.362-1.373 0.676-2.146 0.903l-0.074 0.019c-0.015 0.004-0.025 0.015-0.039 0.02-0.096 0.042-0.179 0.092-0.255 0.149l0.003-0.002c-0.035 0.034-0.066 0.071-0.093 0.11l-0.002 0.002c-0.027 0.033-0.053 0.07-0.075 0.11l-0.002 0.004c-0.033 0.081-0.059 0.175-0.073 0.274l-0.001 0.007c-0.001 0.016-0.01 0.031-0.01 0.047v2.412c0 0.15-0.055 0.248 0 0.25l-4.41 0.023c-0.052-0.067-0.084-0.153-0.084-0.246 0-0.008 0-0.016 0.001-0.024l-0 0.001 0.012-2.412c0-0.017-0.008-0.032-0.01-0.048-0.005-0.053-0.015-0.102-0.03-0.149l0.001 0.005c-0.012-0.053-0.028-0.1-0.048-0.145l0.002 0.005c-0.052-0.086-0.109-0.16-0.173-0.227l0 0c-0.029-0.024-0.062-0.046-0.096-0.066l-0.004-0.002c-0.044-0.03-0.093-0.056-0.146-0.076l-0.005-0.002c-0.014-0.005-0.024-0.016-0.039-0.02-0.847-0.241-1.585-0.554-2.272-0.944l0.051 0.026c-0.099-0.054-0.216-0.086-0.341-0.086h-0c-0.022-0.001-0.04 0.004-0.062 0.005-0.18 0.008-0.342 0.08-0.465 0.193l0.001-0c-0.008 0.008-0.021 0.004-0.029 0.012l-1.705 1.705c-0.107 0.107-0.216 0.139-0.178 0.178l-3.134-3.101c0.012-0.1 0.06-0.187 0.13-0.25l0-0 1.714-1.695 0.011-0.026c0.115-0.123 0.189-0.286 0.197-0.466l0-0.002c0.001-0.021 0.005-0.037 0.005-0.058 0-0.001 0-0.002 0-0.003 0-0.126-0.032-0.245-0.088-0.348l0.002 0.004c-0.365-0.636-0.679-1.371-0.903-2.145l-0.018-0.072c-0.004-0.015-0.016-0.026-0.021-0.041-0.042-0.094-0.09-0.176-0.146-0.25l0.002 0.003c-0.065-0.061-0.136-0.117-0.212-0.165l-0.006-0.003c-0.051-0.025-0.109-0.045-0.171-0.057l-0.005-0.001c-0.029-0.009-0.065-0.016-0.102-0.021l-0.004-0c-0.02-0.002-0.037-0.012-0.058-0.012h-2.412c-0.152 0.002-0.248-0.055-0.25-0.002l-0.022-4.409c0.067-0.052 0.151-0.084 0.244-0.084 0.009 0 0.017 0 0.026 0.001l-0.001-0 2.416 0.012c0.152-0.004 0.292-0.054 0.407-0.136l-0.002 0.002c0.024-0.014 0.044-0.028 0.064-0.043l-0.002 0.001c0.109-0.088 0.191-0.206 0.235-0.341l0.001-0.005c0.003-0.01 0.014-0.014 0.017-0.025 0.242-0.847 0.555-1.583 0.946-2.27l-0.026 0.05c0.054-0.1 0.086-0.218 0.086-0.344 0-0.001 0-0.001 0-0.002v0c0.001-0.019-0.003-0.033-0.004-0.052-0.007-0.184-0.08-0.35-0.197-0.475l0 0-0.01-0.024-1.705-1.705c-0.108-0.11-0.142-0.221-0.176-0.178l3.102-3.134c0.101 0.008 0.189 0.058 0.248 0.131l0.001 0.001 1.697 1.713c0.018 0.018 0.046 0.011 0.065 0.027 0.125 0.121 0.295 0.196 0.483 0.196 0.13 0 0.251-0.036 0.355-0.098l-0.003 0.002c0.636-0.364 1.372-0.677 2.145-0.902l0.072-0.018c0.014-0.004 0.024-0.015 0.038-0.019 0.057-0.021 0.105-0.047 0.151-0.077l-0.003 0.002c0.163-0.09 0.281-0.244 0.321-0.427l0.001-0.004c0.014-0.043 0.025-0.093 0.03-0.145l0-0.003c0.001-0.016 0.009-0.03 0.009-0.046v-2.412c0-0.151 0.056-0.249 0.001-0.25l4.41-0.023c0.052 0.067 0.083 0.152 0.083 0.245 0 0.009-0 0.017-0.001 0.026l0-0.001-0.012 2.412c-0 0.016 0.008 0.03 0.009 0.047 0.005 0.055 0.015 0.106 0.031 0.155l-0.001-0.005c0.071 0.234 0.243 0.419 0.464 0.506l0.005 0.002c0.014 0.005 0.025 0.016 0.039 0.02 0.845 0.242 1.58 0.555 2.265 0.945l-0.05-0.026c0.105 0.06 0.231 0.096 0.366 0.096 0 0 0.001 0 0.001 0h-0c0.183-0.008 0.347-0.082 0.471-0.198l-0 0c0.017-0.015 0.043-0.008 0.059-0.024l1.709-1.705c0.105-0.106 0.213-0.137 0.176-0.176l3.133 3.102c-0.012 0.1-0.059 0.186-0.129 0.249l-0 0-1.715 1.697-0.011 0.026c-0.116 0.123-0.19 0.287-0.198 0.468l-0 0.002c-0.001 0.02-0.005 0.036-0.005 0.056 0 0.001 0 0.002 0 0.003 0 0.126 0.032 0.245 0.088 0.348l-0.002-0.004c0.365 0.636 0.679 1.371 0.902 2.144l0.018 0.071c0.003 0.012 0.016 0.017 0.019 0.028 0.046 0.137 0.127 0.253 0.232 0.339l0.001 0.001c0.019 0.015 0.041 0.03 0.063 0.043l0.003 0.002c0.112 0.08 0.252 0.13 0.402 0.134l0.001 0h2.412c0.152-0.001 0.248 0.057 0.25 0.001l0.021 4.409c-0.065 0.053-0.149 0.085-0.24 0.085-0.01 0-0.019-0-0.029-0.001l0.001 0zM16 11.25c-2.623 0-4.75 2.127-4.75 4.75s2.127 4.75 4.75 4.75c2.623 0 4.75-2.127 4.75-4.75v0c-0.003-2.622-2.128-4.747-4.75-4.75h-0zM16 19.25c-1.795 0-3.25-1.455-3.25-3.25s1.455-3.25 3.25-3.25c1.795 0 3.25 1.455 3.25 3.25v0c-0.002 1.794-1.456 3.248-3.25 3.25h-0z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
+              {settingsMenuOpen ? (
+                <div className="topbar-popover-menu">
+                  <div className="topbar-popover-title">{appLocale.settingsTitle}</div>
+                  <div className="topbar-popover-section">
+                    <button
+                      type="button"
+                      className="topbar-popover-section-toggle"
+                      onClick={() => toggleSettingsSection("game")}
+                      aria-expanded={!settingsSectionsCollapsed.game}
+                    >
+                      <span className="topbar-popover-section-title">{appLocale.settingsGameSectionTitle}</span>
+                      <svg
+                        className={`topbar-popover-section-chevron${settingsSectionsCollapsed.game ? " collapsed" : ""}`}
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M6 3.5 10.5 8 6 12.5"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    {!settingsSectionsCollapsed.game ? (
+                      <div className="topbar-popover-section-body">
+                        {!isSpectateRoute ? (
+                          <>
+                            <label className="topbar-menu-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={streamerMode}
+                                onChange={(event) => setStreamerMode(event.target.checked)}
+                              />
+                              <span>{appLocale.streamerModeLabel}</span>
+                            </label>
+                            <label className="topbar-menu-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={showRoomCode}
+                                onChange={(event) => setShowRoomCode(event.target.checked)}
+                              />
+                              <span>{appLocale.settingsShowRoomCodeInLobby}</span>
+                            </label>
+                          </>
+                        ) : null}
+                        <label className="topbar-menu-field">
+                          <span>{appLocale.settingsToastPosition}</span>
+                          <select
+                            value={toastPosition}
+                            onChange={(event) => setToastPosition(event.target.value as ToastPosition)}
+                          >
+                            <option value="top-right">{appLocale.toastPosTopRight}</option>
+                            <option value="top-left">{appLocale.toastPosTopLeft}</option>
+                            <option value="bottom-right">{appLocale.toastPosBottomRight}</option>
+                            <option value="bottom-left">{appLocale.toastPosBottomLeft}</option>
+                          </select>
+                        </label>
+                        <label className="topbar-menu-field">
+                          <span>{appLocale.settingsToastDuration}</span>
+                          <select
+                            value={toastDuration}
+                            onChange={(event) => setToastDuration(event.target.value as ToastDuration)}
+                          >
+                            <option value="3000">{appLocale.toastDuration3s}</option>
+                            <option value="4000">{appLocale.toastDuration4s}</option>
+                            <option value="6000">{appLocale.toastDuration6s}</option>
+                          </select>
+                        </label>
+                        <label className="topbar-menu-field">
+                          <span>{appLocale.settingsUiScale}</span>
+                          <select value={uiScale} onChange={(event) => setUiScale(event.target.value as UiScale)}>
+                            <option value="90">90%</option>
+                            <option value="100">100%</option>
+                            <option value="110">110%</option>
+                          </select>
+                        </label>
+                        <label className="topbar-menu-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={reduceMotion}
+                            onChange={(event) => setReduceMotion(event.target.checked)}
+                          />
+                          <span>{appLocale.settingsReduceMotion}</span>
+                        </label>
+                        <label className="topbar-menu-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={confirmDangerousActions}
+                            onChange={(event) => setConfirmDangerousActions(event.target.checked)}
+                          />
+                          <span>{appLocale.settingsConfirmDangerous}</span>
+                        </label>
+                        {!isSpectateRoute ? (
+                          <label className="topbar-menu-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={confirmExitGame}
+                              onChange={(event) => setConfirmExitGame(event.target.checked)}
+                            />
+                            <span>{appLocale.settingsConfirmExit}</span>
+                          </label>
+                        ) : null}
+                        <label className="topbar-menu-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={compactMode}
+                            onChange={(event) => setCompactMode(event.target.checked)}
+                          />
+                          <span>{appLocale.settingsCompactMode}</span>
+                        </label>
+                        {!isSpectateRoute ? (
+                          <label className="topbar-menu-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={autoCopyRoomCode}
+                              onChange={(event) => setAutoCopyRoomCode(event.target.checked)}
+                            />
+                            <span>{appLocale.settingsAutoCopyRoomCode}</span>
+                          </label>
+                        ) : null}
+                        <label className="topbar-menu-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={showSpectatorLinks}
+                            onChange={(event) => setShowSpectatorLinks(event.target.checked)}
+                          />
+                          <span>{appLocale.settingsShowSpectatorLinks}</span>
+                        </label>
+                        <label className="topbar-menu-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={showHints}
+                            onChange={(event) => setShowHints(event.target.checked)}
+                          />
+                          <span>{appLocale.settingsShowHints}</span>
+                        </label>
+                        <button type="button" className="ghost button-small" onClick={handleResetUiSettings}>
+                          {appLocale.settingsResetUi}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="topbar-popover-section">
+                    <button
+                      type="button"
+                      className="topbar-popover-section-toggle"
+                      onClick={() => toggleSettingsSection("locale")}
+                      aria-expanded={!settingsSectionsCollapsed.locale}
+                    >
+                      <span className="topbar-popover-section-title">{appLocale.settingsLocaleSectionTitle}</span>
+                      <svg
+                        className={`topbar-popover-section-chevron${settingsSectionsCollapsed.locale ? " collapsed" : ""}`}
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M6 3.5 10.5 8 6 12.5"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    {!settingsSectionsCollapsed.locale ? (
+                      <div className="topbar-popover-section-body">
+                        <button
+                          type="button"
+                          className={`topbar-locale-option${locale === "ru" ? " selected" : ""}`}
+                          onClick={() => setLocale("ru")}
+                        >
+                          <span className="topbar-locale-flag" aria-hidden="true">
+                            🇷🇺
+                          </span>
+                          <span>{appLocale.localeRu}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`topbar-locale-option${locale === "en" ? " selected" : ""}`}
+                          onClick={() => setLocale("en")}
+                        >
+                          <span className="topbar-locale-flag" aria-hidden="true">
+                            🇬🇧
+                          </span>
+                          <span>{appLocale.localeEnBeta}</span>
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="topbar-popover" ref={themeMenuRef}>
+              <button
+                className="ghost topbar-icon-toggle"
+                aria-label={appLocale.themeTitle}
+                title={appLocale.themeTitle}
+                onClick={() => {
+                  setThemeMenuOpen((prev) => !prev);
+                  setSettingsMenuOpen(false);
+                }}
+              >
+                <span
+                  className={`topbar-theme-swatch topbar-theme-swatch--current topbar-theme-swatch--${theme}`}
+                  aria-hidden="true"
+                />
+              </button>
+              {themeMenuOpen ? (
+                <div className="topbar-popover-menu">
+                  <div className="topbar-popover-title">{appLocale.themeTitle}</div>
+                  {THEME_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`topbar-theme-option${theme === option.id ? " selected" : ""}`}
+                      onClick={() => {
+                        setTheme(option.id);
+                        setThemeMenuOpen(false);
+                      }}
+                    >
+                      <span className="topbar-theme-option-content">
+                        <span
+                          className={`topbar-theme-swatch topbar-theme-swatch--${option.id}`}
+                          aria-hidden="true"
+                        />
+                        <span>{option.label}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </header>
@@ -1076,19 +1831,19 @@ export default function App() {
           <span>{errorMessage}</span>
           {intentRef.current ? (
             <button className="ghost button-small" onClick={handleRetry}>
-              {ru.retryButton}
+              {appLocale.retryButton}
             </button>
           ) : null}
         </div>
       ) : null}
 
       {!isMobile ? (
-        <div className="toast-stack">
+        <div className={`toast-stack toast-pos-${toastPosition}`}>
           {visibleUiToasts.map((toast) => (
             <div key={toast.id} className={`toast ${toast.variant}`.trim()}>
-              <div className="toast-kind">{ru.notificationTitle}</div>
+              <div className="toast-kind">{appLocale.notificationTitle}</div>
               <div>{toast.message}</div>
-              <button className="toast-close" onClick={() => removeUiToast(toast.id)} aria-label={ru.closeButton}>
+              <button className="toast-close" onClick={() => removeUiToast(toast.id)} aria-label={appLocale.closeButton}>
                 {"\u00D7"}
               </button>
             </div>
@@ -1102,9 +1857,9 @@ export default function App() {
                   : "";
             return (
               <div key={toast.id} className={`toast ${variant}`.trim()}>
-                <div className="toast-kind">{ru.toastKind(toast.kind)}</div>
+                <div className="toast-kind">{appLocale.toastKind(toast.kind)}</div>
                 <div>{toast.message}</div>
-                <button className="toast-close" onClick={() => removeToast(toast.id)} aria-label={ru.closeButton}>
+                <button className="toast-close" onClick={() => removeToast(toast.id)} aria-label={appLocale.closeButton}>
                   {"\u00D7"}
                 </button>
               </div>
@@ -1112,12 +1867,12 @@ export default function App() {
           })}
         </div>
       ) : (
-        <div className="toast-stack-mobile">
+        <div className={`toast-stack-mobile toast-pos-${toastPosition}`}>
           {mobileToasts.map((toast) => (
             <div key={toast.id} className={`toast-mobile ${toast.variant}`.trim()}>
               <div className="toast-mobile-header">
                 <div className="toast-mobile-title">{toast.title}</div>
-                <button className="toast-mobile-close" onClick={toast.onClose} aria-label={ru.closeButton}>
+                <button className="toast-mobile-close" onClick={toast.onClose} aria-label={appLocale.closeButton}>
                   {"\u00D7"}
                 </button>
               </div>
@@ -1130,7 +1885,7 @@ export default function App() {
       <main className="container">
         {showErrorScreen ? (
           <ErrorScreen
-            message={errorMessage ?? ru.errorReconnectNetwork}
+            message={errorMessage ?? appLocale.errorReconnectNetwork}
             canRetry={Boolean(intentRef.current)}
             reconnecting={connectionStatus === "reconnecting"}
             onRetry={() => void handleRetry()}
@@ -1160,6 +1915,8 @@ export default function App() {
                   playerToken={playerToken}
                   isControl={Boolean(isControl)}
                   streamerMode={streamerMode}
+                  showSpectatorLinks={showSpectatorLinks}
+                  showHints={showHints}
                   wsInteractive={wsInteractive}
                   onStart={handleStart}
                   onUpdateSettings={handleUpdateSettings}
@@ -1177,6 +1934,7 @@ export default function App() {
                   gameView={gameView}
                     isControl={Boolean(isControl)}
                     presenterModeEnabled={presenterModeEnabled}
+                    showHints={showHints}
                     wsInteractive={wsInteractive}
                     eventLog={eventLog}
                   onRevealCard={handleRevealCard}
@@ -1201,16 +1959,115 @@ export default function App() {
       </main>
 
       <Modal
+        open={Boolean(dangerConfirmMessage)}
+        title={appLocale.confirmActionTitle}
+        onClose={() => resolveDangerousActionConfirm(false)}
+        dismissible={true}
+      >
+        <div className="muted">{dangerConfirmMessage}</div>
+        <div className="modal-actions">
+          <button className="ghost" onClick={() => resolveDangerousActionConfirm(false)}>
+            {appLocale.modalCancel}
+          </button>
+          <button className="primary" onClick={() => resolveDangerousActionConfirm(true)}>
+            {appLocale.modalApply}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(
+          transferHostModalOpen && roomState && isControl && !isSpectateRoute && !isLobbyRoute
+        )}
+        title={appLocale.transferHostTitle}
+        onClose={() => {
+          setTransferHostModalOpen(false);
+          setTransferHostAgree(false);
+        }}
+        dismissible={true}
+      >
+        {transferHostCandidates.length === 0 ? (
+          <div className="muted">{appLocale.transferHostSelectPlaceholder}</div>
+        ) : (
+          <>
+            <label className="topbar-menu-field">
+              <span>{appLocale.transferHostSelectLabel}</span>
+              <select
+                value={transferHostTargetId}
+                onChange={(event) => setTransferHostTargetId(event.target.value)}
+              >
+                {transferHostCandidates.map((player) => (
+                  <option key={player.playerId} value={player.playerId}>
+                    {player.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="topbar-menu-checkbox">
+              <input
+                type="checkbox"
+                checked={transferHostAgree}
+                onChange={(event) => setTransferHostAgree(event.target.checked)}
+              />
+              <span>{appLocale.transferHostAgreeLabel}</span>
+            </label>
+            <div className="modal-actions">
+              <button
+                className="ghost"
+                onClick={() => {
+                  setTransferHostModalOpen(false);
+                  setTransferHostAgree(false);
+                }}
+              >
+                {appLocale.modalCancel}
+              </button>
+              <button
+                className="primary"
+                disabled={!transferHostTargetId || !transferHostAgree}
+                onClick={handleTransferHostFromModal}
+              >
+                {appLocale.transferHostButton}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={exitConfirmModalOpen}
+        title={appLocale.exitConfirmTitle}
+        onClose={() => setExitConfirmModalOpen(false)}
+        dismissible={true}
+      >
+        <div className="muted">{appLocale.exitConfirmText}</div>
+        <div className="modal-actions">
+          <button className="ghost" onClick={() => setExitConfirmModalOpen(false)}>
+            {appLocale.modalCancel}
+          </button>
+          <button
+            className="primary"
+            onClick={() => {
+              setExitConfirmModalOpen(false);
+              performExitGame();
+            }}
+          >
+            {appLocale.exitButton}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
         open={devKickModalOpen && showDevKick}
-        title={ru.devKickTitle}
+        title={appLocale.devKickTitle}
         onClose={() => {
           setDevKickModalOpen(false);
           setDevKickTargetId("");
+          setDevKickAgree(false);
         }}
         dismissible={true}
       >
         {devKickCandidates.length === 0 ? (
-          <div className="muted">{ru.devKickNoTargets}</div>
+          <div className="muted">{appLocale.devKickNoTargets}</div>
         ) : (
           <>
             <select
@@ -1218,7 +2075,7 @@ export default function App() {
               onChange={(event) => setDevKickTargetId(event.target.value)}
             >
               <option value="" disabled>
-                {ru.devKickSelectPlaceholder}
+                {appLocale.devKickSelectPlaceholder}
               </option>
               {devKickCandidates.map((player) => (
                 <option key={player.playerId} value={player.playerId}>
@@ -1232,12 +2089,25 @@ export default function App() {
                 onClick={() => {
                   setDevKickModalOpen(false);
                   setDevKickTargetId("");
+                  setDevKickAgree(false);
                 }}
               >
-                {ru.modalCancel}
+                {appLocale.modalCancel}
               </button>
-              <button className="primary" disabled={!devKickTargetId} onClick={handleDevKickPlayer}>
-                {ru.devKickConfirm}
+              <label className="topbar-menu-checkbox">
+                <input
+                  type="checkbox"
+                  checked={devKickAgree}
+                  onChange={(event) => setDevKickAgree(event.target.checked)}
+                />
+                <span>{appLocale.devKickAgreeLabel}</span>
+              </label>
+              <button
+                className="primary"
+                disabled={!devKickTargetId || !devKickAgree}
+                onClick={handleDevKickPlayer}
+              >
+                {appLocale.devKickConfirm}
               </button>
             </div>
           </>
@@ -1247,6 +2117,8 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+
 
 
 

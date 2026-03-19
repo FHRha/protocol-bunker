@@ -1,0 +1,8 @@
+{
+  "worldKindBunker": "Бункер",
+  "worldKindDisaster": "Катастрофа",
+  "worldKindThreat": "Угроза",
+  "worldModalTitle": "Карты мира",
+  "worldHintTapToReveal": "Нажмите, чтобы раскрыть",
+  "worldNotLoaded": "Состояние мира не загружено."
+}

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import {
   LINK_PATHS,
   buildLinkSet,
@@ -7,11 +7,12 @@ import {
   type ManualRulesConfig,
   type RoomState,
 } from "@bunker/shared";
-import { ru } from "../i18n/ru";
+import { useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import { API_BASE } from "../config";
 import EyeIcon from "../components/EyeIcon";
 import InfoTip from "../components/InfoTip";
 import RulesModal from "../components/RulesModal";
+import Modal from "../components/Modal";
 
 interface LobbyPageProps {
   roomState: RoomState | null;
@@ -19,6 +20,8 @@ interface LobbyPageProps {
   playerToken: string | null;
   isControl: boolean;
   streamerMode: boolean;
+  showSpectatorLinks: boolean;
+  showHints: boolean;
   wsInteractive: boolean;
   onStart: () => void;
   onUpdateSettings: (settings: GameSettings) => void;
@@ -27,7 +30,7 @@ interface LobbyPageProps {
     presetPlayerCount?: number;
     manualConfig?: ManualRulesConfig;
   }) => void;
-  onKickPlayer: (targetPlayerId: string) => void;
+  onKickPlayer: (targetPlayerId: string, options?: { skipConfirm?: boolean }) => void;
   onTransferHost: (targetPlayerId: string) => void;
 }
 
@@ -40,6 +43,8 @@ interface OverlayLinksPayload {
   overlayControlUrlLan: string;
   overlayControlUrlExternal: string;
 }
+
+type LobbyPlayer = RoomState["players"][number];
 
 const GITHUB_URL = "https://github.com/FHRha";
 
@@ -64,8 +69,8 @@ function fallbackCopy(value: string): boolean {
   return ok;
 }
 
-function maskValue(value: string, hidden: boolean): string {
-  return hidden ? ru.hiddenValue : value;
+function maskValue(value: string, hidden: boolean, hiddenLabel: string): string {
+  return hidden ? hiddenLabel : value;
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -206,12 +211,12 @@ function hasSuspiciousPlayerNameChars(value: string): boolean {
   return /[\u0000-\u001f\u007f]/.test(value);
 }
 
-function getSafePlayerName(name: string, fallbackIndex: number): string {
-  const trimmed = name.trim();
-  if (!trimmed || hasSuspiciousPlayerNameChars(trimmed)) {
-    return `Игрок ${fallbackIndex + 1}`;
-  }
-  return trimmed;
+function getSafePlayerName(
+  playerName: string | null | undefined,
+  fallbackName: string
+): string {
+  const trimmed = typeof playerName === "string" ? playerName.trim() : "";
+  return trimmed || fallbackName;
 }
 
 export default function LobbyPage({
@@ -220,6 +225,8 @@ export default function LobbyPage({
   playerToken,
   isControl,
   streamerMode,
+  showSpectatorLinks,
+  showHints,
   wsInteractive,
   onStart,
   onUpdateSettings,
@@ -232,10 +239,152 @@ export default function LobbyPage({
   const [showOverlayControl, setShowOverlayControl] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [overlayLinks, setOverlayLinks] = useState<OverlayLinksPayload | null>(null);
+  useUiLocaleNamespacesActivation([
+    "lobby",
+    "common",
+    "overlay-links",
+    "room-settings",
+    "rules",
+    "format",
+    "maps",
+    "dev",
+    "reconnect",
+    "misc",
+    "game",
+  ]);
+  const lobbyTexts = useUiLocaleNamespace("lobby", {
+    fallbacks: [
+      "common",
+      "overlay-links",
+      "room-settings",
+      "rules",
+      "format",
+      "maps",
+      "dev",
+      "reconnect",
+      "misc",
+      "game",
+    ],
+  });
+  const lobbyLocale = useMemo(() => {
+    const rawPresetOptions = lobbyTexts.getRaw("rulesPresetOptions");
+    const rulesPresetOptions = Array.isArray(rawPresetOptions)
+      ? rawPresetOptions.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+      : [];
+
+    return {
+      authorGithubAria: lobbyTexts.t("authorGithubAria"),
+      authorGithubLabel: lobbyTexts.t("authorGithubLabel"),
+      controlMarker: lobbyTexts.t("controlMarker"),
+      copiedButton: lobbyTexts.t("copiedButton"),
+      copyButton: lobbyTexts.t("copyButton"),
+      copyFailed: lobbyTexts.t("copyFailed"),
+      devKickNoTargets: lobbyTexts.t("devKickNoTargets"),
+      externalLabel: lobbyTexts.t("externalLabel"),
+      externalLinksHint: lobbyTexts.t("externalLinksHint"),
+      hiddenValue: lobbyTexts.t("hiddenValue"),
+      hideSecret: lobbyTexts.t("hideSecret"),
+      hostMarker: lobbyTexts.t("hostMarker"),
+      hostOnlyHint: lobbyTexts.t("hostOnlyHint"),
+      lobbyKickAgreeLabel: lobbyTexts.t("lobbyKickAgreeLabel"),
+      lobbyKickButton: lobbyTexts.t("lobbyKickButton"),
+      lobbyKickSelectPlaceholder: lobbyTexts.t("lobbyKickSelectPlaceholder"),
+      lobbyKickTitle: lobbyTexts.t("lobbyKickTitle"),
+      lobbyLoading: lobbyTexts.t("lobbyLoading"),
+      lobbyTitle: lobbyTexts.t("lobbyTitle"),
+      manualAdjust: lobbyTexts.t("manualAdjust"),
+      manualBunkerSlotsLabel: lobbyTexts.t("manualBunkerSlotsLabel"),
+      manualFillFromTemplate: lobbyTexts.t("manualFillFromTemplate"),
+      manualGenerate: lobbyTexts.t("manualGenerate"),
+      manualModeTitle: lobbyTexts.t("manualModeTitle"),
+      manualRevealsPlanLabel: lobbyTexts.t("manualRevealsPlanLabel"),
+      manualRevealsRecommended: lobbyTexts.t("manualRevealsRecommended"),
+      manualRevealsRequiredLabel: lobbyTexts.t("manualRevealsRequiredLabel"),
+      manualRevealsWarning: lobbyTexts.t("manualRevealsWarning"),
+      manualRoundAdd: lobbyTexts.t("manualRoundAdd"),
+      manualRoundRemove: lobbyTexts.t("manualRoundRemove"),
+      manualVotesFormatHint: lobbyTexts.t("manualVotesFormatHint"),
+      maxPlayersHint: lobbyTexts.t("maxPlayersHint"),
+      modalCancel: lobbyTexts.t("modalCancel"),
+      obsLinksLoading: lobbyTexts.t("obsLinksLoading"),
+      obsLinksTitle: lobbyTexts.t("obsLinksTitle"),
+      obsLinksUnavailable: lobbyTexts.t("obsLinksUnavailable"),
+      obsOverlayControlSectionTitle: lobbyTexts.t("obsOverlayControlSectionTitle"),
+      obsOverlayViewSectionTitle: lobbyTexts.t("obsOverlayViewSectionTitle"),
+      offlineMarker: lobbyTexts.t("offlineMarker"),
+      openButton: lobbyTexts.t("openButton"),
+      playersTitle: lobbyTexts.t("playersTitle"),
+      presenterControlHint: lobbyTexts.t("presenterControlHint"),
+      rulesButtonShort: lobbyTexts.t("rulesButtonShort"),
+      rulesModeAuto: lobbyTexts.t("rulesModeAuto"),
+      rulesModeLabel: lobbyTexts.t("rulesModeLabel"),
+      rulesModeManual: lobbyTexts.t("rulesModeManual"),
+      rulesNeedMinPlayers: lobbyTexts.t("rulesNeedMinPlayers"),
+      rulesPresetLabel: lobbyTexts.t("rulesPresetLabel"),
+      rulesPresetOptions,
+      rulesTitle: lobbyTexts.t("rulesTitle"),
+      settingsAutomationAuto: lobbyTexts.t("settingsAutomationAuto"),
+      settingsAutomationManual: lobbyTexts.t("settingsAutomationManual"),
+      settingsAutomationMode: lobbyTexts.t("settingsAutomationMode"),
+      settingsAutomationModeHint: lobbyTexts.t("settingsAutomationModeHint"),
+      settingsAutomationSemi: lobbyTexts.t("settingsAutomationSemi"),
+      settingsContinueAnyone: lobbyTexts.t("settingsContinueAnyone"),
+      settingsContinueHost: lobbyTexts.t("settingsContinueHost"),
+      settingsContinuePermission: lobbyTexts.t("settingsContinuePermission"),
+      settingsContinueRevealer: lobbyTexts.t("settingsContinueRevealer"),
+      settingsContinueTipText: lobbyTexts.t("settingsContinueTipText"),
+      settingsFinalThreatReveal: lobbyTexts.t("settingsFinalThreatReveal"),
+      settingsForcedDisaster: lobbyTexts.t("settingsForcedDisaster"),
+      settingsForcedDisasterRandom: lobbyTexts.t("settingsForcedDisasterRandom"),
+      settingsMaxPlayers: lobbyTexts.t("settingsMaxPlayers"),
+      settingsOff: lobbyTexts.t("settingsOff"),
+      settingsOn: lobbyTexts.t("settingsOn"),
+      settingsOtherBlock: lobbyTexts.t("settingsOtherBlock"),
+      settingsPostVoteTimer: lobbyTexts.t("settingsPostVoteTimer"),
+      settingsPreVoteTimer: lobbyTexts.t("settingsPreVoteTimer"),
+      settingsPresenterMode: lobbyTexts.t("settingsPresenterMode"),
+      settingsPresenterModeHint: lobbyTexts.t("settingsPresenterModeHint"),
+      settingsRevealDiscussionTimer: lobbyTexts.t("settingsRevealDiscussionTimer"),
+      settingsRevealTimeoutAction: lobbyTexts.t("settingsRevealTimeoutAction"),
+      settingsRevealTimeoutRandom: lobbyTexts.t("settingsRevealTimeoutRandom"),
+      settingsRevealTimeoutSkip: lobbyTexts.t("settingsRevealTimeoutSkip"),
+      settingsSpecialAnytime: lobbyTexts.t("settingsSpecialAnytime"),
+      settingsSpecialUsage: lobbyTexts.t("settingsSpecialUsage"),
+      settingsSpecialVotingOnly: lobbyTexts.t("settingsSpecialVotingOnly"),
+      settingsThreatAnyone: lobbyTexts.t("settingsThreatAnyone"),
+      settingsThreatHost: lobbyTexts.t("settingsThreatHost"),
+      settingsThreatTipText: lobbyTexts.t("settingsThreatTipText"),
+      settingsTimersBlock: lobbyTexts.t("settingsTimersBlock"),
+      settingsTitle: lobbyTexts.t("settingsTitle"),
+      showSecret: lobbyTexts.t("showSecret"),
+      spectatorLinkHint: lobbyTexts.t("spectatorLinkHint"),
+      spectatorLinkTitle: lobbyTexts.t("spectatorLinkTitle"),
+      startButton: lobbyTexts.t("startButton"),
+      transferHostButton: lobbyTexts.t("transferHostButton"),
+      transferHostSelectPlaceholder: lobbyTexts.t("transferHostSelectPlaceholder"),
+      transferHostTitle: lobbyTexts.t("transferHostTitle"),
+      votesByRoundLabel: lobbyTexts.t("votesByRoundLabel"),
+      wsActionDisabledHint: lobbyTexts.t("wsActionDisabledHint"),
+      scenarioLabel: (name: string) => lobbyTexts.t("scenarioLabel", { name }),
+      rulesPlayers: (count: number) => lobbyTexts.t("rulesPlayers", { count }),
+      rulesSeats: (count: number) => lobbyTexts.t("rulesSeats", { count }),
+      rulesVotes: (votes: number[]) => lobbyTexts.t("rulesVotes", { values: votes.join(" / ") }),
+      rulesExiles: (count: number) => lobbyTexts.t("rulesExiles", { count }),
+      playerExtra: (count: number) => lobbyTexts.t("playerExtra", { count }),
+      playerFallback: (index: number) => lobbyTexts.t("playerFallback", { index }),
+      manualVotesRequired: (count: number) => lobbyTexts.t("manualVotesRequired", { count }),
+      manualVotesSumHint: (sum: number, required: number) =>
+        lobbyTexts.t("manualVotesSumHint", { sum, required }),
+    };
+  }, [lobbyTexts]);
+
+
   const [overlayLinksLoading, setOverlayLinksLoading] = useState(false);
   const [overlayLinksError, setOverlayLinksError] = useState<string | null>(null);
   const [draft, setDraft] = useState<GameSettings | null>(roomState?.settings ?? null);
   const [kickTargetId, setKickTargetId] = useState("");
+  const [kickModalOpen, setKickModalOpen] = useState(false);
+  const [kickAgree, setKickAgree] = useState(false);
   const [transferHostTargetId, setTransferHostTargetId] = useState("");
   const [manualTemplatePlayers, setManualTemplatePlayers] = useState(4);
   const [manualVotesInput, setManualVotesInput] = useState("0");
@@ -260,6 +409,21 @@ export default function LobbyPage({
       .filter((playerId) => playerId !== roomState.hostId);
     setTransferHostTargetId((prev) => (candidateIds.includes(prev) ? prev : candidateIds[0] ?? ""));
   }, [roomState?.players, roomState?.hostId]);
+
+  useEffect(() => {
+    if (!roomState) {
+      setKickTargetId("");
+      return;
+    }
+    const candidateIds = roomState.players
+      .map((player) => player.playerId)
+      .filter((playerId) => playerId !== roomState.controlId);
+    setKickTargetId((prev) => (candidateIds.includes(prev) ? prev : candidateIds[0] ?? ""));
+    if (candidateIds.length === 0) {
+      setKickAgree(false);
+      setKickModalOpen(false);
+    }
+  }, [roomState?.players, roomState?.controlId]);
 
   useEffect(() => {
     if (!roomState) return;
@@ -313,7 +477,7 @@ export default function LobbyPage({
         const payload = await response.json().catch(() => null);
         if (!response.ok || !payload?.ok) {
           const message =
-            payload && typeof payload.message === "string" ? payload.message : ru.obsLinksUnavailable;
+            payload && typeof payload.message === "string" ? payload.message : lobbyLocale.obsLinksUnavailable;
           throw new Error(message);
         }
         if (cancelled) return;
@@ -331,7 +495,7 @@ export default function LobbyPage({
           !forcePublicOnly && !(linkVisibility === "public" || linkVisibility === "external");
 
         if (!lanBase || !overlayViewToken || !overlayControlToken || !apiRoomCode) {
-          throw new Error(ru.obsLinksUnavailable);
+          throw new Error(lobbyLocale.obsLinksUnavailable);
         }
 
         const built = buildLinkSet({
@@ -356,7 +520,7 @@ export default function LobbyPage({
         });
       } catch (error) {
         if (cancelled) return;
-        const message = error instanceof Error ? error.message : ru.obsLinksUnavailable;
+        const message = error instanceof Error ? error.message : lobbyLocale.obsLinksUnavailable;
         setOverlayLinksError(message);
         setOverlayLinks(null);
       } finally {
@@ -396,7 +560,7 @@ export default function LobbyPage({
       copied = fallbackCopy(value);
     }
     if (!copied) {
-      window.alert(ru.copyFailed);
+      window.alert(lobbyLocale.copyFailed);
       return;
     }
     setCopiedKey(key);
@@ -405,8 +569,8 @@ export default function LobbyPage({
   if (!roomState) {
     return (
       <section className="panel">
-        <h2>{ru.lobbyTitle}</h2>
-        <p className="muted">{ru.lobbyLoading}</p>
+        <h2>{lobbyLocale.lobbyTitle}</h2>
+        <p className="muted">{lobbyLocale.lobbyLoading}</p>
       </section>
     );
   }
@@ -422,7 +586,10 @@ export default function LobbyPage({
   const overlayControlUrlExternal = overlayLinks?.overlayControlUrlExternal ?? "";
   const showLanLinks = overlayLinks?.showLanLinks ?? true;
   const copyLabel = (key: string) =>
-    copiedKey === key ? ru.copiedButton : ru.copyButton;
+    copiedKey === key ? lobbyLocale.copiedButton : lobbyLocale.copyButton;
+
+  const maskSecret = (value: string, hidden: boolean) =>
+    maskValue(value, hidden, lobbyLocale.hiddenValue);
 
   const settings = draft ?? roomState.settings;
   const disasterOptions = roomState.disasterOptions ?? [];
@@ -434,18 +601,18 @@ export default function LobbyPage({
       : "random";
   const forcedDisasterTitle =
     normalizedForcedDisasterId === "random"
-      ? ru.settingsForcedDisasterRandom
+      ? lobbyLocale.settingsForcedDisasterRandom
       : disasterTitleById.get(normalizedForcedDisasterId) ?? normalizedForcedDisasterId;
   const isClassic = roomState.scenarioMeta.id === "classic";
   const ruleset = roomState.ruleset;
   const rulesMode: "auto" | "manual" = ruleset.rulesetMode === "auto" ? "auto" : "manual";
   const presetCount =
     roomState.rulesPresetCount ?? ruleset.manualConfig?.seedTemplatePlayers ?? ruleset.playerCount;
-  const rulesModeText = rulesMode === "manual" ? ru.rulesModeManual : ru.rulesModeAuto;
-  const votesSummary = ru.rulesVotes(ruleset.votesPerRound);
+  const rulesModeText = rulesMode === "manual" ? lobbyLocale.rulesModeManual : lobbyLocale.rulesModeAuto;
+  const votesSummary = lobbyLocale.rulesVotes(ruleset.votesPerRound);
   const votesSeparatorIndex = votesSummary.indexOf(":");
   const votesLabel =
-    votesSeparatorIndex >= 0 ? votesSummary.slice(0, votesSeparatorIndex + 1) : "Голосования по раундам:";
+    votesSeparatorIndex >= 0 ? votesSummary.slice(0, votesSeparatorIndex + 1) : lobbyLocale.votesByRoundLabel;
   const votesValue =
     votesSeparatorIndex >= 0
       ? votesSummary.slice(votesSeparatorIndex + 1).trim()
@@ -470,12 +637,10 @@ export default function LobbyPage({
   const manualRevealNotRecommended = manualConfig.targetReveals !== 7;
   const canStart = !isClassic || roomState.players.length >= 4;
   const minPlayersLimit = Math.max(isClassic ? 4 : 2, roomState.players.length);
-  const wsHint = controlsDisabled ? ru.wsActionDisabledHint : null;
-  const continueTipText =
-    "Определяет, кто может нажимать «Продолжить» после обсуждения: ведущий, раскрывший игрок или любой участник.";
-  const threatTipText =
-    "Определяет, кто может раскрывать карты угроз в финале игры: только ведущий или любой игрок.";
-  const rulesButtonLabel = "\u041f\u0440\u0430\u0432\u0438\u043b\u0430";
+  const wsHint = controlsDisabled ? lobbyLocale.wsActionDisabledHint : null;
+  const continueTipText = lobbyLocale.settingsContinueTipText;
+  const threatTipText = lobbyLocale.settingsThreatTipText;
+  const rulesButtonLabel = lobbyLocale.rulesButtonShort;
 
   const sendRulesUpdate = (payload: {
     mode: "auto" | "manual";
@@ -534,6 +699,10 @@ export default function LobbyPage({
   const kickCandidates = roomState.players.filter((player) => player.playerId !== roomState.controlId);
   const transferHostCandidates = roomState.players.filter((player) => player.playerId !== roomState.hostId);
   const playerIndexById = new Map(roomState.players.map((player, index) => [player.playerId, index]));
+  const getFallbackPlayerName = (player: LobbyPlayer): string =>
+    lobbyLocale.playerFallback((playerIndexById.get(player.playerId) ?? 0) + 1);
+  const getLobbyPlayerName = (player: LobbyPlayer): string =>
+    getSafePlayerName(player.name, getFallbackPlayerName(player));
 
   const applySettings = (next: GameSettings) => {
     if (controlsDisabled) return;
@@ -557,58 +726,38 @@ export default function LobbyPage({
         <div className="lobbyLeftColumn">
           <section className="lobbyCard lobbyCard--players playersCard">
             <div className="lobbyCardHeader">
-              <h3 className="lobbyCardTitle">{ru.playersTitle}</h3>
+              <h3 className="lobbyCardTitle">{lobbyLocale.playersTitle}</h3>
             </div>
             <div className="lobbyCardBody">
               <ul className="player-list compact">
                 {visiblePlayers.map((player) => {
-                  const fallbackIndex = playerIndexById.get(player.playerId) ?? 0;
-                  const safeName = getSafePlayerName(player.name, fallbackIndex);
+                  const safeName = getLobbyPlayerName(player);
                   return (
                     <li key={player.playerId}>
                       {safeName}
-                      {player.playerId === roomState.hostId ? ru.hostMarker : ""}
-                      {player.playerId === roomState.controlId ? ru.controlMarker : ""}
-                      {player.connected ? "" : ru.offlineMarker}
+                      {player.playerId === roomState.hostId ? lobbyLocale.hostMarker : ""}
+                      {player.playerId === roomState.controlId ? lobbyLocale.controlMarker : ""}
+                      {player.connected ? "" : lobbyLocale.offlineMarker}
                     </li>
                   );
                 })}
               </ul>
-              {extraPlayers > 0 ? <div className="muted player-extra">+{extraPlayers} ещё</div> : null}
+              {extraPlayers > 0 ? <div className="muted player-extra">{lobbyLocale.playerExtra(extraPlayers)}</div> : null}
 
               {canControl && kickCandidates.length > 0 ? (
                 <div className="formRow">
-                  <span>{ru.lobbyKickTitle}</span>
+                  <span>{lobbyLocale.lobbyKickTitle}</span>
                   <div className="formControlRow">
-                    <select
-                      value={kickTargetId}
-                      disabled={controlsDisabled}
-                      onChange={(event) => setKickTargetId(event.target.value)}
-                    >
-                      <option value="" disabled>
-                        {ru.lobbyKickSelectPlaceholder}
-                      </option>
-                      {kickCandidates.map((player) => {
-                        const fallbackIndex = playerIndexById.get(player.playerId) ?? 0;
-                        const safeName = getSafePlayerName(player.name, fallbackIndex);
-                        return (
-                          <option key={player.playerId} value={player.playerId}>
-                            {safeName}
-                          </option>
-                        );
-                      })}
-                    </select>
                     <button
                       className="ghost button-small"
-                      disabled={!kickTargetId || controlsDisabled}
+                      disabled={controlsDisabled}
                       onClick={() => {
                         if (controlsDisabled) return;
-                        if (!kickTargetId) return;
-                        onKickPlayer(kickTargetId);
-                        setKickTargetId("");
+                        setKickAgree(false);
+                        setKickModalOpen(true);
                       }}
                     >
-                      {ru.lobbyKickButton}
+                      {lobbyLocale.lobbyKickButton}
                     </button>
                   </div>
                 </div>
@@ -616,7 +765,7 @@ export default function LobbyPage({
 
               {canControl ? (
                 <div className="formRow formRow--transferHost">
-                  <span>{ru.transferHostTitle}</span>
+                  <span>{lobbyLocale.transferHostTitle}</span>
                   <div className="formControlRow formControlRow--transferHost">
                     <select
                       value={transferHostTargetId}
@@ -625,16 +774,15 @@ export default function LobbyPage({
                     >
                       {transferHostCandidates.length === 0 ? (
                         <option value="" disabled>
-                          {ru.transferHostSelectPlaceholder}
+                          {lobbyLocale.transferHostSelectPlaceholder}
                         </option>
                       ) : null}
                       {transferHostCandidates.map((player) => {
-                        const fallbackIndex = playerIndexById.get(player.playerId) ?? 0;
-                        const safeName = getSafePlayerName(player.name, fallbackIndex);
+                        const safeName = getLobbyPlayerName(player);
                         return (
                           <option key={player.playerId} value={player.playerId}>
                             {safeName}
-                            {player.playerId === roomState.controlId ? ru.controlMarker : ""}
+                            {player.playerId === roomState.controlId ? lobbyLocale.controlMarker : ""}
                           </option>
                         );
                       })}
@@ -648,7 +796,7 @@ export default function LobbyPage({
                         onTransferHost(transferHostTargetId);
                       }}
                     >
-                      {ru.transferHostButton}
+                      {lobbyLocale.transferHostButton}
                     </button>
                   </div>
                 </div>
@@ -664,28 +812,28 @@ export default function LobbyPage({
                       onStart();
                     }}
                   >
-                    {ru.startButton}
+                    {lobbyLocale.startButton}
                   </button>
-                  {!canStart && isClassic ? <span className="muted">{ru.rulesNeedMinPlayers}</span> : null}
+                  {!canStart && isClassic ? <span className="muted">{lobbyLocale.rulesNeedMinPlayers}</span> : null}
                   {wsHint ? <span className="muted wsDisabledHint">{wsHint}</span> : null}
                 </div>
               ) : (
-                <div className="muted playerOnlyHint">{ru.hostOnlyHint}</div>
+                <div className="muted playerOnlyHint">{lobbyLocale.hostOnlyHint}</div>
               )}
             </div>
           </section>
 
           <section className="lobbyCard lobbyCard--rules rulesCard">
             <div className="lobbyCardHeader">
-              <h3 className="lobbyCardTitle">{ru.rulesTitle}</h3>
+              <h3 className="lobbyCardTitle">{lobbyLocale.rulesTitle}</h3>
             </div>
             <div className="lobbyCardBody">
               <div className="rulesTop">
                 <div className="lobbyMetaLine">
-                  <span className="muted">{ru.scenarioLabel(roomState.scenarioMeta.name)}</span>
+                  <span className="muted">{lobbyLocale.scenarioLabel(roomState.scenarioMeta.name)}</span>
                 </div>
                 <div className="rulesModeBox">
-                  <div className="rulesModeLabel">{ru.rulesModeLabel}</div>
+                  <div className="rulesModeLabel">{lobbyLocale.rulesModeLabel}</div>
                   {canControl && isClassic ? (
                     <select
                       className="rulesModeSelect"
@@ -693,8 +841,8 @@ export default function LobbyPage({
                       disabled={controlsDisabled}
                       onChange={(event) => applyRulesMode(event.target.value as "auto" | "manual")}
                     >
-                      <option value="auto">{ru.rulesModeAuto}</option>
-                      <option value="manual">{ru.rulesModeManual}</option>
+                      <option value="auto">{lobbyLocale.rulesModeAuto}</option>
+                      <option value="manual">{lobbyLocale.rulesModeManual}</option>
                     </select>
                   ) : (
                     <div className="rulesModeValue">{rulesModeText}</div>
@@ -702,10 +850,10 @@ export default function LobbyPage({
                 </div>
               </div>
               <div className="rulesStats">
-                <div className="ruleCell">{ru.rulesPlayers(roomState.players.length)}</div>
-                <div className="ruleCell">{ru.rulesSeats(ruleset.bunkerSeats)}</div>
+                <div className="ruleCell">{lobbyLocale.rulesPlayers(roomState.players.length)}</div>
+                <div className="ruleCell">{lobbyLocale.rulesSeats(ruleset.bunkerSeats)}</div>
                 <div className="ruleCell ruleCellGhost" aria-hidden="true"></div>
-                <div className="ruleCell">{ru.rulesExiles(ruleset.totalExiles)}</div>
+                <div className="ruleCell">{lobbyLocale.rulesExiles(ruleset.totalExiles)}</div>
                 <div className="ruleCell rulesSpan2">
                   <span className="ruleFactLabel">{votesLabel}</span>
                   <span className="ruleFactValue nowrap">{votesValue}</span>
@@ -718,15 +866,15 @@ export default function LobbyPage({
         <div className="lobbyRightColumn">
           <section className="lobbyCard lobbyCard--settings settingsCard">
             <div className="lobbyCardHeader">
-              <h3 className="lobbyCardTitle">{ru.settingsTitle}</h3>
+              <h3 className="lobbyCardTitle">{lobbyLocale.settingsTitle}</h3>
             </div>
             <div className="lobbyCardBody">
               {canControl ? (
                 <fieldset className="settingsFieldset" disabled={controlsDisabled}>
                   <div className="settings-grid compact">
-                  <div className="settings-section-title">{ru.settingsTimersBlock}</div>
+                  <div className="settings-section-title">{lobbyLocale.settingsTimersBlock}</div>
                   <label className="formRow settingsRow--timer">
-                    <span className="settingsLabel">{ru.settingsRevealDiscussionTimer}</span>
+                    <span className="settingsLabel">{lobbyLocale.settingsRevealDiscussionTimer}</span>
                     <div className="formControlRow settingsControls">
                       <input
                         type="checkbox"
@@ -745,7 +893,7 @@ export default function LobbyPage({
                     </div>
                   </label>
                   <label className="formRow settingsRow--timer">
-                    <span className="settingsLabel">{ru.settingsPreVoteTimer}</span>
+                    <span className="settingsLabel">{lobbyLocale.settingsPreVoteTimer}</span>
                     <div className="formControlRow settingsControls">
                       <input
                         type="checkbox"
@@ -764,7 +912,7 @@ export default function LobbyPage({
                     </div>
                   </label>
                   <label className="formRow settingsRow--timer">
-                    <span className="settingsLabel">{ru.settingsPostVoteTimer}</span>
+                    <span className="settingsLabel">{lobbyLocale.settingsPostVoteTimer}</span>
                     <div className="formControlRow settingsControls">
                       <input
                         type="checkbox"
@@ -782,11 +930,11 @@ export default function LobbyPage({
                       />
                     </div>
                   </label>
-                  <div className="settings-section-title">{ru.settingsOtherBlock}</div>
+                  <div className="settings-section-title">{lobbyLocale.settingsOtherBlock}</div>
                   <label className="formRow">
                     <span className="settingsLabelWithTip">
-                      <span>{ru.settingsAutomationMode}</span>
-                      <InfoTip text={ru.settingsAutomationModeHint} />
+                      <span>{lobbyLocale.settingsAutomationMode}</span>
+                      <InfoTip text={lobbyLocale.settingsAutomationModeHint} />
                     </span>
                     <select
                       value={settings.automationMode}
@@ -794,15 +942,15 @@ export default function LobbyPage({
                         updateAutomationMode(event.target.value as GameSettings["automationMode"])
                       }
                     >
-                      <option value="auto">{ru.settingsAutomationAuto}</option>
-                      <option value="semi">{ru.settingsAutomationSemi}</option>
-                      <option value="manual">{ru.settingsAutomationManual}</option>
+                      <option value="auto">{lobbyLocale.settingsAutomationAuto}</option>
+                      <option value="semi">{lobbyLocale.settingsAutomationSemi}</option>
+                      <option value="manual">{lobbyLocale.settingsAutomationManual}</option>
                     </select>
                   </label>
                   <div className="formRow settingsRow--overlayControl">
                     <span className="settingsLabel settingsLabelWithTip">
-                      <span>{ru.settingsPresenterMode}</span>
-                      <InfoTip text={ru.settingsPresenterModeHint} />
+                      <span>{lobbyLocale.settingsPresenterMode}</span>
+                      <InfoTip text={lobbyLocale.settingsPresenterModeHint} />
                     </span>
                     <div className="formControlRow settingsControls checkboxLabel">
                       <div className="overlayControlCheckbox">
@@ -811,13 +959,13 @@ export default function LobbyPage({
                           checked={settings.enablePresenterMode}
                           onChange={(event) => updateField("enablePresenterMode", event.target.checked)}
                         />
-                        <small className="muted">{ru.settingsPresenterModeHint}</small>
+                        <small className="muted">{lobbyLocale.settingsPresenterModeHint}</small>
                       </div>
                     </div>
                   </div>
                   <label className="formRow">
                     <span className="settingsLabelWithTip">
-                      <span>{ru.settingsContinuePermission}</span>
+                      <span>{lobbyLocale.settingsContinuePermission}</span>
                       <InfoTip text={continueTipText} />
                     </span>
                     <select
@@ -829,13 +977,13 @@ export default function LobbyPage({
                         )
                       }
                     >
-                      <option value="host_only">{ru.settingsContinueHost}</option>
-                      <option value="revealer_only">{ru.settingsContinueRevealer}</option>
-                      <option value="anyone">{ru.settingsContinueAnyone}</option>
+                      <option value="host_only">{lobbyLocale.settingsContinueHost}</option>
+                      <option value="revealer_only">{lobbyLocale.settingsContinueRevealer}</option>
+                      <option value="anyone">{lobbyLocale.settingsContinueAnyone}</option>
                     </select>
                   </label>
                   <label className="formRow">
-                    <span>{ru.settingsRevealTimeoutAction}</span>
+                    <span>{lobbyLocale.settingsRevealTimeoutAction}</span>
                     <select
                       value={settings.revealTimeoutAction}
                       onChange={(event) =>
@@ -845,25 +993,25 @@ export default function LobbyPage({
                         )
                       }
                     >
-                      <option value="random_card">{ru.settingsRevealTimeoutRandom}</option>
-                      <option value="skip_player">{ru.settingsRevealTimeoutSkip}</option>
+                      <option value="random_card">{lobbyLocale.settingsRevealTimeoutRandom}</option>
+                      <option value="skip_player">{lobbyLocale.settingsRevealTimeoutSkip}</option>
                     </select>
                   </label>
                   <label className="formRow">
-                    <span>{ru.settingsSpecialUsage}</span>
+                    <span>{lobbyLocale.settingsSpecialUsage}</span>
                     <select
                       value={settings.specialUsage}
                       onChange={(event) =>
                         updateField("specialUsage", event.target.value as GameSettings["specialUsage"])
                       }
                     >
-                      <option value="anytime">{ru.settingsSpecialAnytime}</option>
-                      <option value="only_during_voting">{ru.settingsSpecialVotingOnly}</option>
+                      <option value="anytime">{lobbyLocale.settingsSpecialAnytime}</option>
+                      <option value="only_during_voting">{lobbyLocale.settingsSpecialVotingOnly}</option>
                     </select>
                   </label>
                   <label className="formRow">
                     <span className="settingsLabelWithTip">
-                      <span>{ru.settingsFinalThreatReveal}</span>
+                      <span>{lobbyLocale.settingsFinalThreatReveal}</span>
                       <InfoTip text={threatTipText} />
                     </span>
                     <select
@@ -875,18 +1023,18 @@ export default function LobbyPage({
                         )
                       }
                     >
-                      <option value="host">{ru.settingsThreatHost}</option>
-                      <option value="anyone">{ru.settingsThreatAnyone}</option>
+                      <option value="host">{lobbyLocale.settingsThreatHost}</option>
+                      <option value="anyone">{lobbyLocale.settingsThreatAnyone}</option>
                     </select>
                   </label>
                   {supportsForcedDisaster ? (
                     <label className="formRow">
-                      <span>{ru.settingsForcedDisaster}</span>
+                      <span>{lobbyLocale.settingsForcedDisaster}</span>
                       <select
                         value={normalizedForcedDisasterId}
                         onChange={(event) => updateField("forcedDisasterId", event.target.value)}
                       >
-                        <option value="random">{ru.settingsForcedDisasterRandom}</option>
+                        <option value="random">{lobbyLocale.settingsForcedDisasterRandom}</option>
                         {disasterOptions.map((option) => (
                           <option key={option.id} value={option.id}>
                             {option.title}
@@ -896,7 +1044,7 @@ export default function LobbyPage({
                     </label>
                   ) : null}
                   <label className="formRow">
-                    <span>{ru.settingsMaxPlayers}</span>
+                    <span>{lobbyLocale.settingsMaxPlayers}</span>
                     <div className="settingsMaxPlayersControl">
                       <input
                         type="number"
@@ -910,7 +1058,7 @@ export default function LobbyPage({
                           )
                         }
                       />
-                      <small className="muted">Максимум 16</small>
+                      <small className="muted">{lobbyLocale.maxPlayersHint}</small>
                     </div>
                   </label>
                 </div>
@@ -918,80 +1066,80 @@ export default function LobbyPage({
               ) : (
                 <div className="settings-readonly compact">
                   <div>
-                    {ru.settingsAutomationMode}:{" "}
+                    {lobbyLocale.settingsAutomationMode}:{" "}
                     {settings.automationMode === "manual"
-                      ? ru.settingsAutomationManual
+                      ? lobbyLocale.settingsAutomationManual
                       : settings.automationMode === "semi"
-                        ? ru.settingsAutomationSemi
-                        : ru.settingsAutomationAuto}
+                        ? lobbyLocale.settingsAutomationSemi
+                        : lobbyLocale.settingsAutomationAuto}
                   </div>
                   <div>
-                    {ru.settingsPresenterMode}: {settings.enablePresenterMode ? ru.settingsOn : ru.settingsOff}
+                    {lobbyLocale.settingsPresenterMode}: {settings.enablePresenterMode ? lobbyLocale.settingsOn : lobbyLocale.settingsOff}
                   </div>
                   <div>
-                    {ru.settingsRevealDiscussionTimer}:{" "}
-                    {settings.enableRevealDiscussionTimer ? ru.settingsOn : ru.settingsOff} (
+                    {lobbyLocale.settingsRevealDiscussionTimer}:{" "}
+                    {settings.enableRevealDiscussionTimer ? lobbyLocale.settingsOn : lobbyLocale.settingsOff} (
                     {settings.revealDiscussionSeconds}s)
                   </div>
                   <div>
-                    {ru.settingsPreVoteTimer}: {settings.enablePreVoteDiscussionTimer ? ru.settingsOn : ru.settingsOff} (
+                    {lobbyLocale.settingsPreVoteTimer}: {settings.enablePreVoteDiscussionTimer ? lobbyLocale.settingsOn : lobbyLocale.settingsOff} (
                     {settings.preVoteDiscussionSeconds}s)
                   </div>
                   <div>
-                    {ru.settingsPostVoteTimer}: {settings.enablePostVoteDiscussionTimer ? ru.settingsOn : ru.settingsOff} (
+                    {lobbyLocale.settingsPostVoteTimer}: {settings.enablePostVoteDiscussionTimer ? lobbyLocale.settingsOn : lobbyLocale.settingsOff} (
                     {settings.postVoteDiscussionSeconds}s)
                   </div>
                   <div>
-                    {ru.settingsContinuePermission}:{" "}
+                    {lobbyLocale.settingsContinuePermission}:{" "}
                     {settings.continuePermission === "host_only"
-                      ? ru.settingsContinueHost
+                      ? lobbyLocale.settingsContinueHost
                       : settings.continuePermission === "revealer_only"
-                        ? ru.settingsContinueRevealer
-                        : ru.settingsContinueAnyone}
+                        ? lobbyLocale.settingsContinueRevealer
+                        : lobbyLocale.settingsContinueAnyone}
                   </div>
                   <div>
-                    {ru.settingsRevealTimeoutAction}:{" "}
-                    {settings.revealTimeoutAction === "random_card" ? ru.settingsRevealTimeoutRandom : ru.settingsRevealTimeoutSkip}
+                    {lobbyLocale.settingsRevealTimeoutAction}:{" "}
+                    {settings.revealTimeoutAction === "random_card" ? lobbyLocale.settingsRevealTimeoutRandom : lobbyLocale.settingsRevealTimeoutSkip}
                   </div>
                   <div>
-                    {ru.settingsSpecialUsage}: {settings.specialUsage === "anytime" ? ru.settingsSpecialAnytime : ru.settingsSpecialVotingOnly}
+                    {lobbyLocale.settingsSpecialUsage}: {settings.specialUsage === "anytime" ? lobbyLocale.settingsSpecialAnytime : lobbyLocale.settingsSpecialVotingOnly}
                   </div>
                   <div>
-                    {ru.settingsFinalThreatReveal}:{" "}
-                    {settings.finalThreatReveal === "anyone" ? ru.settingsThreatAnyone : ru.settingsThreatHost}
+                    {lobbyLocale.settingsFinalThreatReveal}:{" "}
+                    {settings.finalThreatReveal === "anyone" ? lobbyLocale.settingsThreatAnyone : lobbyLocale.settingsThreatHost}
                   </div>
                   {supportsForcedDisaster ? (
                     <div>
-                      {ru.settingsForcedDisaster}: {forcedDisasterTitle}
+                      {lobbyLocale.settingsForcedDisaster}: {forcedDisasterTitle}
                     </div>
                   ) : null}
                   <div>
-                    {ru.settingsMaxPlayers}: {settings.maxPlayers}
+                    {lobbyLocale.settingsMaxPlayers}: {settings.maxPlayers}
                   </div>
                 </div>
               )}
               {canControl && wsHint ? <div className="muted wsDisabledHint">{wsHint}</div> : null}
               {canControl && settings.enablePresenterMode ? (
-                <div className="muted presenterHint">{ru.presenterControlHint}</div>
+                <div className="muted presenterHint">{lobbyLocale.presenterControlHint}</div>
               ) : null}
             </div>
           </section>
           {canControl && isClassic && rulesMode === "manual" ? (
             <section className="lobbyCard lobbyCard--manual manualCard">
               <div className="lobbyCardHeader">
-                <h3 className="lobbyCardTitle">Ручной режим</h3>
+                <h3 className="lobbyCardTitle">{lobbyLocale.manualModeTitle}</h3>
               </div>
               <div className="lobbyCardBody">
                 <fieldset className="settingsFieldset" disabled={controlsDisabled}>
                 <div className="manualRulesBuilder">
                   <div className="manualRulesRow">
                     <label>
-                      <span>{ru.rulesPresetLabel}</span>
+                      <span>{lobbyLocale.rulesPresetLabel}</span>
                       <select
                         value={manualTemplatePlayers}
                         onChange={(event) => setManualTemplatePlayers(Number(event.target.value))}
                       >
-                        {ru.rulesPresetOptions.map((count) => (
+                        {lobbyLocale.rulesPresetOptions.map((count) => (
                           <option key={count} value={count}>
                             {count}
                           </option>
@@ -999,13 +1147,13 @@ export default function LobbyPage({
                       </select>
                     </label>
                     <button className="ghost button-small" onClick={fillManualFromTemplate}>
-                      Заполнить
+                      {lobbyLocale.manualFillFromTemplate}
                     </button>
                   </div>
 
                   <div className="manualRulesRow manualRulesRow3Wide">
                     <label>
-                      <span>Мест в бункере</span>
+                      <span>{lobbyLocale.manualBunkerSlotsLabel}</span>
                       <input
                         type="number"
                         min={1}
@@ -1017,10 +1165,10 @@ export default function LobbyPage({
                       />
                     </label>
                     <div className="manualRequiredVotes" aria-live="polite">
-                      Требуется голосований: {requiredVotes}
+                      {lobbyLocale.manualVotesRequired(requiredVotes)}
                     </div>
                     <label className="manualRevealTargetField">
-                      <span>Требуется раскрытий</span>
+                      <span>{lobbyLocale.manualRevealsRequiredLabel}</span>
                       <select
                         value={manualConfig.targetReveals}
                         onChange={(event) =>
@@ -1036,20 +1184,20 @@ export default function LobbyPage({
 
                   <div className="manualRevealMeta">
                     <div className="manualRevealHint">
-                      Рекомендуем: 7 (останется 1 закрытая карта из 8)
+                      {lobbyLocale.manualRevealsRecommended}
                     </div>
                     {manualRevealNotRecommended ? (
                       <div className="manualRevealWarning">
-                        Внимание: выбрано не рекомендованное значение раскрытий.
+                        {lobbyLocale.manualRevealsWarning}
                       </div>
                     ) : null}
                     <div className="manualRevealPlan">
-                      Раскрытия по раундам: <span className="nowrap">{revealPlanText}</span>
+                      {lobbyLocale.manualRevealsPlanLabel} <span className="nowrap">{revealPlanText}</span>
                     </div>
                   </div>
 
                   <div className="manualVotesHeader">
-                    <div>Голосования по раундам</div>
+                    <div>{lobbyLocale.votesByRoundLabel}</div>
                     <div className="manualVotesActions">
                       <button
                         className="ghost button-small"
@@ -1059,7 +1207,7 @@ export default function LobbyPage({
                           })
                         }
                       >
-                        + раунд
+                        {lobbyLocale.manualRoundAdd}
                       </button>
                       <button
                         className="ghost button-small"
@@ -1073,7 +1221,7 @@ export default function LobbyPage({
                           })
                         }
                       >
-                        - раунд
+                        {lobbyLocale.manualRoundRemove}
                       </button>
                       <button
                         className="ghost button-small"
@@ -1086,13 +1234,13 @@ export default function LobbyPage({
                           })
                         }
                       >
-                        Сгенерировать
+                        {lobbyLocale.manualGenerate}
                       </button>
                     </div>
                   </div>
 
                   <label className="manualVotesTextField">
-                    <span>Голосования по раундам (формат: 0/0/1/1)</span>
+                    <span>{lobbyLocale.manualVotesFormatHint}</span>
                     <input
                       type="text"
                       value={manualVotesInput}
@@ -1125,7 +1273,7 @@ export default function LobbyPage({
 
                   <div className={`manualVotesSummary${manualVotesMismatch ? " warning" : ""}`}>
                     <span>
-                      Сумма голосований по раундам: {manualVotesSum}. Требуется: {requiredVotes}.
+                      {lobbyLocale.manualVotesSumHint(manualVotesSum, requiredVotes)}
                     </span>
                     {manualVotesMismatch ? (
                       <button
@@ -1136,7 +1284,7 @@ export default function LobbyPage({
                           })
                         }
                       >
-                        Подогнать
+                        {lobbyLocale.manualAdjust}
                       </button>
                     ) : null}
                   </div>
@@ -1150,108 +1298,110 @@ export default function LobbyPage({
         {canControl ? (
           <section className="lobbyCard lobbyObsCard obsCard">
             <div className="lobbyCardHeader">
-              <h3 className="lobbyCardTitle">{ru.obsLinksTitle}</h3>
+              <h3 className="lobbyCardTitle">{lobbyLocale.obsLinksTitle}</h3>
             </div>
             <div className="lobbyCardBody">
-              <div className="muted">{ru.spectatorLinkHint}</div>
-              {overlayLinksLoading ? <div className="muted">{ru.obsLinksLoading}</div> : null}
+              {showHints ? <div className="muted">{lobbyLocale.spectatorLinkHint}</div> : null}
+              {overlayLinksLoading ? <div className="muted">{lobbyLocale.obsLinksLoading}</div> : null}
               {!overlayLinksLoading && overlayLinksError ? (
-                <div className="muted">{overlayLinksError || ru.obsLinksUnavailable}</div>
+                <div className="muted">{overlayLinksError || lobbyLocale.obsLinksUnavailable}</div>
               ) : null}
               {!overlayLinksLoading && overlayLinks ? (
                 <>
-                  <section className="linksSection">
-                    <h4 className="linksSectionTitle">{ru.spectatorLinkTitle}</h4>
-                    <div className="obs-links-list">
-                      {showLanLinks ? (
-                        <div className="obs-link-row">
-                          <div className="obs-link-main">
-                            <div className="obs-link-label">LAN</div>
-                            <div
-                              className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
-                              title={spectatorHidden ? ru.showSecret : spectatorUrlLan || ru.obsLinksUnavailable}
-                            >
-                              {maskValue(spectatorUrlLan || "—", spectatorHidden)}
+                  {showSpectatorLinks ? (
+                    <section className="linksSection">
+                      <h4 className="linksSectionTitle">{lobbyLocale.spectatorLinkTitle}</h4>
+                      <div className="obs-links-list">
+                        {showLanLinks ? (
+                          <div className="obs-link-row">
+                            <div className="obs-link-main">
+                              <div className="obs-link-label">LAN</div>
+                              <div
+                                className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
+                                title={spectatorHidden ? lobbyLocale.showSecret : spectatorUrlLan || lobbyLocale.obsLinksUnavailable}
+                              >
+                                {maskSecret(spectatorUrlLan || "—", spectatorHidden)}
+                              </div>
+                            </div>
+                            <div className="secret-actions">
+                              <button
+                                type="button"
+                                className="ghost iconButton"
+                                aria-label={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                                title={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                                onClick={() => setShowSpectatorLink((prev) => !prev)}
+                              >
+                                <EyeIcon open={!spectatorHidden} />
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost button-small"
+                                disabled={!spectatorUrlLan}
+                                onClick={() =>
+                                  spectatorUrlLan && window.open(spectatorUrlLan, "_blank", "noopener,noreferrer")
+                                }
+                              >
+                                {lobbyLocale.openButton}
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost button-small"
+                                disabled={!spectatorUrlLan}
+                                onClick={() => copyText(spectatorUrlLan, "spectatorLan")}
+                              >
+                                {copyLabel("spectatorLan")}
+                              </button>
                             </div>
                           </div>
-                          <div className="secret-actions">
-                            <button
-                              type="button"
-                              className="ghost iconButton"
-                              aria-label={spectatorHidden ? ru.showSecret : ru.hideSecret}
-                              title={spectatorHidden ? ru.showSecret : ru.hideSecret}
-                              onClick={() => setShowSpectatorLink((prev) => !prev)}
-                            >
-                              <EyeIcon open={!spectatorHidden} />
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              disabled={!spectatorUrlLan}
-                              onClick={() =>
-                                spectatorUrlLan && window.open(spectatorUrlLan, "_blank", "noopener,noreferrer")
-                              }
-                            >
-                              {ru.openButton}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              disabled={!spectatorUrlLan}
-                              onClick={() => copyText(spectatorUrlLan, "spectatorLan")}
-                            >
-                              {copyLabel("spectatorLan")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {spectatorUrlExternal ? (
-                        <div className="obs-link-row">
-                          <div className="obs-link-main">
-                            <div className="obs-link-label">Внешняя</div>
-                            <div
-                              className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
-                              title={spectatorHidden ? ru.showSecret : spectatorUrlExternal}
-                            >
-                              {maskValue(spectatorUrlExternal, spectatorHidden)}
+                        ) : null}
+                        {spectatorUrlExternal ? (
+                          <div className="obs-link-row">
+                            <div className="obs-link-main">
+                              <div className="obs-link-label">{lobbyLocale.externalLabel}</div>
+                              <div
+                                className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
+                                title={spectatorHidden ? lobbyLocale.showSecret : spectatorUrlExternal}
+                              >
+                                {maskSecret(spectatorUrlExternal, spectatorHidden)}
+                              </div>
+                            </div>
+                            <div className="secret-actions">
+                              <button
+                                type="button"
+                                className="ghost iconButton"
+                                aria-label={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                                title={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                                onClick={() => setShowSpectatorLink((prev) => !prev)}
+                              >
+                                <EyeIcon open={!spectatorHidden} />
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost button-small"
+                                onClick={() =>
+                                  spectatorUrlExternal && window.open(spectatorUrlExternal, "_blank", "noopener,noreferrer")
+                                }
+                              >
+                                {lobbyLocale.openButton}
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost button-small"
+                                onClick={() => copyText(spectatorUrlExternal, "spectatorExternal")}
+                              >
+                                {copyLabel("spectatorExternal")}
+                              </button>
                             </div>
                           </div>
-                          <div className="secret-actions">
-                            <button
-                              type="button"
-                              className="ghost iconButton"
-                              aria-label={spectatorHidden ? ru.showSecret : ru.hideSecret}
-                              title={spectatorHidden ? ru.showSecret : ru.hideSecret}
-                              onClick={() => setShowSpectatorLink((prev) => !prev)}
-                            >
-                              <EyeIcon open={!spectatorHidden} />
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              onClick={() =>
-                                spectatorUrlExternal && window.open(spectatorUrlExternal, "_blank", "noopener,noreferrer")
-                              }
-                            >
-                              {ru.openButton}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              onClick={() => copyText(spectatorUrlExternal, "spectatorExternal")}
-                            >
-                              {copyLabel("spectatorExternal")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="muted linksSectionHint">{ru.externalLinksHint}</div>
-                      )}
-                    </div>
-                  </section>
+                        ) : showHints ? (
+                          <div className="muted linksSectionHint">{lobbyLocale.externalLinksHint}</div>
+                        ) : null}
+                      </div>
+                    </section>
+                  ) : null}
 
                   <section className="linksSection">
-                    <h4 className="linksSectionTitle">OBS Overlay (просмотр)</h4>
+                    <h4 className="linksSectionTitle">{lobbyLocale.obsOverlayViewSectionTitle}</h4>
                     <div className="obs-links-list">
                       {showLanLinks ? (
                         <div className="obs-link-row">
@@ -1259,17 +1409,17 @@ export default function LobbyPage({
                             <div className="obs-link-label">LAN</div>
                             <div
                               className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
-                              title={overlayViewHidden ? ru.showSecret : overlayViewUrlLan}
+                              title={overlayViewHidden ? lobbyLocale.showSecret : overlayViewUrlLan}
                             >
-                              {maskValue(overlayViewUrlLan || "—", overlayViewHidden)}
+                              {maskSecret(overlayViewUrlLan || "—", overlayViewHidden)}
                             </div>
                           </div>
                           <div className="secret-actions">
                             <button
                               type="button"
                               className="ghost iconButton"
-                              aria-label={overlayViewHidden ? ru.showSecret : ru.hideSecret}
-                              title={overlayViewHidden ? ru.showSecret : ru.hideSecret}
+                              aria-label={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                              title={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
                               onClick={() => setShowOverlayView((prev) => !prev)}
                             >
                               <EyeIcon open={!overlayViewHidden} />
@@ -1282,7 +1432,7 @@ export default function LobbyPage({
                                 overlayViewUrlLan && window.open(overlayViewUrlLan, "_blank", "noopener,noreferrer")
                               }
                             >
-                              {ru.openButton}
+                              {lobbyLocale.openButton}
                             </button>
                             <button
                               type="button"
@@ -1298,20 +1448,20 @@ export default function LobbyPage({
                       {overlayViewUrlExternal ? (
                         <div className="obs-link-row">
                           <div className="obs-link-main">
-                            <div className="obs-link-label">Внешняя</div>
+                            <div className="obs-link-label">{lobbyLocale.externalLabel}</div>
                             <div
                               className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
-                              title={overlayViewHidden ? ru.showSecret : overlayViewUrlExternal}
+                              title={overlayViewHidden ? lobbyLocale.showSecret : overlayViewUrlExternal}
                             >
-                              {maskValue(overlayViewUrlExternal || "—", overlayViewHidden)}
+                              {maskSecret(overlayViewUrlExternal || "—", overlayViewHidden)}
                             </div>
                           </div>
                           <div className="secret-actions">
                             <button
                               type="button"
                               className="ghost iconButton"
-                              aria-label={overlayViewHidden ? ru.showSecret : ru.hideSecret}
-                              title={overlayViewHidden ? ru.showSecret : ru.hideSecret}
+                              aria-label={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                              title={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
                               onClick={() => setShowOverlayView((prev) => !prev)}
                             >
                               <EyeIcon open={!overlayViewHidden} />
@@ -1323,7 +1473,7 @@ export default function LobbyPage({
                                 overlayViewUrlExternal && window.open(overlayViewUrlExternal, "_blank", "noopener,noreferrer")
                               }
                             >
-                              {ru.openButton}
+                              {lobbyLocale.openButton}
                             </button>
                             <button
                               type="button"
@@ -1334,14 +1484,14 @@ export default function LobbyPage({
                             </button>
                           </div>
                         </div>
-                      ) : (
-                        <div className="muted linksSectionHint">{ru.externalLinksHint}</div>
-                      )}
+                      ) : showHints ? (
+                        <div className="muted linksSectionHint">{lobbyLocale.externalLinksHint}</div>
+                      ) : null}
                     </div>
                   </section>
 
                   <section className="linksSection">
-                    <h4 className="linksSectionTitle">OBS Overlay (управление)</h4>
+                    <h4 className="linksSectionTitle">{lobbyLocale.obsOverlayControlSectionTitle}</h4>
                     <div className="obs-links-list">
                       {showLanLinks ? (
                         <div className="obs-link-row">
@@ -1349,17 +1499,17 @@ export default function LobbyPage({
                             <div className="obs-link-label">LAN</div>
                             <div
                               className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
-                              title={overlayControlHidden ? ru.showSecret : overlayControlUrlLan}
+                              title={overlayControlHidden ? lobbyLocale.showSecret : overlayControlUrlLan}
                             >
-                              {maskValue(overlayControlUrlLan || "—", overlayControlHidden)}
+                              {maskSecret(overlayControlUrlLan || "—", overlayControlHidden)}
                             </div>
                           </div>
                           <div className="secret-actions">
                             <button
                               type="button"
                               className="ghost iconButton"
-                              aria-label={overlayControlHidden ? ru.showSecret : ru.hideSecret}
-                              title={overlayControlHidden ? ru.showSecret : ru.hideSecret}
+                              aria-label={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                              title={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
                               onClick={() => setShowOverlayControl((prev) => !prev)}
                             >
                               <EyeIcon open={!overlayControlHidden} />
@@ -1373,7 +1523,7 @@ export default function LobbyPage({
                                 window.open(overlayControlUrlLan, "_blank", "noopener,noreferrer")
                               }
                             >
-                              {ru.openButton}
+                              {lobbyLocale.openButton}
                             </button>
                             <button
                               type="button"
@@ -1389,20 +1539,20 @@ export default function LobbyPage({
                       {overlayControlUrlExternal ? (
                         <div className="obs-link-row">
                           <div className="obs-link-main">
-                            <div className="obs-link-label">Внешняя</div>
+                            <div className="obs-link-label">{lobbyLocale.externalLabel}</div>
                             <div
                               className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
-                              title={overlayControlHidden ? ru.showSecret : overlayControlUrlExternal}
+                              title={overlayControlHidden ? lobbyLocale.showSecret : overlayControlUrlExternal}
                             >
-                              {maskValue(overlayControlUrlExternal || "—", overlayControlHidden)}
+                              {maskSecret(overlayControlUrlExternal || "—", overlayControlHidden)}
                             </div>
                           </div>
                           <div className="secret-actions">
                             <button
                               type="button"
                               className="ghost iconButton"
-                              aria-label={overlayControlHidden ? ru.showSecret : ru.hideSecret}
-                              title={overlayControlHidden ? ru.showSecret : ru.hideSecret}
+                              aria-label={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
+                              title={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
                               onClick={() => setShowOverlayControl((prev) => !prev)}
                             >
                               <EyeIcon open={!overlayControlHidden} />
@@ -1415,7 +1565,7 @@ export default function LobbyPage({
                                 window.open(overlayControlUrlExternal, "_blank", "noopener,noreferrer")
                               }
                             >
-                              {ru.openButton}
+                              {lobbyLocale.openButton}
                             </button>
                             <button
                               type="button"
@@ -1426,9 +1576,9 @@ export default function LobbyPage({
                             </button>
                           </div>
                         </div>
-                      ) : (
-                        <div className="muted linksSectionHint">{ru.externalLinksHint}</div>
-                      )}
+                      ) : showHints ? (
+                        <div className="muted linksSectionHint">{lobbyLocale.externalLinksHint}</div>
+                      ) : null}
                     </div>
                   </section>
 
@@ -1446,11 +1596,77 @@ export default function LobbyPage({
         href={GITHUB_URL}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="GitHub автора"
+        aria-label={lobbyLocale.authorGithubAria}
       >
-        Сделано FHR · GitHub
+        {lobbyLocale.authorGithubLabel}
       </a>
+      <Modal
+        open={kickModalOpen && canControl}
+        title={lobbyLocale.lobbyKickTitle}
+        onClose={() => {
+          setKickModalOpen(false);
+          setKickAgree(false);
+        }}
+        dismissible={true}
+      >
+        {kickCandidates.length === 0 ? (
+          <div className="muted">{lobbyLocale.devKickNoTargets}</div>
+        ) : (
+          <>
+            <label className="topbar-menu-field">
+              <span>{lobbyLocale.lobbyKickSelectPlaceholder}</span>
+              <select
+                value={kickTargetId}
+                disabled={controlsDisabled}
+                onChange={(event) => setKickTargetId(event.target.value)}
+              >
+                {kickCandidates.map((player) => {
+                  const safeName = getLobbyPlayerName(player);
+                  return (
+                    <option key={player.playerId} value={player.playerId}>
+                      {safeName}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <label className="topbar-menu-checkbox">
+              <input
+                type="checkbox"
+                checked={kickAgree}
+                onChange={(event) => setKickAgree(event.target.checked)}
+              />
+              <span>{lobbyLocale.lobbyKickAgreeLabel}</span>
+            </label>
+            <div className="modal-actions">
+              <button
+                className="ghost"
+                onClick={() => {
+                  setKickModalOpen(false);
+                  setKickAgree(false);
+                }}
+              >
+                {lobbyLocale.modalCancel}
+              </button>
+              <button
+                className="primary"
+                disabled={!kickTargetId || !kickAgree || controlsDisabled}
+                onClick={() => {
+                  if (controlsDisabled) return;
+                  if (!kickTargetId || !kickAgree) return;
+                  onKickPlayer(kickTargetId, { skipConfirm: true });
+                  setKickModalOpen(false);
+                  setKickAgree(false);
+                }}
+              >
+                {lobbyLocale.lobbyKickButton}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
       <RulesModal open={rulesOpen} onClose={() => setRulesOpen(false)} />
     </div>
   );
 }
+

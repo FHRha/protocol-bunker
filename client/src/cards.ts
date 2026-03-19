@@ -1,35 +1,5 @@
-﻿import { ASSET_BASE } from "./config";
-
-const BACK_DECK_PATH = "decks/Рубашки";
-const BACKS_BY_CATEGORY: Record<string, string> = {
-  "Профессия": "Рубашка профессия.png",
-  "Здоровье": "Рубашка Здоровье.png",
-  "Хобби": "Рубашка Хобби.png",
-  "Багаж": "Рубашка Багаж.png",
-  "Факты": "Рубашка Факты.png",
-  "Факт №1": "Рубашка Факты.png",
-  "Факт №2": "Рубашка Факты.png",
-  "Биология": "Рубашка Биология.png",
-  "Особые условия": "Рубашка Особые условия.png",
-  "Бункер": "Рубашка Бункер.png",
-  "Катастрофа": "Рубашка Катастрофа.png",
-  "Угроза": "Рубашка Угроза.png",
-};
-
-const LEGACY_BACKS_BY_CATEGORY: Record<string, string> = {
-  "Профессия": "profession",
-  "Здоровье": "health",
-  "Хобби": "hobby",
-  "Багаж": "baggage",
-  "Факты": "facts",
-  "Факт №1": "facts",
-  "Факт №2": "facts",
-  "Биология": "biology",
-  "Особые условия": "special",
-  "Бункер": "bunker",
-  "Катастрофа": "disaster",
-  "Угроза": "threat",
-};
+import { BACK_DECK_ID_ALIASES, BACK_DECK_PATH, BACK_FILE_BY_DECK_ID } from "../../locales/cards/backs";
+import { ASSET_BASE } from "./config";
 
 const imageCache = new Set<string>();
 
@@ -43,15 +13,15 @@ export const getCardFaceUrl = (imgUrl?: string): string | undefined => {
   return `${ASSET_BASE}/${encodeURI(cleaned)}`;
 };
 
-export const getCardBackUrl = (category: string): string | undefined => {
-  const backFileName = BACKS_BY_CATEGORY[category];
-  if (backFileName) {
-    return getCardFaceUrl(`${BACK_DECK_PATH}/${backFileName}`);
-  }
+type CardLocale = "ru" | "en";
 
-  const legacyKey = LEGACY_BACKS_BY_CATEGORY[category];
-  if (!legacyKey) return undefined;
-  return `${ASSET_BASE}/backs/${legacyKey}.jpg`;
+export const getCardBackUrl = (category: string, cardLocale: CardLocale = "ru"): string | undefined => {
+  const rawCategory = String(category ?? "").trim();
+  const normalizedCategory = rawCategory.toLowerCase();
+  const deckId = BACK_DECK_ID_ALIASES[normalizedCategory] ?? normalizedCategory;
+  const backFileName = BACK_FILE_BY_DECK_ID[deckId];
+  if (!backFileName) return undefined;
+  return getCardFaceUrl(`${BACK_DECK_PATH}/${backFileName}?locale=${encodeURIComponent(cardLocale)}`);
 };
 
 export const preloadImages = (urls: Array<string | undefined>) => {
@@ -63,6 +33,6 @@ export const preloadImages = (urls: Array<string | undefined>) => {
   });
 };
 
-export const preloadCategoryBacks = (categories: string[]) => {
-  preloadImages(categories.map(getCardBackUrl));
+export const preloadCategoryBacks = (categories: string[], cardLocale: CardLocale = "ru") => {
+  preloadImages(categories.map((category) => getCardBackUrl(category, cardLocale)));
 };

@@ -99,6 +99,14 @@ const scenariosDistEntrySrc = path.join(rootDir, "scenarios", "dist", "index.js"
 const serverDistEntrySrc = path.join(rootDir, "server", "dist", "index.js");
 const assetsSrc = path.join(rootDir, "assets");
 const assetsDst = path.join(appDir, "assets");
+const localesSrc = path.join(rootDir, "locales");
+const localesDst = path.join(appDir, "locales");
+const bundledLocalesDst = path.join(
+  serverAppDir,
+  "node_modules",
+  "@bunker",
+  "locales"
+);
 const scenariosRuntimeSrc = path.join(rootDir, "scenarios", "classic");
 const scenariosRuntimeDst = path.join(
   serverAppDir,
@@ -107,16 +115,7 @@ const scenariosRuntimeDst = path.join(
   "scenarios",
   "classic"
 );
-const disastersTextSrc = path.join(rootDir, "server", "data", "world", "disasters.ru.json");
-const disastersTextDst = path.join(
-  serverAppDir,
-  "node_modules",
-  "@bunker",
-  "server",
-  "data",
-  "world",
-  "disasters.ru.json"
-);
+
 const nodeDir = path.join(appDir, "node");
 const nodeBinDst = path.join(nodeDir, "node");
 const startShPath = path.join(artifactsDir, "start.sh");
@@ -273,34 +272,6 @@ function copyDir(src, dst) {
   fs.cpSync(src, dst, { recursive: true, force: true });
 }
 
-function findBackDeckName(decksRoot) {
-  const dirs = fs.readdirSync(decksRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  const backNameRegex = /\u0420\u0443\u0431\u0430\u0448\u043a/i; // "Рубашк"
-  const byName = dirs.find((entry) => backNameRegex.test(entry.name));
-  if (byName) return byName.name;
-
-  for (const dir of dirs) {
-    const fullDir = path.join(decksRoot, dir.name);
-    const files = fs.readdirSync(fullDir, { withFileTypes: true }).filter((entry) => entry.isFile());
-    if (files.some((file) => backNameRegex.test(file.name))) {
-      return dir.name;
-    }
-  }
-  return null;
-}
-
-function moveBackDeckToRoot(dstDecksRoot, variantCopyDir) {
-  const backDeckName = findBackDeckName(variantCopyDir);
-  if (!backDeckName) {
-    return;
-  }
-  const sourceBackDir = path.join(variantCopyDir, backDeckName);
-  const targetBackDir = path.join(dstDecksRoot, backDeckName);
-  cleanPath(targetBackDir);
-  fs.mkdirSync(path.dirname(targetBackDir), { recursive: true });
-  fs.renameSync(sourceBackDir, targetBackDir);
-}
-
 function copyAssetsVariant(srcAssetsRoot, dstAssetsRoot, variant) {
   const srcDecksRoot = path.join(srcAssetsRoot, "decks");
   ensureExists(srcDecksRoot, "assets/decks source");
@@ -322,27 +293,19 @@ function copyAssetsVariant(srcAssetsRoot, dstAssetsRoot, variant) {
   }
 
   const variantDir = path.join(srcDecksRoot, variant);
-  const hasVariantFolders = ["1x", "2x"].some((name) => fs.existsSync(path.join(srcDecksRoot, name)));
   const dstDecksRoot = path.join(dstAssetsRoot, "decks");
   fs.mkdirSync(dstDecksRoot, { recursive: true });
 
   if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
     const variantCopyDir = path.join(dstDecksRoot, variant);
     copyDir(variantDir, variantCopyDir);
-    moveBackDeckToRoot(dstDecksRoot, variantCopyDir);
     writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), `${variant}\n`);
     return;
   }
 
-  if (hasVariantFolders) {
-    throw new Error(
-      `[pack:linux] assets/decks contains variant folders, but "${variant}" was not found: ${variantDir}`
-    );
-  }
-
-  // Legacy layout: decks/<Категория>.
-  copyDir(srcDecksRoot, dstDecksRoot);
-  writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), "legacy\n");
+  throw new Error(
+    `[pack:linux] assets/decks must use the new layout assets/decks/<variant>/<locale>/<Deck>. Missing variant directory: ${variantDir}`
+  );
 }
 
 function writeFile(filePath, content) {
@@ -1148,18 +1111,18 @@ async function main() {
     materializeDirectory(serverAppDir);
     flattenNodeModules(serverAppDir);
 
-    console.log("[pack:linux] Copying client dist and assets...");
+    console.log("[pack:linux] Copying client dist, assets and locales...");
     ensureExists(clientDistSrc, "client dist source");
     ensureExists(assetsSrc, "assets source");
+    ensureExists(localesSrc, "locales source");
     copyDir(clientDistSrc, clientDistDst);
     copyAssetsVariant(assetsSrc, assetsDst, assetVariant);
+    copyDir(localesSrc, localesDst);
+	copyDir(localesSrc, bundledLocalesDst);
 
     console.log("[pack:linux] Copying scenario runtime data...");
     ensureExists(scenariosRuntimeSrc, "scenarios runtime source");
     copyDir(scenariosRuntimeSrc, scenariosRuntimeDst);
-    ensureExists(disastersTextSrc, "disaster text source");
-    fs.mkdirSync(path.dirname(disastersTextDst), { recursive: true });
-    fs.copyFileSync(disastersTextSrc, disastersTextDst);
 
     console.log("[pack:linux] Copying Linux Node runtime...");
     await ensureLinuxNodeRuntime();
@@ -1184,6 +1147,17 @@ async function main() {
   ensureExists(path.join(serverArtifactsDir, "app", "VERSION"), "server/app VERSION");
   ensureExists(path.join(serverAppDir, "dist", "index.js"), "server dist entry");
   ensureExists(path.join(appDir, "client", "dist", "index.html"), "client dist index");
+  ensureExists(path.join(appDir, "locales", "ui", "app", "ru.json"), "locales/ui/app/ru.json");
+  ensureExists(path.join(appDir, "locales", "ui", "app", "en.json"), "locales/ui/app/en.json");
+  ensureExists(nodeExeDst, "node runtime");
+  ensureExists(
+  path.join(serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "ru.json"),
+  "@bunker/locales/logic/targeting/ru.json"
+  );
+  ensureExists(
+    path.join(serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "en.json"),
+    "@bunker/locales/logic/targeting/en.json"
+  );
 
   console.log("[pack:linux] Creating archives (public + server)...");
   createArchiveFromPortableDir(artifactsDir, publicTarGzPath, publicZipPath, "public");

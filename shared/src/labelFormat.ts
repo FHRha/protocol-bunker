@@ -1,4 +1,4 @@
-﻿const MAX_LABEL_LENGTH = 60;
+const MAX_LABEL_LENGTH = 60;
 
 function sanitizeBaseName(input: string): string {
   const trimmed = input.trim();
@@ -9,7 +9,7 @@ function sanitizeBaseName(input: string): string {
 
 function isAllCaps(word: string): boolean {
   const upper = word.toUpperCase();
-  return word === upper && /[A-ZА-ЯЁ]/.test(word);
+  return word === upper && /[\p{L}]/u.test(word);
 }
 
 function formatWord(word: string): string {
@@ -17,14 +17,14 @@ function formatWord(word: string): string {
   if (isAllCaps(word) && word.length <= 3) {
     return word;
   }
-  const lowered = word.toLocaleLowerCase("ru-RU");
-  return lowered.charAt(0).toLocaleUpperCase("ru-RU") + lowered.slice(1);
+  const lowered = word.toLowerCase();
+  return lowered.charAt(0).toUpperCase() + lowered.slice(1);
 }
 
 export function formatLabelShort(input: string): string {
   const baseName = sanitizeBaseName(input);
   const cleaned = baseName.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!cleaned) return "(без названия)";
+  if (!cleaned) return "(untitled)";
 
   const words = cleaned.split(" ").map(formatWord).join(" ").trim();
   if (words.length <= MAX_LABEL_LENGTH) return words;

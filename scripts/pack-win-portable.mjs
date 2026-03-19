@@ -60,6 +60,14 @@ const scenariosDistEntrySrc = path.join(rootDir, "scenarios", "dist", "index.js"
 const serverDistEntrySrc = path.join(rootDir, "server", "dist", "index.js");
 const assetsSrc = path.join(rootDir, "assets");
 const assetsDst = path.join(appDir, "assets");
+const localesSrc = path.join(rootDir, "locales");
+const localesDst = path.join(appDir, "locales");
+const bundledLocalesDst = path.join(
+  serverAppDir,
+  "node_modules",
+  "@bunker",
+  "locales"
+);
 const scenariosRuntimeSrc = path.join(rootDir, "scenarios", "classic");
 const scenariosRuntimeDst = path.join(
   serverAppDir,
@@ -68,16 +76,7 @@ const scenariosRuntimeDst = path.join(
   "scenarios",
   "classic"
 );
-const disastersTextSrc = path.join(rootDir, "server", "data", "world", "disasters.ru.json");
-const disastersTextDst = path.join(
-  serverAppDir,
-  "node_modules",
-  "@bunker",
-  "server",
-  "data",
-  "world",
-  "disasters.ru.json"
-);
+
 const nodeDir = path.join(appDir, "node");
 const nodeExeSrc = process.execPath;
 const nodeExeDst = path.join(nodeDir, "node.exe");
@@ -262,54 +261,67 @@ function ensureJsBuildOutputsOrThrow() {
   );
 }
 
-function cleanPath(targetPath) {
-  if (!fs.existsSync(targetPath)) return;
-  try {
-    fs.rmSync(targetPath, { recursive: true, force: true });
-  } catch (error) {
-    const commandLine = `rmdir /s /q ${quoteCmdArg(targetPath)}`;
-    const fallback = spawnSync("cmd.exe", ["/d", "/s", "/c", commandLine], {
+function runPowerShellBestEffort(script) {
+  return spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+    {
       cwd: rootDir,
       stdio: "ignore",
       windowsHide: true,
-    });
-    if (fallback.error || fs.existsSync(targetPath)) {
-      throw error;
+    }
+  );
+}
+
+function releasePathLocks(targetPath) {
+  const escapedTarget = targetPath.replace(/'/g, "''");
+  const escapedExe = nodeExeDst.replace(/'/g, "''");
+  const script = [
+    `$target = '${escapedTarget}'`,
+    `$portableNode = '${escapedExe}'`,
+    "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $portableNode } | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }",
+    "Get-Process -Name explorer -ErrorAction SilentlyContinue | Out-Null",
+    "if (Test-Path -LiteralPath $target) {",
+    "  attrib -R \"$target\" /S /D 2>$null | Out-Null",
+    "  Get-ChildItem -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Attributes = 'Normal' }",
+    "}",
+  ].join('; ');
+  runPowerShellBestEffort(script);
+}
+
+function cleanPath(targetPath) {
+  if (!fs.existsSync(targetPath)) return;
+  let lastError = undefined;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      fs.rmSync(targetPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 150 });
+      return;
+    } catch (error) {
+      lastError = error;
+      releasePathLocks(targetPath);
+      const commandLine = `rmdir /s /q ${quoteCmdArg(targetPath)}`;
+      const fallback = spawnSync("cmd.exe", ["/d", "/s", "/c", commandLine], {
+        cwd: rootDir,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      if (!fallback.error && !fs.existsSync(targetPath)) {
+        return;
+      }
+      const escapedTarget = targetPath.replace(/'/g, "''");
+      runPowerShellBestEffort(`if (Test-Path -LiteralPath '${escapedTarget}') { Remove-Item -LiteralPath '${escapedTarget}' -Recurse -Force -ErrorAction SilentlyContinue }`);
+      if (!fs.existsSync(targetPath)) {
+        return;
+      }
+      sleepMs(250 * attempt);
     }
   }
+  throw lastError;
 }
 
 function copyDir(src, dst) {
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.cpSync(src, dst, { recursive: true, force: true });
-}
-
-function findBackDeckName(decksRoot) {
-  const dirs = fs.readdirSync(decksRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  const backNameRegex = /\u0420\u0443\u0431\u0430\u0448\u043a/i; // "Рубашк"
-  const byName = dirs.find((entry) => backNameRegex.test(entry.name));
-  if (byName) return byName.name;
-
-  for (const dir of dirs) {
-    const fullDir = path.join(decksRoot, dir.name);
-    const files = fs.readdirSync(fullDir, { withFileTypes: true }).filter((entry) => entry.isFile());
-    if (files.some((file) => backNameRegex.test(file.name))) {
-      return dir.name;
-    }
-  }
-  return null;
-}
-
-function moveBackDeckToRoot(dstDecksRoot, variantCopyDir) {
-  const backDeckName = findBackDeckName(variantCopyDir);
-  if (!backDeckName) {
-    return;
-  }
-  const sourceBackDir = path.join(variantCopyDir, backDeckName);
-  const targetBackDir = path.join(dstDecksRoot, backDeckName);
-  cleanPath(targetBackDir);
-  fs.mkdirSync(path.dirname(targetBackDir), { recursive: true });
-  fs.renameSync(sourceBackDir, targetBackDir);
 }
 
 function copyAssetsVariant(srcAssetsRoot, dstAssetsRoot, variant) {
@@ -333,27 +345,19 @@ function copyAssetsVariant(srcAssetsRoot, dstAssetsRoot, variant) {
   }
 
   const variantDir = path.join(srcDecksRoot, variant);
-  const hasVariantFolders = ["1x", "2x"].some((name) => fs.existsSync(path.join(srcDecksRoot, name)));
   const dstDecksRoot = path.join(dstAssetsRoot, "decks");
   fs.mkdirSync(dstDecksRoot, { recursive: true });
 
   if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
     const variantCopyDir = path.join(dstDecksRoot, variant);
     copyDir(variantDir, variantCopyDir);
-    moveBackDeckToRoot(dstDecksRoot, variantCopyDir);
     writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), `${variant}\n`);
     return;
   }
 
-  if (hasVariantFolders) {
-    throw new Error(
-      `[pack:win] assets/decks contains variant folders, but "${variant}" was not found: ${variantDir}`
-    );
-  }
-
-  // Legacy layout: decks/<Категория>.
-  copyDir(srcDecksRoot, dstDecksRoot);
-  writeFile(path.join(dstAssetsRoot, "ASSET_VARIANT"), "legacy\n");
+  throw new Error(
+    `[pack:win] assets/decks must use the new layout assets/decks/<variant>/<locale>/<Deck>. Missing variant directory: ${variantDir}`
+  );
 }
 
 function writeFile(filePath, content) {
@@ -1123,23 +1127,23 @@ function main() {
     materializeDirectory(serverAppDir);
     flattenNodeModules(serverAppDir);
 
-    console.log("[pack:win] Copying client dist and assets...");
-    ensureExists(clientDistSrc, "client dist source");
-    ensureExists(assetsSrc, "assets source");
-    copyDir(clientDistSrc, clientDistDst);
-    copyAssetsVariant(assetsSrc, assetsDst, assetVariant);
-
-    console.log("[pack:win] Copying scenario runtime data...");
-    ensureExists(scenariosRuntimeSrc, "scenarios runtime source");
-    copyDir(scenariosRuntimeSrc, scenariosRuntimeDst);
-    ensureExists(disastersTextSrc, "disaster text source");
-    fs.mkdirSync(path.dirname(disastersTextDst), { recursive: true });
-    fs.copyFileSync(disastersTextSrc, disastersTextDst);
-
     console.log("[pack:win] Copying Node runtime...");
-    ensureExists(nodeExeSrc, "local node runtime");
-    fs.mkdirSync(nodeDir, { recursive: true });
-    fs.copyFileSync(nodeExeSrc, nodeExeDst);
+	ensureExists(nodeExeSrc, "node runtime source");
+	fs.mkdirSync(nodeDir, { recursive: true });
+	fs.copyFileSync(nodeExeSrc, nodeExeDst);
+
+	console.log("[pack:win] Copying client dist, assets and locales...");
+	ensureExists(clientDistSrc, "client dist source");
+	ensureExists(assetsSrc, "assets source");
+	ensureExists(localesSrc, "locales source");
+	copyDir(clientDistSrc, clientDistDst);
+	copyAssetsVariant(assetsSrc, assetsDst, assetVariant);
+	copyDir(localesSrc, localesDst);
+	copyDir(localesSrc, bundledLocalesDst);
+
+	console.log("[pack:win] Copying scenario runtime data...");
+	ensureExists(scenariosRuntimeSrc, "scenarios runtime source");
+	copyDir(scenariosRuntimeSrc, scenariosRuntimeDst);
   }
 
   console.log("[pack:win] Writing launch files...");
@@ -1158,7 +1162,18 @@ function main() {
   ensureExists(portableEnvPath, "portable.env");
   ensureExists(path.join(serverAppDir, "dist", "index.js"), "server dist entry");
   ensureExists(path.join(appDir, "client", "dist", "index.html"), "client dist index");
+  ensureExists(path.join(appDir, "locales", "ui", "app", "ru.json"), "locales/ui/app/ru.json");
+  ensureExists(path.join(appDir, "locales", "ui", "app", "en.json"), "locales/ui/app/en.json");
   ensureExists(appVersionFilePath, "app VERSION");
+  ensureExists(nodeExeDst, "node runtime");
+  ensureExists(
+  path.join(serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "ru.json"),
+  "@bunker/locales/logic/targeting/ru.json"
+  );
+  ensureExists(
+    path.join(serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "en.json"),
+    "@bunker/locales/logic/targeting/en.json"
+  );
 
   if (noArchive) {
     console.log("[pack:win] --no-archive set, skipping ZIP creation.");

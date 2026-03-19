@@ -1,4 +1,6 @@
-﻿interface ErrorScreenProps {
+import { useUiLocaleNamespace } from "../localization";
+
+interface ErrorScreenProps {
   message: string;
   canRetry: boolean;
   reconnecting?: boolean;
@@ -13,20 +15,22 @@ export default function ErrorScreen({
   onRetry,
   onExitToMenu,
 }: ErrorScreenProps) {
+  const text = useUiLocaleNamespace("reconnect", { fallbacks: ["common"] });
+
   return (
     <div className="errorScreen" role="alert">
       <div className="errorScreenCard">
-        <h3>Ошибка подключения</h3>
+        <h3>{text.t("errorScreenTitle")}</h3>
         <div>{message}</div>
-        {reconnecting ? <div className="muted">Ждём переподключения…</div> : null}
+        {reconnecting ? <div className="muted">{text.t("errorScreenReconnecting")}</div> : null}
         <div className="errorScreenActions">
           {canRetry ? (
             <button className="primary" onClick={onRetry}>
-              Повторить
+              {text.t("retryButton")}
             </button>
           ) : null}
           <button className="ghost" onClick={onExitToMenu}>
-            Выйти в меню
+            {text.t("errorScreenExitToMenu")}
           </button>
         </div>
       </div>

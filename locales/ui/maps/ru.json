@@ -1,0 +1,49 @@
+{
+  "timerKind": {
+    "reveal_discussion": "Обсуждение после вскрытия",
+    "pre_vote": "Обсуждение перед голосованием",
+    "post_vote": "Обсуждение после голосования"
+  },
+  "trigger": {
+    "active": "активно",
+    "onVote": "при голосовании",
+    "onOwnerEliminated": "при изгнании владельца",
+    "onRevealOrActive": "при вскрытии",
+    "secret_onEliminate": "секретное условие"
+  },
+  "votePhase": {
+    "voting": "Сбор голосов",
+    "voteSpecialWindow": "Особые условия",
+    "voteResolve": "Подсчёт голосов"
+  },
+  "voteReasonCode": {
+    "VOTE_BLOCKED": "Голосование заблокировано.",
+    "VOTE_FORCED_SELF": "Автоголос против себя (секретное условие).",
+    "VOTE_SPENT": "Голос уже потрачен.",
+    "VOTE_TARGET_DISALLOWED": "Этот кандидат недоступен в переголосовании.",
+    "VOTE_TARGET_UNAVAILABLE": "Кандидат недоступен.",
+    "VOTE_BANNED_AGAINST_TARGET": "Нельзя голосовать против этого игрока."
+  },
+  "toastKind": {
+    "roundStart": "Раунд",
+    "votingStart": "Голосование",
+    "elimination": "Изгнание",
+    "gameEnd": "Конец игры",
+    "info": "Инфо",
+    "playerDisconnected": "Отключение",
+    "playerReconnected": "Переподключение",
+    "playerLeftBunker": "Покинул бункер",
+    "_default": "Событие"
+  },
+  "phaseText": {
+    "reveal": "Вскрытие карты",
+    "reveal_discussion": "Обсуждение после вскрытия",
+    "voting": "Голосование",
+    "resolution": "Подведение итогов",
+    "ended": "Завершено"
+  },
+  "boolean": {
+    "true": "да",
+    "false": "нет"
+  }
+}

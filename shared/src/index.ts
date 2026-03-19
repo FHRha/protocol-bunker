@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 export * from "./targeting.js";
 export type RoomPhase = "lobby" | "game";
 export type ScenarioPhase = "reveal" | "reveal_discussion" | "voting" | "resolution" | "ended";
@@ -25,6 +25,7 @@ export type RevealTimeoutAction = "random_card" | "skip_player";
 export type SpecialUsageMode = "anytime" | "only_during_voting";
 export type FinalThreatReveal = "host" | "anyone";
 export type AutomationMode = "auto" | "semi" | "manual";
+export type CardLocale = "ru" | "en";
 export type SpecialTargetScope = "neighbors" | "any_alive" | "self" | "any_including_self";
 export type WorldCardKind = "bunker" | "disaster" | "threat";
 export type PostGameOutcome = "survived" | "failed";
@@ -161,6 +162,7 @@ export interface OverlayTopCardItem {
 
 export interface OverlayState {
   roomId: string;
+  locale?: CardLocale;
   playerCount: number;
   top: {
     bunker: {
@@ -222,6 +224,7 @@ export interface GameSettings {
   maxPlayers: number;
   finalThreatReveal: FinalThreatReveal;
   forcedDisasterId: string;
+  cardLocale: CardLocale;
 }
 
 export interface ScenarioMeta {
@@ -232,7 +235,7 @@ export interface ScenarioMeta {
 }
 
 export interface CardRef {
-  id: string; // Relative path under /assets (e.g. decks/Профессия/card1.jpg)
+  id: string; // Relative path under /assets (e.g. decks/1x/ru/Profession/profession.example-card.png)
   deck: string;
   instanceId?: string;
   labelShort?: string;
@@ -356,12 +359,23 @@ export interface VotingProgress {
   total: number;
 }
 
+export type LocalizedVars = Record<string, string | number>;
+
 export interface ThreatModifierView {
   delta: number;
   reasons: string[];
+  reasonCardIds?: string[];
   baseCount: number;
   finalCount: number;
 }
+
+export type VoteReasonCode =
+  | "VOTE_BLOCKED"
+  | "VOTE_FORCED_SELF"
+  | "VOTE_SPENT"
+  | "VOTE_TARGET_DISALLOWED"
+  | "VOTE_TARGET_UNAVAILABLE"
+  | "VOTE_BANNED_AGAINST_TARGET";
 
 export interface VotePublic {
   voterId: string;
@@ -370,6 +384,9 @@ export interface VotePublic {
   targetName?: string;
   status: "voted" | "not_voted" | "invalid";
   reason?: string;
+  reasonKey?: string;
+  reasonVars?: LocalizedVars;
+  reasonCode?: VoteReasonCode;
   weight?: number;
   submittedAt?: number;
 }
@@ -378,6 +395,8 @@ export interface GameEvent {
   id: string;
   kind: GameEventKind;
   message: string;
+  messageKey?: string;
+  messageVars?: LocalizedVars;
   createdAt: number;
 }
 
@@ -386,6 +405,8 @@ export interface GameView {
   round: number;
   categoryOrder: string[];
   lastStageText?: string;
+  lastStageTextKey?: string;
+  lastStageTextVars?: LocalizedVars;
   ruleset: GameRuleset;
   world?: WorldState30;
   worldEvent?: WorldEvent;
@@ -419,6 +440,8 @@ export interface GameView {
     lastEliminated?: string;
     winners?: string[];
     resolutionNote?: string;
+    resolutionNoteKey?: string;
+    resolutionNoteVars?: LocalizedVars;
     roundRules?: {
       noTalkUntilVoting?: boolean;
       forcedRevealCategory?: string;
@@ -430,6 +453,9 @@ export interface AssetCard {
   id: string;
   deck: string;
   labelShort: string;
+  deckId?: string;
+  cardId?: string;
+  locale?: string;
 }
 
 export interface AssetCatalog {
@@ -516,6 +542,8 @@ export type ScenarioAction =
 
 export interface ScenarioActionResult {
   error?: string;
+  errorKey?: string;
+  errorVars?: Record<string, string | number>;
   stateChanged?: boolean;
 }
 
@@ -704,6 +732,7 @@ export const OverlayPlayerViewSchema = z.object({
 
 export const OverlayStateSchema = z.object({
   roomId: z.string(),
+  locale: z.union([z.literal("ru"), z.literal("en")]).optional(),
   playerCount: z.number().int().nonnegative(),
   top: z.object({
     bunker: z.object({
@@ -760,6 +789,7 @@ export const GameSettingsSchema = z.object({
   maxPlayers: z.number().int().min(2),
   finalThreatReveal: z.union([z.literal("host"), z.literal("anyone")]),
   forcedDisasterId: z.string().min(1).max(256),
+  cardLocale: z.union([z.literal("ru"), z.literal("en")]),
 });
 
 export const CardRefSchema = z.object({
@@ -898,6 +928,8 @@ export const VotingProgressSchema = z.object({
   total: z.number().int().nonnegative(),
 });
 
+export const LocalizedVarsSchema = z.record(z.union([z.string(), z.number()]));
+
 export const ThreatModifierViewSchema = z.object({
   delta: z.number().int(),
   reasons: z.array(z.string()),
@@ -912,6 +944,18 @@ export const VotePublicSchema = z.object({
   targetName: z.string().optional(),
   status: z.union([z.literal("voted"), z.literal("not_voted"), z.literal("invalid")]),
   reason: z.string().optional(),
+  reasonKey: z.string().optional(),
+  reasonVars: LocalizedVarsSchema.optional(),
+  reasonCode: z
+    .union([
+      z.literal("VOTE_BLOCKED"),
+      z.literal("VOTE_FORCED_SELF"),
+      z.literal("VOTE_SPENT"),
+      z.literal("VOTE_TARGET_DISALLOWED"),
+      z.literal("VOTE_TARGET_UNAVAILABLE"),
+      z.literal("VOTE_BANNED_AGAINST_TARGET"),
+    ])
+    .optional(),
   weight: z.number().optional(),
   submittedAt: z.number().int().nonnegative().optional(),
 });
@@ -929,6 +973,8 @@ export const GameEventSchema = z.object({
     z.literal("playerLeftBunker"),
   ]),
   message: z.string(),
+  messageKey: z.string().optional(),
+  messageVars: LocalizedVarsSchema.optional(),
   createdAt: z.number().int().nonnegative(),
 });
 
@@ -943,6 +989,8 @@ export const GameViewSchema = z.object({
   round: z.number().int().nonnegative(),
   categoryOrder: z.array(z.string()),
   lastStageText: z.string().optional(),
+  lastStageTextKey: z.string().optional(),
+  lastStageTextVars: LocalizedVarsSchema.optional(),
   ruleset: GameRulesetSchema,
   world: WorldState30Schema.optional(),
   worldEvent: WorldEventSchema.optional(),
@@ -976,6 +1024,8 @@ export const GameViewSchema = z.object({
     lastEliminated: z.string().optional(),
     winners: z.array(z.string()).optional(),
     resolutionNote: z.string().optional(),
+    resolutionNoteKey: z.string().optional(),
+    resolutionNoteVars: LocalizedVarsSchema.optional(),
     roundRules: z
       .object({
         noTalkUntilVoting: z.boolean().optional(),
@@ -990,6 +1040,7 @@ export const ClientHelloSchema = z.object({
   roomCode: z.string().min(1).optional(),
   create: z.boolean().optional(),
   scenarioId: z.string().min(1).optional(),
+  locale: z.union([z.literal("ru"), z.literal("en")]).optional(),
   playerToken: z.string().min(1).optional(),
   tabId: z.string().min(1).optional(),
   sessionId: z.string().min(1).optional(),
@@ -1069,6 +1120,12 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("updateSettings"),
     payload: GameSettingsSchema,
+  }),
+  z.object({
+    type: z.literal("updateLocale"),
+    payload: z.object({
+      locale: z.union([z.literal("ru"), z.literal("en")]),
+    }),
   }),
   z.object({
     type: z.literal("updateRules"),
@@ -1176,3 +1233,4 @@ export { formatLabelShort } from "./labelFormat.js";
 export { getRulesetForPlayerCount, RULESET_PRESET_COUNTS, RULESET_TABLE } from "./ruleset.js";
 export { buildLinkSet, normalizeBase, LINK_PATHS } from "./urlBuilder.js";
 export type { BuildLinkSetInput, BuiltLinkSet, UrlPair } from "./urlBuilder.js";
+

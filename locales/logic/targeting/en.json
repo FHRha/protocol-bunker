@@ -1,0 +1,9 @@
+{
+  "noTarget": ["no target", "passive", "auto"],
+  "neighbors": ["neighbor", "left", "right"],
+  "selfOnly": ["only self", "self only", "only yourself"],
+  "includingSelf": ["including self", "self allowed"],
+  "notSelf": ["not self", "not-self"],
+  "anyPlayer": ["any player", "any alive", "alive player"],
+  "choose": ["choose"]
+}

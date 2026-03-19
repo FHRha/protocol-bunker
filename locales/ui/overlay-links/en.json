@@ -1,0 +1,13 @@
+{
+  "streamerModeLabel": "Streamer mode",
+  "streamerModeHint": "Hides room code and OBS links on screen.",
+  "obsLinksTitle": "Links",
+  "overlayViewLinkLabel": "Overlay (view)",
+  "overlayControlLinkLabel": "Overlay (control)",
+  "overlayControlStateLinkLabel": "Overlay state API",
+  "obsLinksLoading": "Loading links...",
+  "obsLinksUnavailable": "Failed to fetch OBS links.",
+  "spectatorLinkTitle": "Spectator table (read-only)",
+  "spectatorLinkHint": "Open separate spectator page: view-only, no controls.",
+  "externalLinksHint": "To get an external link, set Domain or Public Host."
+}

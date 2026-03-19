@@ -1,0 +1,9 @@
+{
+  "votingTitle": "Voting",
+  "votingSpecialAlert": "During voting you can apply special-condition cards.",
+  "votingModalTitle": "Voting",
+  "votingSummaryNone": "You have not voted yet.",
+  "votingWindowHint": "Special window: cards affecting voting can be used now.",
+  "votingResolveTitle": "Voting result",
+  "votingResolveEmpty": "Waiting for results..."
+}

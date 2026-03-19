@@ -10,23 +10,24 @@
     <div id="overlay-app" class="overlay-app" data-layout="l4">
       <header class="overlay-top">
         <div class="topCard">
-          <div class="topHeader">Бункер</div>
-          <div id="top-bunker" class="topBody">скрыто</div>
+          <div id="top-bunker-label" class="topHeader" data-locale="overlay.top.bunker">Бункер</div>
+          <div id="top-bunker" class="topBody" data-locale="overlay.hidden">скрыто</div>
         </div>
         <div class="topCard">
-          <div id="top-catastrophe-label" class="topHeader">Катастрофа</div>
-          <div id="top-catastrophe" class="topBody">скрыто</div>
+          <div id="top-catastrophe-label" class="topHeader" data-locale="overlay.top.catastrophe">Катастрофа</div>
+          <div id="top-catastrophe" class="topBody" data-locale="overlay.hidden">скрыто</div>
         </div>
         <div class="topCard">
-          <div class="topHeader">Угрозы</div>
-          <div id="top-threat" class="topBody">скрыто</div>
+          <div id="top-threat-label" class="topHeader" data-locale="overlay.top.threats">Угрозы</div>
+          <div id="top-threat" class="topBody" data-locale="overlay.hidden">скрыто</div>
         </div>
       </header>
 
-      <div id="overlay-status" class="overlay-status">Подключение к игре...</div>
+      <div id="overlay-status" class="overlay-status" data-locale="overlay.status.connectingGame">Подключение к игре...</div>
       <main id="overlay-grid" class="overlay-grid"></main>
     </div>
 
+    <script src="/overlay-assets/overlay-locale.js"></script>
     <script src="/overlay-assets/overlay.js"></script>
   </body>
 </html>

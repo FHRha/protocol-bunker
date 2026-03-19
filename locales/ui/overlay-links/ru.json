@@ -1,0 +1,13 @@
+{
+  "streamerModeLabel": "Стример-режим",
+  "streamerModeHint": "Скрывает код комнаты и ссылки OBS на экране.",
+  "obsLinksTitle": "Различные ссылки",
+  "overlayViewLinkLabel": "Оверлей (просмотр)",
+  "overlayControlLinkLabel": "Оверлей (управление)",
+  "overlayControlStateLinkLabel": "API состояния оверлея",
+  "obsLinksLoading": "Загружаем ссылки...",
+  "obsLinksUnavailable": "Не удалось получить ссылки для OBS.",
+  "spectatorLinkTitle": "Зрительский стол",
+  "spectatorLinkHint": "Откройте отдельную страницу зрителя: только просмотр, без управления игрой.",
+  "externalLinksHint": "Чтобы получить внешнюю ссылку, укажите Domain или Public Host."
+}

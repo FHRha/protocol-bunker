@@ -1,4 +1,4 @@
-﻿
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,42 +26,74 @@ import type {
   WorldFacedCard,
   WorldEvent,
   PostGameOutcome,
+  VoteReasonCode,
+  LocalizedVars,
 } from "@bunker/shared";
 import { computeNeighbors, computeTargetScope, getTargetCandidates } from "@bunker/shared";
 import { getRulesetForPlayerCount } from "@bunker/shared";
 import { rollWorldFromAssets } from "./world_deck.js";
 import { getThreatDeltaFromBunkerCards } from "./threat_modifier.js";
+import { buildDeckAccess, resolveAssetDeckId, resolveDeckIdByLabel } from "./deck_identity.js";
+import { tClassic, tClassicFmt } from "./classicLocale.js";
 
-const CORE_DECKS = ["Профессия", "Здоровье", "Хобби", "Багаж", "Биология"] as const;
-const FACTS_DECK = "Факты";
+const DECK_LABELS = {
+  profession: tClassic("deck.profession"),
+  health: tClassic("deck.health"),
+  hobby: tClassic("deck.hobby"),
+  baggage: tClassic("deck.baggage"),
+  fact: tClassic("deck.fact"),
+  biology: tClassic("deck.biology"),
+  special: tClassic("deck.special"),
+  bunker: tClassic("deck.bunker"),
+} as const;
+
+const DECK_IDS = {
+  profession: "profession",
+  health: "health",
+  hobby: "hobby",
+  baggage: "baggage",
+  fact: "fact",
+  biology: "biology",
+  special: "special",
+  bunker: "bunker",
+} as const;
+
+const CORE_DECKS = [
+  DECK_LABELS.profession,
+  DECK_LABELS.health,
+  DECK_LABELS.hobby,
+  DECK_LABELS.baggage,
+  DECK_LABELS.biology,
+] as const;
+const FACTS_DECK = DECK_LABELS.fact;
 const FACTS_SLOTS = ["facts1", "facts2"] as const;
 const FACTS_LABELS: Record<(typeof FACTS_SLOTS)[number], string> = {
-  facts1: "Факт №1",
-  facts2: "Факт №2",
+  facts1: tClassic("category.fact1"),
+  facts2: tClassic("category.fact2"),
 };
 const MAIN_DECKS = [...CORE_DECKS, FACTS_DECK] as const;
-const SPECIAL_CATEGORY = "Особые условия";
+const SPECIAL_CATEGORY = DECK_LABELS.special;
 const CATEGORY_ORDER = [
-  "Профессия",
-  "Здоровье",
-  "Хобби",
-  "Багаж",
+  DECK_LABELS.profession,
+  DECK_LABELS.health,
+  DECK_LABELS.hobby,
+  DECK_LABELS.baggage,
   FACTS_LABELS.facts1,
   FACTS_LABELS.facts2,
-  "Биология",
+  DECK_LABELS.biology,
   SPECIAL_CATEGORY,
 ];
 const RESOLUTION_DELAY_MS = 2000;
 
 const CATEGORY_KEY_TO_DECK: Record<string, string> = {
-  profession: "Профессия",
-  health: "Здоровье",
-  hobby: "Хобби",
-  baggage: "Багаж",
-  facts: "Факты",
-  facts1: "Факты",
-  facts2: "Факты",
-  biology: "Биология",
+  profession: DECK_IDS.profession,
+  health: DECK_IDS.health,
+  hobby: DECK_IDS.hobby,
+  baggage: DECK_IDS.baggage,
+  facts: DECK_IDS.fact,
+  facts1: DECK_IDS.fact,
+  facts2: DECK_IDS.fact,
+  biology: DECK_IDS.biology,
 };
 
 const CATEGORY_KEY_TO_SLOT: Record<string, (typeof FACTS_SLOTS)[number] | undefined> = {
@@ -70,13 +102,13 @@ const CATEGORY_KEY_TO_SLOT: Record<string, (typeof FACTS_SLOTS)[number] | undefi
 };
 
 const CATEGORY_LABEL_TO_DECK: Record<string, { deck: string; slotKey?: (typeof FACTS_SLOTS)[number] }> = {
-  "Профессия": { deck: "Профессия" },
-  "Здоровье": { deck: "Здоровье" },
-  "Хобби": { deck: "Хобби" },
-  "Багаж": { deck: "Багаж" },
-  "Биология": { deck: "Биология" },
-  "Факт №1": { deck: FACTS_DECK, slotKey: "facts1" },
-  "Факт №2": { deck: FACTS_DECK, slotKey: "facts2" },
+  [DECK_LABELS.profession]: { deck: DECK_IDS.profession },
+  [DECK_LABELS.health]: { deck: DECK_IDS.health },
+  [DECK_LABELS.hobby]: { deck: DECK_IDS.hobby },
+  [DECK_LABELS.baggage]: { deck: DECK_IDS.baggage },
+  [DECK_LABELS.biology]: { deck: DECK_IDS.biology },
+  [FACTS_LABELS.facts1]: { deck: DECK_IDS.fact, slotKey: "facts1" },
+  [FACTS_LABELS.facts2]: { deck: DECK_IDS.fact, slotKey: "facts2" },
 };
 
 interface SpecialConditionDefinition {
@@ -106,6 +138,7 @@ interface CardState {
   instanceId: string;
   id: string;
   deck: string;
+  deckId?: string;
   slotKey?: string;
   labelShort: string;
   revealed: boolean;
@@ -149,6 +182,9 @@ interface VoteRecord {
   submittedAt: number;
   isValid: boolean;
   reasonInvalid?: string;
+  reasonKeyInvalid?: string;
+  reasonVarsInvalid?: LocalizedVars;
+  reasonCodeInvalid?: VoteReasonCode;
 }
 
 interface RoundRules {
@@ -188,7 +224,7 @@ const normalizeSpecialLookup = (value?: string): string =>
   String(value ?? "")
     .trim()
     .toLocaleLowerCase("ru-RU")
-    .replace(/ё/g, "е")
+    .replace(/\u0451/g, "\u0435")
     .replace(/[\\/]/g, " ")
     .replace(/\.(jpg|jpeg|png|webp)$/gi, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
@@ -228,16 +264,16 @@ const resolveChoiceKindFromTargeting = (definition: SpecialConditionDefinition):
   }
   if (
     targeting.includes("neighbor") ||
-    targeting.includes("сосед") ||
+    targeting.includes(tClassic("classic.auto.085")) ||
     targeting.includes("left") ||
     targeting.includes("right") ||
-    targeting.includes("слева") ||
-    targeting.includes("справа")
+    targeting.includes(tClassic("classic.auto.084")) ||
+    targeting.includes(tClassic("classic.auto.088"))
   ) {
     return "neighbor";
   }
-  if (targeting.includes("bunker") || targeting.includes("бункер")) return "bunker";
-  if (targeting.includes("category") || targeting.includes("категор")) return "category";
+  if (targeting.includes("bunker") || targeting.includes(tClassic("classic.auto.001"))) return "bunker";
+  if (targeting.includes("category") || targeting.includes(tClassic("classic.auto.033"))) return "category";
   const scope = computeTargetScope(definition.uiTargeting, definition.text);
   if (!scope) return "none";
   return "player";
@@ -267,13 +303,26 @@ function drawCardFromDeck(deckName: string, deckPools: Map<string, AssetCard[]>,
   return card;
 }
 
+function cardDeckId(card: Pick<CardState, "deck" | "deckId" | "id">): string | undefined {
+  const byExplicit = resolveDeckIdByLabel(card.deckId);
+  if (byExplicit) return byExplicit;
+  const byDeck = resolveDeckIdByLabel(card.deck);
+  if (byDeck) return byDeck;
+  return resolveAssetDeckId({ deck: card.deck, deckId: card.deckId, id: card.id });
+}
+
+function cardMatchesDeck(card: Pick<CardState, "deck" | "deckId" | "id">, deckNameOrId: string): boolean {
+  const target = resolveDeckIdByLabel(deckNameOrId) ?? deckNameOrId;
+  return cardDeckId(card) === target;
+}
+
 function buildMissingCard(deckName: string, instanceId: string, slotKey?: string): CardState {
   return {
     instanceId,
     id: "",
     deck: deckName,
     slotKey,
-    labelShort: "Нет карты",
+    labelShort: tClassic("card.noCard"),
     revealed: false,
     missing: true,
   };
@@ -282,8 +331,8 @@ function buildMissingCard(deckName: string, instanceId: string, slotKey?: string
 function buildMissingSpecialDefinition(): SpecialConditionDefinition {
   return {
     id: "missing-special",
-    title: "Нет доступного условия",
-    text: "Колода особых условий пуста.",
+    title: tClassic("special.none.title"),
+    text: tClassic("special.none.text"),
     trigger: "active",
     effect: { type: "none" },
     implemented: false,
@@ -294,15 +343,17 @@ export const scenario: ScenarioModule = {
   meta: {
     id: "classic",
     name: "Classic Bunker",
-    description: "Базовый сценарий: раунды, голосование и особые условия.",
+    description: tClassic("meta.description"),
   },
   createSession(ctx: ScenarioContext): ScenarioSession {
+    const deckAccess = buildDeckAccess(ctx.assets);
     const deckPools = new Map<string, AssetCard[]>();
     for (const deckName of MAIN_DECKS) {
-      deckPools.set(deckName, [...(ctx.assets.decks[deckName] ?? [])]);
+      const deckId = resolveDeckIdByLabel(deckName) ?? deckName;
+      deckPools.set(deckName, [...deckAccess.getDeckCards(deckId, deckName)]);
     }
     const specialImageIndex = new Map<string, string>();
-    for (const asset of ctx.assets.decks[SPECIAL_CATEGORY] ?? []) {
+    for (const asset of deckAccess.getDeckCards("special", SPECIAL_CATEGORY)) {
       const imgUrl = asset.id ? `/assets/${asset.id}` : undefined;
       if (!imgUrl) continue;
       const titleKey = normalizeSpecialLookup(asset.labelShort);
@@ -338,12 +389,16 @@ export const scenario: ScenarioModule = {
     let votePhase: VotePhase | null = null;
     let lastEliminated: string | undefined;
     let resolutionNote: string | undefined;
+    let resolutionNoteKey: string | undefined;
+    let resolutionNoteVars: LocalizedVars | undefined;
     let winners: string[] | undefined;
     let resolutionTimer: ReturnType<typeof setTimeout> | undefined;
     let voteWindowTimer: ReturnType<typeof setTimeout> | undefined;
     let discussionTimer: ReturnType<typeof setTimeout> | undefined;
     let activeTimer: { kind: GameTimerKind; endsAt: number } | null = null;
     let lastStageText: string | undefined;
+    let lastStageTextKey: string | undefined;
+    let lastStageTextVars: LocalizedVars | undefined;
     let roundRules: RoundRules = {};
     let firstHealthRevealPlayerId: string | undefined;
     let currentTurnPlayerId: string | null = null;
@@ -355,14 +410,7 @@ export const scenario: ScenarioModule = {
       ctx.players.length,
       ctx.settings.forcedDisasterId
     );
-    const bunkerDeckAssets = (() => {
-      for (const [deckName, cards] of Object.entries(ctx.assets.decks)) {
-        if (deckName.toLocaleLowerCase("ru-RU").includes("бункер")) {
-          return cards;
-        }
-      }
-      return [] as AssetCard[];
-    })();
+    const bunkerDeckAssets = deckAccess.getDeckCards(DECK_IDS.bunker, DECK_LABELS.bunker);
     const initialBunkerIds = new Set(world.bunker.map((card) => card.id).filter((id): id is string => Boolean(id)));
     const bunkerReplacementPool: WorldFacedCard[] =
       bunkerDeckAssets.length > 0
@@ -390,19 +438,40 @@ export const scenario: ScenarioModule = {
       return `special-${playerId}-${specialCounter}`;
     };
 
-    const emitEvent = (kind: GameEventKind, message: string) => {
+    const emitEvent = (
+      kind: GameEventKind,
+      messageOrKey: string,
+      vars?: LocalizedVars,
+      explicitMessage?: string
+    ) => {
+      const message = explicitMessage ?? (vars ? tClassicFmt(messageOrKey, vars) : tClassic(messageOrKey));
       ctx.onEvent?.({
         id: `${ctx.roomCode}-${Date.now()}-${eventCounter++}`,
         kind,
         message,
+        messageKey: messageOrKey,
+        messageVars: vars,
         createdAt: Date.now(),
       });
       lastStageText = message;
+      lastStageTextKey = messageOrKey;
+      lastStageTextVars = vars;
     };
 
-    const setStageText = (message: string) => {
-      lastStageText = message;
+    const setStageText = (messageOrKey: string, vars?: LocalizedVars, explicitMessage?: string) => {
+      lastStageText = explicitMessage ?? (vars ? tClassicFmt(messageOrKey, vars) : tClassic(messageOrKey));
+      lastStageTextKey = messageOrKey;
+      lastStageTextVars = vars;
     };
+
+    const scenarioError = (
+      key: string,
+      vars?: Record<string, string | number>
+    ): ScenarioActionResult => ({
+      error: vars ? tClassicFmt(key, vars) : tClassic(key),
+      errorKey: key,
+      errorVars: vars,
+    });
 
     const ensureAllBunkerCardsRevealed = () => {
       const maxConfiguredRound = Math.max(1, ruleset.votesPerRound.length);
@@ -427,8 +496,8 @@ export const scenario: ScenarioModule = {
         isActive: true,
         enteredAt: Date.now(),
       };
-      const threatsNote = finalThreats.length > 0 ? ` Угроза: ${finalThreats.join(", ")}.` : "";
-      emitEvent("gameEnd", `Игра завершена. В бункер попали: ${winners.join(", ")}.${threatsNote}`);
+      const threatsNote = finalThreats.length > 0 ? tClassicFmt("classic.auto.116", { v1: finalThreats.join(", ") }) : "";
+      emitEvent("gameEnd", "classic.auto.117", { v1: winners.join(", "), v2: threatsNote });
       clearVoteWindowTimer();
       clearDiscussionTimer();
     };
@@ -452,7 +521,8 @@ export const scenario: ScenarioModule = {
         hand.push({
           instanceId,
           id: baseCard.id,
-          deck: baseCard.deck,
+          deck: deckName,
+          deckId: resolveAssetDeckId(baseCard) ?? resolveDeckIdByLabel(deckName),
           labelShort: baseCard.labelShort,
           revealed: false,
         });
@@ -467,7 +537,8 @@ export const scenario: ScenarioModule = {
         hand.push({
           instanceId,
           id: baseCard.id,
-          deck: baseCard.deck,
+          deck: FACTS_DECK,
+          deckId: resolveAssetDeckId(baseCard) ?? resolveDeckIdByLabel(FACTS_DECK),
           slotKey,
           labelShort: baseCard.labelShort,
           revealed: false,
@@ -603,11 +674,11 @@ export const scenario: ScenarioModule = {
       if (targetId) {
         if (targetId === neighbors.leftId) return { neighborId: neighbors.leftId, side: "left" as const };
         if (targetId === neighbors.rightId) return { neighborId: neighbors.rightId, side: "right" as const };
-        return { error: "Недопустимый сосед." as const };
+        return scenarioError("classic.auto.043");
       }
       if (side === "left" && neighbors.leftId) return { neighborId: neighbors.leftId, side: "left" as const };
       if (side === "right" && neighbors.rightId) return { neighborId: neighbors.rightId, side: "right" as const };
-      return { error: "Сосед не найден." as const };
+      return scenarioError("classic.auto.086");
     };
 
     const resolveCategoryDeck = (categoryKey: string) => CATEGORY_KEY_TO_DECK[categoryKey] ?? categoryKey;
@@ -618,7 +689,7 @@ export const scenario: ScenarioModule = {
       const deckName = resolveCategoryDeck(categoryKey);
       const slotKey = resolveCategorySlot(categoryKey);
       return player.hand.filter((card) => {
-        if (card.deck !== deckName) return false;
+        if (!cardMatchesDeck(card, deckName)) return false;
         if (slotKey && card.slotKey !== slotKey) return false;
         if (onlyRevealed && !card.revealed) return false;
         return true;
@@ -656,7 +727,7 @@ export const scenario: ScenarioModule = {
     };
 
     const getRevealedAge = (player: PlayerState): number | null => {
-      const bioCard = player.hand.find((card) => card.deck === "Биология" && card.revealed);
+      const bioCard = player.hand.find((card) => cardMatchesDeck(card, DECK_IDS.biology) && card.revealed);
       return parseAgeFromCard(bioCard);
     };
 
@@ -705,7 +776,31 @@ export const scenario: ScenarioModule = {
       return true;
     };
 
-    const markVoteWasted = (state: VotingState, voterId: string, reason = "Голос заблокирован.") => {
+    const getVoteReasonKey = (reasonCode?: VoteReasonCode): string | undefined => {
+      switch (reasonCode) {
+        case "VOTE_BLOCKED":
+          return "classic.voteReason.blocked";
+        case "VOTE_FORCED_SELF":
+          return "classic.voteReason.forcedSelf";
+        case "VOTE_SPENT":
+          return "classic.voteReason.spent";
+        case "VOTE_TARGET_DISALLOWED":
+          return "classic.voteReason.targetDisallowed";
+        case "VOTE_TARGET_UNAVAILABLE":
+          return "classic.voteReason.targetUnavailable";
+        case "VOTE_BANNED_AGAINST_TARGET":
+          return "classic.voteReason.bannedAgainstTarget";
+        default:
+          return undefined;
+      }
+    };
+
+    const markVoteWasted = (
+      state: VotingState,
+      voterId: string,
+      reason?: string,
+      reasonCode: VoteReasonCode = "VOTE_BLOCKED"
+    ) => {
       state.autoWastedVoters.add(voterId);
       state.disabledVoters.add(voterId);
       state.votes.set(voterId, {
@@ -713,13 +808,17 @@ export const scenario: ScenarioModule = {
         submittedAt: Date.now(),
         isValid: false,
         reasonInvalid: reason,
+        reasonKeyInvalid: getVoteReasonKey(reasonCode),
+        reasonVarsInvalid: undefined,
+        reasonCodeInvalid: reasonCode,
       });
     };
 
     const markVoteForcedSelf = (
       state: VotingState,
       voterId: string,
-      reason = "Автоголос в себя (тайное условие)."
+      reason?: string,
+      reasonCode: VoteReasonCode = "VOTE_FORCED_SELF"
     ) => {
       state.forcedSelfVoters.add(voterId);
       state.disabledVoters.delete(voterId);
@@ -728,6 +827,9 @@ export const scenario: ScenarioModule = {
         submittedAt: Date.now(),
         isValid: true,
         reasonInvalid: reason,
+        reasonKeyInvalid: getVoteReasonKey(reasonCode),
+        reasonVarsInvalid: undefined,
+        reasonCodeInvalid: reasonCode,
       });
     };
 
@@ -778,8 +880,11 @@ export const scenario: ScenarioModule = {
       votingState = null;
       phase = "resolution";
       votePhase = "voteResolve";
-      resolutionNote = `Голосование пропущено: ${playerName} уже выбыл из игры.`;
-      emitEvent("info", resolutionNote);
+      const voteSkipNote = tClassicFmt("classic.auto.118", { v1: playerName });
+      resolutionNote = voteSkipNote;
+      resolutionNoteKey = "classic.auto.118";
+      resolutionNoteVars = { v1: playerName };
+      emitEvent("info", "classic.auto.118", { v1: playerName }, voteSkipNote);
       if (!checkEndCondition()) {
         scheduleResolutionAdvance();
       }
@@ -819,7 +924,7 @@ export const scenario: ScenarioModule = {
       phase = "voting";
       votePhase = "voting";
       clearVoteWindowTimer();
-      emitEvent("votingStart", `Началось голосование (раунд ${round}).`);
+      emitEvent("votingStart", "classic.auto.119", { v1: round });
     };
 
     const maskWorldCard = (card: WorldFacedCard, label: string): WorldFacedCard => {
@@ -838,16 +943,16 @@ export const scenario: ScenarioModule = {
     const buildWorldView = (): WorldState30 => ({
       disaster: world.disaster,
       bunker: world.bunker.map((card, index) =>
-        card.isRevealed ? card : maskWorldCard(card, `Бункер #${index + 1}`)
+        card.isRevealed ? card : maskWorldCard(card, `${DECK_LABELS.bunker} #${index + 1}`)
       ),
       threats: world.threats.map((card, index) =>
-        card.isRevealed ? card : maskWorldCard(card, `Угроза #${index + 1}`)
+        card.isRevealed ? card : maskWorldCard(card, tClassicFmt("classic.auto.120", { v1: index + 1 }))
       ),
       counts: world.counts,
     });
 
     const getThreatModifierFromBunkerCards = () => {
-      const { delta, reasons } = getThreatDeltaFromBunkerCards(world.bunker);
+      const { delta, reasons, reasonCardIds } = getThreatDeltaFromBunkerCards(world.bunker);
 
       const baseCount = world.counts.threats;
       const finalCount = Math.max(0, Math.min(world.threats.length, baseCount + delta));
@@ -855,6 +960,7 @@ export const scenario: ScenarioModule = {
       return {
         delta,
         reasons,
+        reasonCardIds,
         baseCount,
         finalCount,
       };
@@ -882,19 +988,19 @@ export const scenario: ScenarioModule = {
     const resolveBunkerIndex = (
       payload: Record<string, unknown>,
       { allowRandom = false }: { allowRandom?: boolean } = {}
-    ): { index: number } | { error: string } => {
+    ): { index: number } | ScenarioActionResult => {
       const rawIndex = payload.bunkerIndex;
       if (rawIndex === undefined || rawIndex === null || rawIndex === "") {
-        if (!allowRandom) return { error: "Нужно выбрать карту бункера." };
+        if (!allowRandom) return scenarioError("classic.auto.064");
         const randomIndex = getRandomRevealedBunkerIndex();
-        if (randomIndex === null) return { error: "Нет раскрытых карт бункера." };
+        if (randomIndex === null) return scenarioError("classic.auto.059");
         return { index: randomIndex };
       }
 
       const index = Number(rawIndex);
-      if (!Number.isInteger(index)) return { error: "Некорректная карта бункера." };
-      if (index < 0 || index >= world.bunker.length) return { error: "Некорректная карта бункера." };
-      if (!world.bunker[index]?.isRevealed) return { error: "Можно выбрать только раскрытую карту бункера." };
+      if (!Number.isInteger(index)) return scenarioError("classic.auto.048");
+      if (index < 0 || index >= world.bunker.length) return scenarioError("classic.auto.048");
+      if (!world.bunker[index]?.isRevealed) return scenarioError("classic.auto.034");
       return { index };
     };
 
@@ -932,7 +1038,7 @@ export const scenario: ScenarioModule = {
         checkEndCondition(true);
         return;
       }
-      emitEvent("roundStart", `Раунд ${round}: началось раскрытие.`);
+      emitEvent("roundStart", "classic.auto.121", { v1: round });
     };
 
     const startNextReveal = () => {
@@ -959,6 +1065,8 @@ export const scenario: ScenarioModule = {
           startVoting();
           lastEliminated = undefined;
           resolutionNote = undefined;
+          resolutionNoteKey = undefined;
+          resolutionNoteVars = undefined;
           ctx.onStateChange?.();
           return;
         }
@@ -966,6 +1074,8 @@ export const scenario: ScenarioModule = {
         votingState = null;
         lastEliminated = undefined;
         resolutionNote = undefined;
+        resolutionNoteKey = undefined;
+        resolutionNoteVars = undefined;
         ctx.onStateChange?.();
       }, RESOLUTION_DELAY_MS);
     };
@@ -1015,14 +1125,14 @@ export const scenario: ScenarioModule = {
 
     const revealWorldThreat = (actorId: string, index: number): ScenarioActionResult => {
       if (phase !== "ended") {
-        return { error: "Угрозы раскрываются в конце игры." };
+        return scenarioError("classic.auto.104");
       }
       const threatModifier = getThreatModifierFromBunkerCards();
       if (index < 0 || index >= threatModifier.finalCount) {
-        return { error: "Некорректная карта угроз." };
+        return scenarioError("classic.auto.049");
       }
       if (settings.finalThreatReveal === "host" && actorId !== ctx.hostId) {
-        return { error: "Только хост может открывать угрозы." };
+        return scenarioError("classic.auto.095");
       }
       const target = world.threats[index];
       if (target.isRevealed) return { stateChanged: false };
@@ -1033,13 +1143,13 @@ export const scenario: ScenarioModule = {
 
     const setBunkerOutcome = (actorId: string, outcome: PostGameOutcome): ScenarioActionResult => {
       if (phase !== "ended" || !postGame?.isActive) {
-        return { error: "Игра ещё не завершена." };
+        return scenarioError("classic.auto.018");
       }
       if (actorId !== ctx.hostId) {
-        return { error: "Только хост может выбрать исход бункера." };
+        return scenarioError("classic.auto.093");
       }
       if (postGame.outcome) {
-        return { error: "Исход уже выбран." };
+        return scenarioError("classic.auto.024");
       }
       postGame.outcome = outcome;
       postGame.decidedBy = actorId;
@@ -1047,18 +1157,18 @@ export const scenario: ScenarioModule = {
       emitEvent(
         "info",
         outcome === "survived"
-          ? "Финал: бункер выжил."
-          : "Финал: бункер не выжил."
+          ? tClassic("classic.auto.105")
+          : tClassic("classic.auto.106")
       );
       return { stateChanged: true };
     };
 
     const devSkipRound = (actorId: string): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только хост может пропустить раунд." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.097");
       if (phase === "voting" || phase === "resolution") {
-        return { error: "Нельзя пропустить раунд во время голосования." };
+        return scenarioError("classic.auto.055");
       }
-      if (phase === "ended") return { error: "Игра уже завершена." };
+      if (phase === "ended") return scenarioError("classic.auto.019");
 
       for (const player of alivePlayers()) {
         player.revealedThisRound = true;
@@ -1079,7 +1189,16 @@ export const scenario: ScenarioModule = {
     const buildEffectiveVotes = (state: VotingState, source: Map<string, VoteRecord>) => {
       const result = new Map<
         string,
-        { targetId?: string; status: "voted" | "not_voted" | "invalid"; reason?: string; weight: number; submittedAt?: number }
+        {
+          targetId?: string;
+          status: "voted" | "not_voted" | "invalid";
+          reason?: string;
+          reasonKey?: string;
+          reasonVars?: LocalizedVars;
+          reasonCode?: VoteReasonCode;
+          weight: number;
+          submittedAt?: number;
+        }
       >();
 
       for (const player of players.values()) {
@@ -1096,6 +1215,9 @@ export const scenario: ScenarioModule = {
 
         let status: "voted" | "not_voted" | "invalid" = "voted";
         let reason = record.reasonInvalid;
+        let reasonKey = record.reasonKeyInvalid;
+        let reasonVars = record.reasonVarsInvalid;
+        let reasonCode = record.reasonCodeInvalid;
         let targetId = record.targetId;
         let weight = state.voteWeights.get(player.playerId) ?? 1;
 
@@ -1107,21 +1229,21 @@ export const scenario: ScenarioModule = {
         }
         if (state.disabledVoters.has(player.playerId)) {
           status = "invalid";
-          reason = reason ?? "Голос заблокирован.";
+          reasonCode = reasonCode ?? "VOTE_BLOCKED";
         }
         if (targetId && state.revoteDisallowTargets.has(targetId)) {
           status = "invalid";
-          reason = reason ?? "Нельзя голосовать за этого кандидата.";
+          reasonCode = reasonCode ?? "VOTE_TARGET_DISALLOWED";
         }
         if (targetId && !state.candidates.has(targetId)) {
           status = "invalid";
-          reason = reason ?? "Кандидат недоступен.";
+          reasonCode = reasonCode ?? "VOTE_TARGET_UNAVAILABLE";
         }
         if (targetId) {
           const targetPlayer = players.get(targetId);
           if (targetPlayer && targetPlayer.bannedAgainst.has(player.playerId)) {
             status = "invalid";
-            reason = reason ?? "Голос против этого игрока запрещён.";
+            reasonCode = reasonCode ?? "VOTE_BANNED_AGAINST_TARGET";
           }
         }
 
@@ -1138,6 +1260,9 @@ export const scenario: ScenarioModule = {
           targetId,
           status,
           reason,
+          reasonKey: reasonKey ?? getVoteReasonKey(reasonCode),
+          reasonVars,
+          reasonCode,
           weight,
           submittedAt: record.submittedAt,
         });
@@ -1183,10 +1308,10 @@ export const scenario: ScenarioModule = {
       votingState.votes.clear();
       votingState.baseVotes = null;
       for (const voterId of votingState.autoWastedVoters) {
-        markVoteWasted(votingState, voterId, "Голос потрачен.");
+        markVoteWasted(votingState, voterId, undefined, "VOTE_SPENT");
       }
       for (const voterId of votingState.forcedSelfVoters) {
-        markVoteForcedSelf(votingState, voterId);
+        markVoteForcedSelf(votingState, voterId, undefined);
       }
     };
 
@@ -1199,14 +1324,14 @@ export const scenario: ScenarioModule = {
       resetVotesForRevote();
       votePhase = "voting";
       clearVoteWindowTimer();
-      emitEvent("info", "Ничья. Переголосование между топ-кандидатами.");
+      emitEvent("info", "classic.auto.061");
     };
 
     const finalizeVotingResolution = (): ScenarioActionResult => {
-      if (!votingState) return { error: "Голосование не начато." };
+      if (!votingState) return scenarioError("classic.auto.015");
       clearVoteWindowTimer();
       const source = getVoteSource();
-      if (!source) return { error: "Нет данных голосования." };
+      if (!source) return scenarioError("classic.auto.056");
 
       const { topCandidates } = computeTotals(votingState, source);
       if (topCandidates.length > 1 && !votingState.tieBreakUsed) {
@@ -1220,8 +1345,8 @@ export const scenario: ScenarioModule = {
       votePhase = "voteResolve";
       votingState.baseVotes = source;
       if (lastEliminated) {
-        const name = players.get(lastEliminated)?.name ?? "игрок";
-        emitEvent("elimination", `Итоги голосования: исключён ${name}.`);
+        const name = players.get(lastEliminated)?.name ?? tClassic("classic.auto.020");
+        emitEvent("elimination", "classic.auto.122", { v1: name });
       }
 
       if (!checkEndCondition()) {
@@ -1235,7 +1360,7 @@ export const scenario: ScenarioModule = {
       if (!votingState) return;
       votingState.baseVotes = new Map(votingState.votes);
       votePhase = "voteSpecialWindow";
-      emitEvent("info", "Сбор голосов завершён. Окно спецусловий.");
+      emitEvent("info", "classic.auto.077");
       clearVoteWindowTimer();
       if (settings.enablePostVoteDiscussionTimer && isAutoAutomation()) {
         scheduleTimer("post_vote", settings.postVoteDiscussionSeconds, () => {
@@ -1256,19 +1381,19 @@ export const scenario: ScenarioModule = {
         if (choiceKind !== "none") {
           if (choiceKind === "bunker" && getRevealedBunkerIndices().length === 0) {
             condition.used = true;
-            emitEvent("info", `Эффект "${def.title}" не сработал: нет раскрытых карт бункера.`);
+            emitEvent("info", "classic.auto.123", { v1: def.title });
             continue;
           }
           condition.pendingActivation = true;
           if (!condition.revealedPublic) {
             condition.revealedPublic = true;
           }
-          emitEvent("info", `${player.name} может применить "${def.title}" после изгнания.`);
+          emitEvent("info", "classic.auto.124", { v1: player.name, v2: def.title });
           continue;
         }
         const result = applySpecialEffect(player, condition, {});
         if (result.error) {
-          emitEvent("info", `Авто-эффект "${def.title}" не сработал: ${result.error}`);
+          emitEvent("info", "classic.auto.125", { v1: def.title, v2: result.error });
           continue;
         }
         if (!condition.revealedPublic) {
@@ -1306,12 +1431,11 @@ export const scenario: ScenarioModule = {
             condition.revealedPublic = true;
             condition.used = true;
             player.forcedWastedVoteNext = true;
-            emitEvent(
-              "info",
-              becamePublic
-                ? `Тайная карта раскрылась у ${player.name}: "${def.title}". Следующее голосование — автоголос в себя.`
-                : `Сработало условие "${def.title}" у ${player.name}. Следующее голосование — автоголос в себя.`
-            );
+            if (becamePublic) {
+              emitEvent("info", "classic.auto.126", { v1: player.name, v2: def.title });
+            } else {
+              emitEvent("info", "classic.auto.127", { v1: def.title, v2: player.name });
+            }
           }
         }
       }
@@ -1327,14 +1451,16 @@ export const scenario: ScenarioModule = {
       consumeRoundElimination();
       totalExiles += 1;
       lastEliminated = targetId;
-      resolutionNote = `${target.name} исключён.`;
+      resolutionNote = tClassicFmt("classic.auto.128", { v1: target.name });
+      resolutionNoteKey = "classic.auto.128";
+      resolutionNoteVars = { v1: target.name };
 
       handleOnOwnerEliminated(target);
     };
 
     const markLeftBunker = (targetId: string): ScenarioActionResult => {
       const target = players.get(targetId);
-      if (!target || target.status === "left_bunker") return { error: "Игрок не найден." };
+      if (!target || target.status === "left_bunker") return scenarioError("classic.auto.021");
       const wasAlive = target.status === "alive";
       target.status = "left_bunker";
       target.revealedThisRound = false;
@@ -1358,14 +1484,14 @@ export const scenario: ScenarioModule = {
     };
 
     const devKickPlayer = (actorId: string, targetId: string): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только хост может выгнать игрока." };
-      if (phase === "ended") return { error: "Игра уже завершена." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.094");
+      if (phase === "ended") return scenarioError("classic.auto.019");
       const target = players.get(targetId);
-      if (!target) return { error: "Игрок не найден." };
-      if (target.status !== "alive") return { error: "Игрок уже выбыл." };
+      if (!target) return scenarioError("classic.auto.021");
+      if (target.status !== "alive") return scenarioError("classic.auto.022");
 
       applyElimination(targetId);
-      emitEvent("elimination", `DEV: ${target.name} принудительно исключён.`);
+      emitEvent("elimination", "classic.auto.129", { v1: target.name });
       removeFromVoting(targetId);
 
       if (currentTurnPlayerId === targetId) {
@@ -1388,20 +1514,21 @@ export const scenario: ScenarioModule = {
       deckName: string,
       replacementMode: "random" | "specific",
       replacementCardId?: string
-    ): { card?: AssetCard; error?: string } => {
-      const deck = ctx.assets.decks[deckName] ?? [];
+    ): { card: AssetCard } | ScenarioActionResult => {
+      const deckId = resolveDeckIdByLabel(deckName) ?? deckName;
+      const deck = deckAccess.getDeckCards(deckId, deckName);
       if (deck.length === 0) {
-        return { error: `Колода "${deckName}" недоступна.` };
+        return scenarioError("classic.auto.130", { v1: deckName });
       }
       if (replacementMode === "specific") {
         const requested = String(replacementCardId ?? "").trim();
-        if (!requested) return { error: "Не выбрана конкретная карта для замены." };
+        if (!requested) return scenarioError("classic.auto.035");
         const selected = deck.find((card) => card.id === requested);
-        if (!selected) return { error: "Выбранная карта не найдена в колоде." };
+        if (!selected) return scenarioError("classic.auto.011");
         return { card: selected };
       }
       const selected = deck[Math.floor(rng() * deck.length)] ?? null;
-      if (!selected) return { error: "Не удалось выбрать карту из колоды." };
+      if (!selected) return scenarioError("classic.auto.038");
       return { card: selected };
     };
 
@@ -1415,39 +1542,39 @@ export const scenario: ScenarioModule = {
         replacementCardId?: string;
       }
     ): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять карты игроков." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.089");
       const target = players.get(payload.targetPlayerId);
-      if (!target) return { error: "Игрок не найден." };
+      if (!target) return scenarioError("classic.auto.021");
       const targetArea = payload.targetArea === "special" ? "special" : "hand";
 
       if (targetArea === "special") {
         const special = target.specialConditions.find(
           (entry) => entry.instanceId === payload.cardInstanceId
         );
-        if (!special) return { error: "Особое условие игрока не найдено." };
+        if (!special) return scenarioError("classic.auto.071");
         const definition =
           payload.replacementMode === "specific"
             ? findSpecialDefinitionForAdmin(String(payload.replacementCardId ?? ""))
             : IMPLEMENTED_SPECIALS[Math.floor(rng() * IMPLEMENTED_SPECIALS.length)] ?? null;
-        if (!definition) return { error: "Не удалось выбрать замену особого условия." };
-        if (!definition.implemented) return { error: "Выбранное особое условие ещё не реализовано." };
+        if (!definition) return scenarioError("classic.auto.037");
+        if (!definition.implemented) return scenarioError("classic.auto.012");
         special.definition = definition;
         special.used = false;
         special.pendingActivation =
           Boolean(special.revealedPublic) && definition.trigger === "onOwnerEliminated";
         special.imgUrl = resolveSpecialImgUrl(definition, specialImageIndex);
-        emitEvent("info", `Ведущий заменил особое условие игрока ${target.name}.`);
+        emitEvent("info", "classic.auto.131", { v1: target.name });
         return { stateChanged: true };
       }
 
       const card = target.hand.find((entry) => entry.instanceId === payload.cardInstanceId);
-      if (!card) return { error: "Карта игрока не найдена." };
+      if (!card) return scenarioError("classic.auto.030");
       const picked = pickDeckCard(card.deck, payload.replacementMode, payload.replacementCardId);
-      if (!picked.card) return { error: picked.error ?? "Не удалось выбрать замену карты." };
+      if (!("card" in picked)) return picked;
       card.id = picked.card.id;
       card.labelShort = picked.card.labelShort;
       card.missing = false;
-      emitEvent("info", `Ведущий заменил карту игрока ${target.name} (${card.deck}).`);
+      emitEvent("info", "classic.auto.132", { v1: target.name, v2: card.deck });
       return { stateChanged: true };
     };
 
@@ -1480,14 +1607,14 @@ export const scenario: ScenarioModule = {
       actorId: string,
       payload: { kind: "bunker" | "threat"; index: number; revealed: boolean }
     ): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять карты мира." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.090");
       const index = Number(payload.index);
-      if (!Number.isInteger(index) || index < 0) return { error: "Некорректный индекс карты мира." };
+      if (!Number.isInteger(index) || index < 0) return scenarioError("classic.auto.051");
       const list = payload.kind === "bunker" ? world.bunker : world.threats;
       const target = list[index];
-      if (!target) return { error: "Карта мира не найдена." };
+      if (!target) return scenarioError("classic.auto.031");
       target.isRevealed = Boolean(payload.revealed);
-      emitEvent("info", `Ведущий ${target.isRevealed ? "раскрыл" : "скрыл"} карту мира (${payload.kind}).`);
+      emitEvent("info", "classic.auto.133", { v1: target.isRevealed ? tClassic("classic.auto.075") : tClassic("classic.auto.082"), v2: payload.kind });
       return { stateChanged: true };
     };
 
@@ -1500,11 +1627,11 @@ export const scenario: ScenarioModule = {
         replacementCardId?: string;
       }
     ): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять карты мира." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.090");
       const deckName = detectWorldDeckName(payload.kind);
-      if (!deckName) return { error: "Не удалось определить колоду для карт мира." };
+      if (!deckName) return scenarioError("classic.auto.040");
       const picked = pickDeckCard(deckName, payload.replacementMode, payload.replacementCardId);
-      if (!picked.card) return { error: picked.error ?? "Не удалось выбрать карту мира." };
+      if (!("card" in picked)) return picked;
 
       if (payload.kind === "disaster") {
         world.disaster.id = picked.card.id;
@@ -1513,16 +1640,16 @@ export const scenario: ScenarioModule = {
         world.disaster.imageId = picked.card.id;
       } else {
         const index = Number(payload.index);
-        if (!Number.isInteger(index) || index < 0) return { error: "Некорректный индекс карты мира." };
+        if (!Number.isInteger(index) || index < 0) return scenarioError("classic.auto.051");
         const list = payload.kind === "bunker" ? world.bunker : world.threats;
         const target = list[index];
-        if (!target) return { error: "Карта мира не найдена." };
+        if (!target) return scenarioError("classic.auto.031");
         target.id = picked.card.id;
         target.title = picked.card.labelShort;
         target.description = picked.card.labelShort;
         target.imageId = picked.card.id;
       }
-      emitEvent("info", `Ведущий заменил карту мира (${payload.kind}).`);
+      emitEvent("info", "classic.auto.134", { v1: payload.kind });
       return { stateChanged: true };
     };
 
@@ -1530,15 +1657,15 @@ export const scenario: ScenarioModule = {
       actorId: string,
       payload: { kind: "bunker" | "threat"; count: number }
     ): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только ведущий может менять количество карт мира." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.091");
       const count = Number(payload.count);
-      if (!Number.isInteger(count) || count < 0) return { error: "Некорректное количество карт." };
+      if (!Number.isInteger(count) || count < 0) return scenarioError("classic.auto.050");
       if (payload.kind === "bunker") {
         world.counts.bunker = Math.max(0, Math.min(world.bunker.length, count));
       } else {
         world.counts.threats = Math.max(0, Math.min(world.threats.length, count));
       }
-      emitEvent("info", `Ведущий обновил количество карт мира (${payload.kind}: ${count}).`);
+      emitEvent("info", "classic.auto.135", { v1: payload.kind, v2: count });
       return { stateChanged: true };
     };
 
@@ -1573,9 +1700,9 @@ export const scenario: ScenarioModule = {
         payload?: Record<string, unknown>;
       }
     ): ScenarioActionResult => {
-      if (actorId !== ctx.hostId) return { error: "Только ведущий может применять спецусловия вручную." };
+      if (actorId !== ctx.hostId) return scenarioError("classic.auto.092");
       const sourcePlayer = players.get(payload.actorPlayerId);
-      if (!sourcePlayer) return { error: "Игрок-источник не найден." };
+      if (!sourcePlayer) return scenarioError("classic.auto.023");
       const effectivePayload = (payload.payload ?? {}) as Record<string, unknown>;
       const specialInstanceId = String(payload.specialInstanceId ?? "").trim();
       if (specialInstanceId) {
@@ -1584,16 +1711,16 @@ export const scenario: ScenarioModule = {
         if (result.error) return result;
         emitEvent(
           "info",
-          `Ведущий применил спецусловие игрока ${sourcePlayer.name}${special ? `: ${special.definition.title}` : ""}.`
+          tClassicFmt("classic.auto.136", { v1: sourcePlayer.name, v2: special ? `: ${special.definition.title}` : "" })
         );
         return result.stateChanged ? { stateChanged: true } : result;
       }
 
       const specialId = String(payload.specialId ?? "").trim();
-      if (!specialId) return { error: "Нужно выбрать спецусловие." };
+      if (!specialId) return scenarioError("classic.auto.068");
       const definition = findSpecialDefinitionForAdmin(specialId);
-      if (!definition) return { error: "Спецусловие не найдено в каталоге." };
-      if (!definition.implemented) return { error: "Выбранное спецусловие ещё не реализовано." };
+      if (!definition) return scenarioError("classic.auto.087");
+      if (!definition.implemented) return scenarioError("classic.auto.013");
 
       const tempSpecial: SpecialConditionState = {
         instanceId: `admin-special-${sourcePlayer.playerId}-${Date.now()}`,
@@ -1608,8 +1735,8 @@ export const scenario: ScenarioModule = {
       emitEvent(
         "info",
         sourcePlayer.playerId === ctx.hostId
-          ? `Ведущий применил спецусловие из каталога: "${definition.title}".`
-          : `Ведущий применил спецусловие из каталога "${definition.title}" от имени ${sourcePlayer.name}.`
+          ? tClassicFmt("classic.auto.137", { v1: definition.title })
+          : tClassicFmt("classic.auto.138", { v1: definition.title, v2: sourcePlayer.name })
       );
       return { stateChanged: true };
     };
@@ -1617,24 +1744,24 @@ export const scenario: ScenarioModule = {
     const revealCard = (player: PlayerState, cardId: string): ScenarioActionResult => {
       if (phase === "ended") {
         if (player.status === "left_bunker") {
-          return { error: "Вы покинули игру." };
+          return scenarioError("classic.auto.008");
         }
         const cardEnded = getCardByInstanceId(player, cardId);
-        if (!cardEnded) return { error: "Карта не найдена." };
-        if (cardEnded.revealed) return { error: "Эта карта уже раскрыта." };
+        if (!cardEnded) return scenarioError("classic.auto.032");
+        if (cardEnded.revealed) return scenarioError("classic.auto.111");
         cardEnded.revealed = true;
         return { stateChanged: true };
       }
 
-      if (phase !== "reveal") return { error: "Сейчас нельзя раскрывать карты." };
+      if (phase !== "reveal") return scenarioError("classic.auto.079");
       if (currentTurnPlayerId && player.playerId !== currentTurnPlayerId) {
-        return { error: "Сейчас ход другого игрока." };
+        return scenarioError("classic.auto.081");
       }
-      if (player.revealedThisRound) return { error: "Вы уже раскрыли карту в этом раунде." };
+      if (player.revealedThisRound) return scenarioError("classic.auto.010");
 
       const card = getCardByInstanceId(player, cardId);
-      if (!card) return { error: "Карта не найдена." };
-      if (card.revealed) return { error: "Эта карта уже раскрыта." };
+      if (!card) return scenarioError("classic.auto.032");
+      if (card.revealed) return scenarioError("classic.auto.111");
 
       if (roundRules.forcedRevealCategory) {
         const forcedCategory = roundRules.forcedRevealCategory;
@@ -1642,16 +1769,16 @@ export const scenario: ScenarioModule = {
         const hasForcedHidden = deckInfo
           ? player.hand.some(
               (entry) =>
-                entry.deck === deckInfo.deck &&
+                cardMatchesDeck(entry, deckInfo.deck) &&
                 (!deckInfo.slotKey || entry.slotKey === deckInfo.slotKey) &&
                 !entry.revealed
             )
-          : player.hand.some((entry) => entry.deck === forcedCategory && !entry.revealed);
+          : player.hand.some((entry) => cardMatchesDeck(entry, forcedCategory) && !entry.revealed);
         const matchesForced = deckInfo
-          ? card.deck === deckInfo.deck && (!deckInfo.slotKey || card.slotKey === deckInfo.slotKey)
-          : card.deck === forcedCategory;
+          ? cardMatchesDeck(card, deckInfo.deck) && (!deckInfo.slotKey || card.slotKey === deckInfo.slotKey)
+          : cardMatchesDeck(card, forcedCategory);
         if (hasForcedHidden && !matchesForced) {
-          return { error: `В этом раунде нужно раскрыть карту категории "${forcedCategory}".` };
+          return scenarioError("classic.auto.139", { v1: forcedCategory });
         }
       }
 
@@ -1659,21 +1786,21 @@ export const scenario: ScenarioModule = {
       player.revealedThisRound = true;
       lastRevealerId = player.playerId;
 
-      if (card.deck === "Здоровье" && !firstHealthRevealPlayerId) {
+      if (cardMatchesDeck(card, DECK_IDS.health) && !firstHealthRevealPlayerId) {
         firstHealthRevealPlayerId = player.playerId;
       }
-      emitEvent("info", `${player.name} раскрывает карту.`);
+      emitEvent("info", "classic.auto.140", { v1: player.name });
       enterRevealDiscussion();
       return { stateChanged: true };
     };
 
     const continueRound = (player: PlayerState): ScenarioActionResult => {
-      if (phase !== "reveal_discussion") return { error: "Сейчас нельзя продолжить кон." };
+      if (phase !== "reveal_discussion") return scenarioError("classic.auto.078");
       if (continuePermission === "host_only" && player.playerId !== ctx.hostId) {
-        return { error: "Только хост может продолжить ход." };
+        return scenarioError("classic.auto.096");
       }
       if (continuePermission === "revealer_only" && player.playerId !== lastRevealerId) {
-        return { error: "Продолжить может только игрок, который раскрыл карту." };
+        return scenarioError("classic.auto.074");
       }
       advanceAfterDiscussion();
       return { stateChanged: true };
@@ -1684,27 +1811,21 @@ export const scenario: ScenarioModule = {
       specialInstanceId: string,
       payload: Record<string, unknown>
     ): ScenarioActionResult => {
+      if (player.status !== "alive") return scenarioError("classic.auto.006");
       const special = player.specialConditions.find((item) => item.instanceId === specialInstanceId);
-      if (!special) return { error: "Особое условие не найдено." };
-      if (!special.definition.implemented) return { error: "Эта карта ещё не реализована." };
-      if (special.used) return { error: "Эта карта уже использована." };
+      if (!special) return scenarioError("classic.auto.072");
+      if (!special.definition.implemented) return scenarioError("classic.auto.108");
+      if (special.used) return scenarioError("classic.auto.110");
 
       const trigger = special.definition.trigger;
       if (trigger === "secret_onEliminate") {
-        return { error: "Эта карта срабатывает автоматически." };
+        return scenarioError("classic.auto.109");
       }
       if (trigger === "onOwnerEliminated") {
-        if (player.status !== "eliminated") {
-          return { error: "Эта карта доступна только после вашего изгнания." };
-        }
-        if (!special.pendingActivation) {
-          return { error: "Эту карту сейчас нельзя применить." };
-        }
-      } else {
-        if (player.status !== "alive") return { error: "Вы исключены из игры." };
-        if (settings.specialUsage === "only_during_voting" && phase !== "voting") {
-          return { error: "Особые условия можно использовать только во время голосования." };
-        }
+        return scenarioError("classic.auto.114");
+      }
+      if (settings.specialUsage === "only_during_voting" && phase !== "voting") {
+        return scenarioError("classic.auto.073");
       }
 
       const choiceKind = resolveChoiceKind(special.definition);
@@ -1712,116 +1833,115 @@ export const scenario: ScenarioModule = {
       const effectivePayload = { ...payload } as Record<string, unknown>;
 
       if (choiceKind !== "none" && Object.keys(payload).length === 0) {
-        return { error: "Нужен выбор для применения карты." };
+        return scenarioError("classic.auto.062");
       }
 
       if (targetScope) {
         if (targetScope === "neighbors") {
           const neighborChoice = resolveNeighborChoice(player.playerId, payload);
-          if ("error" in neighborChoice) return { error: neighborChoice.error };
+          if (!("neighborId" in neighborChoice)) return neighborChoice;
           effectivePayload.targetPlayerId = neighborChoice.neighborId;
           effectivePayload.side = neighborChoice.side;
         } else if (targetScope === "self") {
           effectivePayload.targetPlayerId = player.playerId;
         } else {
           const candidates = getTargetCandidatesFor(targetScope, player.playerId);
-          if (candidates.length === 0) return { error: "Нет доступных целей." };
+          if (candidates.length === 0) return scenarioError("classic.auto.058");
           const targetId = String(payload.targetPlayerId ?? "");
-          if (!targetId) return { error: "Нужно выбрать цель." };
-          if (!candidates.includes(targetId)) return { error: "Недопустимая цель." };
+          if (!targetId) return scenarioError("classic.auto.069");
+          if (!candidates.includes(targetId)) return scenarioError("classic.auto.041");
         }
       }
 
       if (choiceKind === "player") {
         const targetId = String(effectivePayload.targetPlayerId ?? "");
         if (targetId && !allowsSelfTarget(special.definition) && targetId === player.playerId) {
-          return { error: "Нельзя выбрать себя." };
+          return scenarioError("classic.auto.052");
         }
       }
 
       const requiresError = validateRequires(player, special, effectivePayload);
-      if (requiresError) return { error: requiresError };
+      if (requiresError) return requiresError;
 
       const result = applySpecialEffect(player, special, effectivePayload);
       if (result.error) return result;
 
-      if (trigger === "onOwnerEliminated") {
-        special.pendingActivation = false;
-        emitEvent("info", `${player.name} применяет особое условие после изгнания: ${special.definition.title}.`);
-      }
-
       let changed = Boolean(result.stateChanged);
       if (!special.revealedPublic) {
         special.revealedPublic = true;
-        emitEvent("info", `${player.name} применяет особое условие: ${special.definition.title}.`);
+        emitEvent("info", "classic.auto.141", { v1: player.name, v2: special.definition.title });
         changed = true;
       }
 
       return changed ? { stateChanged: true } : result;
     };
 
-    const validateRequires = (player: PlayerState, special: SpecialConditionState, payload: Record<string, unknown>) => {
+    const validateRequires = (
+      player: PlayerState,
+      special: SpecialConditionState,
+      payload: Record<string, unknown>
+    ): ScenarioActionResult | null => {
       const requires = special.definition.requires ?? [];
       for (const requirement of requires) {
         if (requirement === "phase=voting" && phase !== "voting") {
-          return "Эту карту можно использовать только в фазе голосования.";
+          return scenarioError("classic.auto.112");
         }
-        if (requirement === "phase=reveal" && phase !== "reveal") {
-          return "Эту карту можно использовать только в фазе раскрытия.";
+        if (requirement === "phase=reveal" && phase !== "reveal" && phase !== "voting") {
+          return scenarioError("classic.auto.113");
         }
         if (requirement === "votingStarted" && (!votingState || votingState.votes.size === 0)) {
-          return "Голосование ещё не началось.";
+          return scenarioError("classic.auto.014");
         }
         if (requirement === "targetHasBaggage") {
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          const hasBaggage = target ? getAnyCardsByCategory(target, "Багаж").length > 0 : false;
-          if (!target || !hasBaggage) return "У выбранного игрока нет багажа.";
+          const hasBaggage = target ? getAnyCardsByCategory(target, "baggage").length > 0 : false;
+          if (!target || !hasBaggage) return scenarioError("classic.auto.098");
         }
         if (requirement === "targetHasRevealedHealth") {
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          const hasRevealed = target ? getRevealedCardsByCategory(target, "Здоровье").length > 0 : false;
-          if (!target || !hasRevealed) return "У выбранного игрока нет раскрытого здоровья.";
+          const hasRevealed = target ? getRevealedCardsByCategory(target, "health").length > 0 : false;
+          if (!target || !hasRevealed) return scenarioError("classic.auto.099");
         }
         if (requirement === "targetHasRevealedProfession") {
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          const hasRevealed = target ? getRevealedCardsByCategory(target, "Профессия").length > 0 : false;
-          if (!target || !hasRevealed) return "У выбранного игрока нет раскрытой профессии.";
+          const hasRevealed = target ? getRevealedCardsByCategory(target, "profession").length > 0 : false;
+          if (!target || !hasRevealed) return scenarioError("classic.auto.100");
         }
         if (requirement === "targetHasRevealedSameCategory") {
           const categoryKey = String(special.definition.effect.params?.category ?? "");
           const deckName = CATEGORY_KEY_TO_DECK[categoryKey];
-          if (!deckName) return "Неизвестная категория.";
+          if (!deckName) return scenarioError("classic.auto.045");
           const neighborChoice = resolveNeighborChoice(player.playerId, payload);
-          if ("error" in neighborChoice) return neighborChoice.error;
-          const neighbor = neighborChoice.neighborId ? players.get(neighborChoice.neighborId) : undefined;
-          if (!neighbor) return "Сосед не найден.";
+          if (!("neighborId" in neighborChoice)) return neighborChoice;
+          const neighbor = players.get(neighborChoice.neighborId);
+          if (!neighbor) return scenarioError("classic.auto.086");
           const hasRevealed = getRevealedCardsByCategory(neighbor, deckName).length > 0;
-          if (!hasRevealed) return "У соседа нет раскрытой карты этой категории.";
+          if (!hasRevealed) return scenarioError("classic.auto.101");
         }
         if (requirement === "needsNeighborIndexing") {
-          if (playerOrder.length <= 1) return "Недостаточно игроков для соседей.";
+          if (playerOrder.length <= 1) return scenarioError("classic.auto.044");
         }
         if (requirement === "ageFieldAvailable") {
           const ages = alivePlayers().map((p) => getRevealedAge(p)).filter((age) => age !== null);
-          if (ages.length === 0) return "Возраст ещё не раскрыт ни у одного игрока.";
+          if (ages.length === 0) return scenarioError("classic.auto.004");
         }
         if (requirement === "someRevealedAges") {
           const ages = alivePlayers().map((p) => getRevealedAge(p)).filter((age) => age !== null);
-          if (ages.length === 0) return "Возраст ещё не раскрыт ни у одного игрока.";
+          if (ages.length === 0) return scenarioError("classic.auto.004");
         }
         if (requirement === "trackFirstRevealHealth") {
-          if (!firstHealthRevealPlayerId) return "Ещё нет первого раскрытия здоровья.";
+          if (!firstHealthRevealPlayerId) return scenarioError("classic.auto.017");
         }
       }
       return null;
     };
 
-    const addSpecialToPlayer = (target: PlayerState): string | null => {
+    const addSpecialToPlayer = (target: PlayerState): ScenarioActionResult | null => {
       const def = drawSpecialFromPool();
-      if (!def) return "В колоде особых условий больше нет карт.";
+      if (!def) return scenarioError("classic.auto.002");
       target.specialConditions.push({
         instanceId: makeSpecialInstanceId(target.playerId),
         definition: def,
@@ -1837,11 +1957,11 @@ export const scenario: ScenarioModule = {
       payload: Record<string, unknown>
     ): ScenarioActionResult => {
       const def = special.definition;
-      if (!def.implemented) return { error: "Эта карта ещё не реализована." };
-      if (special.used) return { error: "Эта карта уже использована." };
+      if (!def.implemented) return scenarioError("classic.auto.108");
+      if (special.used) return scenarioError("classic.auto.110");
 
       const requiresError = validateRequires(player, special, payload);
-      if (requiresError) return { error: requiresError };
+      if (requiresError) return requiresError;
 
       const canTargetSelf = allowsSelfTarget(def);
       const effectType = def.effect.type;
@@ -1852,57 +1972,61 @@ export const scenario: ScenarioModule = {
         "forceRevote",
         "doubleVotesAgainst_and_disableSelfVote",
       ]);
-      if (votingWindowEffects.has(effectType) && votePhase !== "voteSpecialWindow") {
-        return { error: "Эту карту можно использовать только в окне спецусловий голосования." };
+      // During voting we allow applying any implemented special at any voting sub-phase.
+      if (votingWindowEffects.has(effectType) && phase !== "voting") {
+        return scenarioError("classic.auto.080");
+      }
+      if (votingWindowEffects.has(effectType) && votingState?.disabledVoters.has(player.playerId)) {
+        return scenarioError("classic.auto.003");
       }
 
       switch (effectType) {
         case "banVoteAgainst": {
-          if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+          if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          if (!target || target.status !== "alive") return { error: "Цель не в игре." };
-          if (targetId === player.playerId && !canTargetSelf) return { error: "Нельзя выбрать себя." };
+          if (!target || target.status !== "alive") return scenarioError("classic.auto.107");
+          if (targetId === player.playerId && !canTargetSelf) return scenarioError("classic.auto.052");
           player.bannedAgainst.add(targetId);
           special.used = true;
-          emitEvent("info", `${player.name} использует карту "${def.title}".`);
+          emitEvent("info", "classic.auto.142", { v1: player.name, v2: def.title });
           return { stateChanged: true };
         }
         case "voteWeight": {
-          if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+          if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
           const weight = Number(def.effect.params?.weight ?? 2);
           votingState.voteWeights.set(player.playerId, weight);
           special.used = true;
-          emitEvent("info", `${player.name} усиливает свой голос.`);
+          emitEvent("info", "classic.auto.143", { v1: player.name });
           return { stateChanged: true };
         }
         case "disableVote": {
-          if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+          if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          if (!target || target.status !== "alive") return { error: "Цель не в игре." };
-          if (targetId === player.playerId && !canTargetSelf) return { error: "Нельзя выбрать себя." };
-          markVoteWasted(votingState, targetId, "Голос заблокирован.");
+          if (!target || target.status !== "alive") return scenarioError("classic.auto.107");
+          if (targetId === player.playerId && !canTargetSelf) return scenarioError("classic.auto.052");
+          markVoteWasted(votingState, targetId, undefined, "VOTE_BLOCKED");
           special.used = true;
-          emitEvent("info", `${player.name} блокирует голос игрока ${target.name}.`);
+          emitEvent("info", "classic.auto.144", { v1: player.name, v2: target.name });
           return { stateChanged: true };
         }
         case "doubleVotesAgainst_and_disableSelfVote": {
-          if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+          if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          if (!target || target.status !== "alive") return { error: "Цель не в игре." };
-          if (targetId === player.playerId && !canTargetSelf) return { error: "Нельзя выбрать себя." };
+          if (!target || target.status !== "alive") return scenarioError("classic.auto.107");
+          if (targetId === player.playerId && !canTargetSelf) return scenarioError("classic.auto.052");
           votingState.doubleAgainstTarget = targetId;
-          markVoteWasted(votingState, player.playerId, "Ваш голос потрачен.");
+          markVoteWasted(votingState, player.playerId, undefined, "VOTE_SPENT");
           special.used = true;
-          emitEvent("info", `${player.name} усиливает голоса против ${target.name}.`);
+          emitEvent("info", "classic.auto.145", { v1: player.name, v2: target.name });
           return { stateChanged: true };
         }
         case "forceRevote": {
-          if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+          if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
           const source = getVoteSource();
-          if (!source) return { error: "Нет данных голосования." };
+          if (!source) return scenarioError("classic.auto.056");
           if (def.effect.params?.disallowPreviousCandidate) {
             const disallowByVoter = new Map<string, string>();
             for (const [voterId, record] of source.entries()) {
@@ -1919,24 +2043,26 @@ export const scenario: ScenarioModule = {
           votePhase = "voting";
           clearVoteWindowTimer();
           special.used = true;
-          emitEvent("info", `${player.name} запускает переголосование.`);
+          emitEvent("info", "classic.auto.146", { v1: player.name });
           return { stateChanged: true };
         }
         case "swapRevealedWithNeighbor": {
           const neighborChoice = resolveNeighborChoice(player.playerId, payload);
-          if ("error" in neighborChoice) return { error: neighborChoice.error };
-          const categoryKey = String(def.effect.params?.category ?? "");
-          const deckName = CATEGORY_KEY_TO_DECK[categoryKey];
-          if (!deckName) return { error: "Неизвестная категория." };
-          const neighbor = neighborChoice.neighborId ? players.get(neighborChoice.neighborId) : undefined;
-          if (!neighbor) return { error: "Сосед не найден." };
+			if (!("neighborId" in neighborChoice)) return neighborChoice;
+
+			const categoryKey = String(def.effect.params?.category ?? "");
+			const deckName = CATEGORY_KEY_TO_DECK[categoryKey];
+			if (!deckName) return scenarioError("classic.auto.045");
+
+			const neighbor = players.get(neighborChoice.neighborId);
+			if (!neighbor) return scenarioError("classic.auto.086");
 
           const targetCardInstanceId = String(payload.targetCardInstanceId ?? "");
           const sourceCardInstanceId = String(payload.sourceCardInstanceId ?? "");
           const yourCard = getSelectedRevealedCard(player, categoryKey, sourceCardInstanceId);
           const theirCard = getSelectedRevealedCard(neighbor, categoryKey, targetCardInstanceId);
           if (!yourCard || !theirCard) {
-            return { error: "Нужно выбрать корректные раскрытые карты у обоих игроков." };
+            return scenarioError("classic.auto.067");
           }
 
           const temp = { id: yourCard.id, labelShort: yourCard.labelShort, missing: yourCard.missing };
@@ -1948,7 +2074,7 @@ export const scenario: ScenarioModule = {
           theirCard.missing = temp.missing;
 
           special.used = true;
-          emitEvent("info", `${player.name} меняется раскрытой картой с ${neighbor.name}.`);
+          emitEvent("info", "classic.auto.147", { v1: player.name, v2: neighbor.name });
           return { stateChanged: true };
         }
         case "replaceRevealedCard": {
@@ -1956,22 +2082,22 @@ export const scenario: ScenarioModule = {
           const target = players.get(targetId);
           const categoryKey = String(def.effect.params?.category ?? "");
           const deckName = CATEGORY_KEY_TO_DECK[categoryKey];
-          if (!target || target.status !== "alive") return { error: "Цель не в игре." };
-          if (!deckName) return { error: "Неизвестная категория." };
+          if (!target || target.status !== "alive") return scenarioError("classic.auto.107");
+          if (!deckName) return scenarioError("classic.auto.045");
 
           const targetCardInstanceId = String(payload.targetCardInstanceId ?? "");
           const revealedCard = getSelectedRevealedCard(target, categoryKey, targetCardInstanceId);
-          if (!revealedCard) return { error: "У цели нет раскрытой карты этой категории." };
+          if (!revealedCard) return scenarioError("classic.auto.103");
 
           const newCard = drawCardFromDeck(deckName, deckPools, rng);
-          if (!newCard) return { error: `В колоде категории "${deckName}" больше нет карт.` };
+          if (!newCard) return scenarioError("classic.auto.148", { v1: deckName });
 
           revealedCard.id = newCard.id;
           revealedCard.labelShort = newCard.labelShort;
           revealedCard.missing = false;
 
           special.used = true;
-          emitEvent("info", `${player.name} заменяет раскрытую карту у ${target.name}.`);
+          emitEvent("info", "classic.auto.149", { v1: player.name, v2: target.name });
           return { stateChanged: true };
         }
         case "discardRevealedAndDealHidden": {
@@ -1979,15 +2105,15 @@ export const scenario: ScenarioModule = {
           const target = players.get(targetId);
           const categoryKey = String(def.effect.params?.category ?? "");
           const deckName = CATEGORY_KEY_TO_DECK[categoryKey];
-          if (!target || target.status !== "alive") return { error: "Цель не в игре." };
-          if (!deckName) return { error: "Неизвестная категория." };
+          if (!target || target.status !== "alive") return scenarioError("classic.auto.107");
+          if (!deckName) return scenarioError("classic.auto.045");
 
           const targetCardInstanceId = String(payload.targetCardInstanceId ?? "");
           const revealedCard = getSelectedRevealedCard(target, categoryKey, targetCardInstanceId);
-          if (!revealedCard) return { error: "У цели нет раскрытой карты этой категории." };
+          if (!revealedCard) return scenarioError("classic.auto.103");
 
           const newCard = drawCardFromDeck(deckName, deckPools, rng);
-          if (!newCard) return { error: `В колоде категории "${deckName}" больше нет карт.` };
+          if (!newCard) return scenarioError("classic.auto.148", { v1: deckName });
 
           revealedCard.id = newCard.id;
           revealedCard.labelShort = newCard.labelShort;
@@ -1995,19 +2121,19 @@ export const scenario: ScenarioModule = {
           revealedCard.revealed = false;
 
           special.used = true;
-          emitEvent("info", `${player.name} сбрасывает раскрытую карту у ${target.name}.`);
+          emitEvent("info", "classic.auto.150", { v1: player.name, v2: target.name });
           return { stateChanged: true };
         }
         case "redealAllRevealed": {
           const categoryKey = String(def.effect.params?.category ?? "");
           const deckName = CATEGORY_KEY_TO_DECK[categoryKey];
-          if (!deckName) return { error: "Неизвестная категория." };
+          if (!deckName) return scenarioError("classic.auto.045");
 
           const revealedSlots: CardState[] = [];
           for (const target of alivePlayers()) {
             revealedSlots.push(...getRevealedCardsByCategory(target, categoryKey));
           }
-          if (revealedSlots.length === 0) return { error: "Нет раскрытых карт для перераздачи." };
+          if (revealedSlots.length === 0) return scenarioError("classic.auto.060");
 
           const shuffled = [...revealedSlots];
           for (let i = shuffled.length - 1; i > 0; i -= 1) {
@@ -2024,20 +2150,20 @@ export const scenario: ScenarioModule = {
           }
 
           special.used = true;
-          emitEvent("info", `${player.name} перераздаёт раскрытые карты категории ${deckName}.`);
+          emitEvent("info", "classic.auto.151", { v1: player.name, v2: deckName });
           return { stateChanged: true };
         }
         case "replaceBunkerCard": {
           const resolved = resolveBunkerIndex(payload);
-          if ("error" in resolved) return { error: resolved.error };
+          if (!("index" in resolved)) return resolved;
           const target = world.bunker[resolved.index];
-          if (!target?.isRevealed) return { error: "Можно выбрать только раскрытую карту бункера." };
+          if (!target?.isRevealed) return scenarioError("classic.auto.034");
 
           const occupiedIds = new Set(
             world.bunker.map((card) => card.id).filter((id): id is string => Boolean(id))
           );
           const replacement = pickBunkerReplacementCard(occupiedIds);
-          if (!replacement) return { error: "Нет доступных карт бункера для замены." };
+          if (!replacement) return scenarioError("classic.auto.057");
 
           target.id = replacement.id;
           target.title = replacement.title;
@@ -2049,18 +2175,18 @@ export const scenario: ScenarioModule = {
           target.revealedAtRound = target.revealedAtRound ?? round;
 
           special.used = true;
-          emitEvent("info", `${player.name} заменяет карту бункера.`);
+          emitEvent("info", "classic.auto.152", { v1: player.name });
           return { stateChanged: true };
         }
         case "discardBunkerCard": {
           const resolved = resolveBunkerIndex(payload, { allowRandom: true });
-          if ("error" in resolved) return { error: resolved.error };
+          if (!("index" in resolved)) return resolved;
           const target = world.bunker[resolved.index];
-          if (!target?.isRevealed) return { error: "Можно выбрать только раскрытую карту бункера." };
+          if (!target?.isRevealed) return scenarioError("classic.auto.034");
 
           target.id = `bunker-discarded-${Date.now()}-${Math.floor(rng() * 1_000_000)}`;
-          target.title = "Карта бункера потеряна";
-          target.description = "Карта бункера была сброшена спецусловием.";
+          target.title = tClassic("classic.auto.028");
+          target.description = tClassic("classic.auto.027");
           target.text = undefined;
           target.imageId = undefined;
           target.isRevealed = true;
@@ -2068,18 +2194,18 @@ export const scenario: ScenarioModule = {
           target.revealedAtRound = target.revealedAtRound ?? round;
 
           special.used = true;
-          emitEvent("info", `Спецусловие "${def.title}" сбрасывает карту бункера.`);
+          emitEvent("info", "classic.auto.153", { v1: def.title });
           return { stateChanged: true };
         }
         case "stealBunkerCardToExiled": {
           const resolved = resolveBunkerIndex(payload, { allowRandom: true });
-          if ("error" in resolved) return { error: resolved.error };
+          if (!("index" in resolved)) return resolved;
           const target = world.bunker[resolved.index];
-          if (!target?.isRevealed) return { error: "Можно выбрать только раскрытую карту бункера." };
+          if (!target?.isRevealed) return scenarioError("classic.auto.034");
 
           target.id = `bunker-stolen-${Date.now()}-${Math.floor(rng() * 1_000_000)}`;
-          target.title = "Карта бункера украдена";
-          target.description = "Карта бункера была забрана изгнанным игроком.";
+          target.title = tClassic("classic.auto.029");
+          target.description = tClassic("classic.auto.026");
           target.text = undefined;
           target.imageId = undefined;
           target.isRevealed = true;
@@ -2087,13 +2213,13 @@ export const scenario: ScenarioModule = {
           target.revealedAtRound = target.revealedAtRound ?? round;
 
           special.used = true;
-          emitEvent("info", `Карта "${def.title}" применена: карта бункера убрана из стола.`);
+          emitEvent("info", "classic.auto.154", { v1: def.title });
           return { stateChanged: true };
         }
         case "forceRevealCategoryForAll": {
           const category = String(payload.category ?? "");
           const deckName = CATEGORY_KEY_TO_DECK[category] ?? category;
-          if (!deckName) return { error: "Нужно выбрать категорию." };
+          if (!deckName) return scenarioError("classic.auto.065");
           const forcedLabel =
             category === "facts1"
               ? FACTS_LABELS.facts1
@@ -2102,33 +2228,33 @@ export const scenario: ScenarioModule = {
                 : deckName;
           roundRules.forcedRevealCategory = forcedLabel;
           special.used = true;
-          emitEvent("info", `${player.name} требует раскрыть категорию ${forcedLabel}.`);
+          emitEvent("info", "classic.auto.155", { v1: player.name, v2: forcedLabel });
           return { stateChanged: true };
         }
         case "setRoundRule": {
           roundRules.noTalkUntilVoting = Boolean(def.effect.params?.noTalkUntilVoting ?? true);
           special.used = true;
-          emitEvent("info", `${player.name} вводит правило раунда.`);
+          emitEvent("info", "classic.auto.156", { v1: player.name });
           return { stateChanged: true };
         }
         case "stealBaggage_and_giveSpecial": {
           const targetId = String(payload.targetPlayerId ?? "");
           const target = players.get(targetId);
-          if (!target || target.status !== "alive") return { error: "Цель не в игре." };
-          if (targetId === player.playerId && !canTargetSelf) return { error: "Нельзя выбрать себя." };
+          if (!target || target.status !== "alive") return scenarioError("classic.auto.107");
+          if (targetId === player.playerId && !canTargetSelf) return scenarioError("classic.auto.052");
 
-          const targetBaggage = getAnyCardsByCategory(target, "Багаж");
-          if (targetBaggage.length === 0) return { error: "У цели нет багажа." };
+          const targetBaggage = getAnyCardsByCategory(target, "baggage");
+          if (targetBaggage.length === 0) return scenarioError("classic.auto.102");
           const requestedBaggageCardId = String(payload.baggageCardId ?? "");
           const stolenCard =
             (requestedBaggageCardId
               ? targetBaggage.find((card) => card.instanceId === requestedBaggageCardId)
               : targetBaggage[0]) ?? null;
-          if (!stolenCard) return { error: "Нужно выбрать конкретную карту багажа." };
+          if (!stolenCard) return scenarioError("classic.auto.066");
 
           const giveCount = Number(def.effect.params?.giveSpecialCount ?? 1);
           if (specialPool.length < giveCount) {
-            return { error: "В колоде особых условий больше нет карт." };
+            return scenarioError("classic.auto.002");
           }
           target.hand = target.hand.filter((card) => card !== stolenCard);
           player.hand.push({ ...stolenCard, instanceId: makeCardInstanceId(player.playerId) });
@@ -2142,7 +2268,7 @@ export const scenario: ScenarioModule = {
           target.hand.push({
             instanceId: makeCardInstanceId(target.playerId),
             id: specialAssetId,
-            deck: "Багаж",
+            deck: DECK_LABELS.baggage,
             labelShort: def.title,
             revealed: false,
             missing: !specialAssetId,
@@ -2151,7 +2277,7 @@ export const scenario: ScenarioModule = {
 
           for (let i = 0; i < giveCount; i += 1) {
             const error = addSpecialToPlayer(target);
-            if (error) return { error };
+            if (error) return error;
           }
 
           player.specialConditions = player.specialConditions.filter(
@@ -2162,44 +2288,44 @@ export const scenario: ScenarioModule = {
               labelShort: stolenCard.labelShort,
               imgUrl: stolenCard.revealed && stolenCard.id ? `/assets/${stolenCard.id}` : undefined,
               hidden: !stolenCard.revealed,
-              backCategory: "Багаж",
+              backCategory: DECK_LABELS.baggage,
             },
           ];
 
           special.used = true;
-          emitEvent("info", `${player.name} забирает багаж у ${target.name}.`);
+          emitEvent("info", "classic.auto.157", { v1: player.name, v2: target.name });
           return { stateChanged: true };
         }
         case "addFinalThreat": {
           const threatKey = String(def.effect.params?.threatKey ?? def.id);
           finalThreats.push(threatKey);
           special.used = true;
-          emitEvent("info", `${player.name} добавляет угрозу в финал.`);
+          emitEvent("info", "classic.auto.158", { v1: player.name });
           return { stateChanged: true };
         }
         default:
-          return { error: "Эффект не поддерживается" };
+          return scenarioError("classic.auto.115");
       }
     };
 
     const vote = (player: PlayerState, targetId: string): ScenarioActionResult => {
-      if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
-      if (votePhase !== "voting") return { error: "Сбор голосов завершён." };
-      if (targetId === player.playerId) return { error: "Нельзя голосовать за себя." };
-      if (!votingState.candidates.has(targetId)) return { error: "Недопустимый кандидат." };
-      if (votingState.votes.has(player.playerId)) return { error: "Вы уже проголосовали." };
-      if (votingState.revoteDisallowTargets.has(targetId)) return { error: "Нельзя голосовать за этого кандидата." };
+      if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
+      if (votePhase !== "voting") return scenarioError("classic.auto.076");
+      if (targetId === player.playerId) return scenarioError("classic.auto.053");
+      if (!votingState.candidates.has(targetId)) return scenarioError("classic.auto.042");
+      if (votingState.votes.has(player.playerId)) return scenarioError("classic.auto.009");
+      if (votingState.revoteDisallowTargets.has(targetId)) return scenarioError("classic.auto.054");
       if (votingState.revoteDisallowByVoter.get(player.playerId) === targetId) {
-        return { error: "Нужно выбрать другого кандидата." };
+        return scenarioError("classic.auto.063");
       }
 
       const target = players.get(targetId);
-      if (!target || target.status !== "alive") return { error: "Кандидат не в игре." };
+      if (!target || target.status !== "alive") return scenarioError("classic.auto.025");
       if (target.bannedAgainst.has(player.playerId)) {
-        return { error: "Вы не можете голосовать против этого игрока." };
+        return scenarioError("classic.auto.007");
       }
       if (votingState.disabledVoters.has(player.playerId)) {
-        return { error: "Ваш голос заблокирован." };
+        return scenarioError("classic.auto.003");
       }
 
       votingState.votes.set(player.playerId, {
@@ -2213,7 +2339,7 @@ export const scenario: ScenarioModule = {
         return { stateChanged: true };
       }
       if (isManualAutomation()) {
-        emitEvent("info", "Все голоса собраны. Ведущий решает, когда завершить сбор.");
+        emitEvent("info", "classic.auto.005");
         return { stateChanged: true };
       }
       enterVoteSpecialWindow();
@@ -2221,12 +2347,12 @@ export const scenario: ScenarioModule = {
     };
 
     const finalizeVotingWindow = (): ScenarioActionResult => {
-      if (phase !== "voting" || !votingState) return { error: "Сейчас нет голосования." };
+      if (phase !== "voting" || !votingState) return scenarioError("classic.auto.080");
       if (votePhase === "voting") {
         enterVoteSpecialWindow();
         return { stateChanged: true };
       }
-      if (votePhase !== "voteSpecialWindow") return { error: "Окно спецусловий ещё не открыто." };
+      if (votePhase !== "voteSpecialWindow") return scenarioError("classic.auto.070");
       clearVoteWindowTimer();
       return finalizeVotingResolution();
     };
@@ -2252,7 +2378,7 @@ export const scenario: ScenarioModule = {
     const buildPublicCategories = (player: PlayerState): PublicCategorySlot[] => {
       return CATEGORY_ORDER.map((category) => {
         if (category === SPECIAL_CATEGORY) {
-          const cards = player.specialConditions
+          const revealedSpecialCards: PublicCategorySlot["cards"] = player.specialConditions
             .filter((condition) => condition.revealedPublic)
             .map((condition) => ({
               labelShort: condition.definition.title,
@@ -2260,16 +2386,17 @@ export const scenario: ScenarioModule = {
               instanceId: condition.instanceId,
               hidden: false,
               backCategory: SPECIAL_CATEGORY,
-            }))
-            .concat(
-              player.specialCategoryProxyCards.map((card, index) => ({
-                labelShort: card.labelShort,
-                imgUrl: card.imgUrl,
-                instanceId: `proxy-special-${player.playerId}-${index}`,
-                hidden: card.hidden ?? false,
-                backCategory: card.backCategory ?? SPECIAL_CATEGORY,
-              }))
-            );
+            }));
+          const proxySpecialCards: PublicCategorySlot["cards"] = player.specialCategoryProxyCards.map(
+            (card, index) => ({
+              labelShort: card.labelShort,
+              imgUrl: card.imgUrl,
+              instanceId: `proxy-special-${player.playerId}-${index}`,
+              hidden: card.hidden ?? false,
+              backCategory: card.backCategory ?? SPECIAL_CATEGORY,
+            })
+          );
+          const cards: PublicCategorySlot["cards"] = revealedSpecialCards.concat(proxySpecialCards);
           return {
             category,
             status: cards.some((card) => !card.hidden) ? "revealed" : "hidden",
@@ -2282,7 +2409,7 @@ export const scenario: ScenarioModule = {
         }
         const allCards = player.hand.filter(
           (card) =>
-            card.deck === deckInfo.deck &&
+            cardMatchesDeck(card, deckInfo.deck) &&
             (!deckInfo.slotKey || card.slotKey === deckInfo.slotKey)
         );
         const revealedCards = allCards.filter((card) => card.revealed);
@@ -2295,7 +2422,7 @@ export const scenario: ScenarioModule = {
             hidden: false,
           })),
           ...hiddenCards.map((card) => ({
-            labelShort: "Скрытая карта",
+            labelShort: tClassic("classic.auto.083"),
             instanceId: card.instanceId,
             hidden: true,
             backCategory: card.publicBackCategory ?? category,
@@ -2316,7 +2443,7 @@ export const scenario: ScenarioModule = {
           ? player.hand
               .filter(
                 (card) =>
-                  card.deck === deckInfo.deck && (!deckInfo.slotKey || card.slotKey === deckInfo.slotKey)
+                  cardMatchesDeck(card, deckInfo.deck) && (!deckInfo.slotKey || card.slotKey === deckInfo.slotKey)
               )
               .map((card) => ({
                 instanceId: card.instanceId,
@@ -2365,9 +2492,12 @@ export const scenario: ScenarioModule = {
             voterId: player.playerId,
             voterName: player.name,
             targetId: info.targetId,
-            targetName: players.get(info.targetId)?.name ?? "Неизвестно",
+            targetName: players.get(info.targetId)?.name ?? tClassic("classic.auto.046"),
             status: "voted" as const,
             reason: info.reason,
+            reasonKey: info.reasonKey,
+            reasonVars: info.reasonVars,
+            reasonCode: info.reasonCode,
             weight: info.weight,
             submittedAt: info.submittedAt,
           };
@@ -2377,6 +2507,9 @@ export const scenario: ScenarioModule = {
           voterName: player.name,
           status: info.status === "invalid" ? ("invalid" as const) : ("not_voted" as const),
           reason: info.reason,
+          reasonKey: info.reasonKey,
+          reasonVars: info.reasonVars,
+          reasonCode: info.reasonCode,
           weight: info.weight,
           submittedAt: info.submittedAt,
         };
@@ -2424,6 +2557,12 @@ export const scenario: ScenarioModule = {
           for (const candidateId of votingState.revoteDisallowTargets) {
             restricted.add(candidateId);
           }
+          for (const candidateId of votingState.candidates) {
+            const candidate = players.get(candidateId);
+            if (candidate?.bannedAgainst.has(playerId)) {
+              restricted.add(candidateId);
+            }
+          }
           return restricted.size > 0 ? Array.from(restricted) : undefined;
         })();
 
@@ -2432,6 +2571,8 @@ export const scenario: ScenarioModule = {
           round,
           categoryOrder: CATEGORY_ORDER.slice(),
           lastStageText,
+          lastStageTextKey,
+          lastStageTextVars,
           ruleset,
           world: buildWorldView(),
           worldEvent: worldEvent ? { ...worldEvent } : undefined,
@@ -2480,6 +2621,8 @@ export const scenario: ScenarioModule = {
             lastEliminated,
             winners,
             resolutionNote,
+            resolutionNoteKey,
+            resolutionNoteVars,
             roundRules: {
               noTalkUntilVoting: roundRules.noTalkUntilVoting,
               forcedRevealCategory: roundRules.forcedRevealCategory,
@@ -2502,7 +2645,7 @@ export const scenario: ScenarioModule = {
       },
       handleAction(playerId: string, action: ScenarioAction): ScenarioActionResult {
         const player = players.get(playerId);
-        if (!player) return { error: "Игрок не найден." };
+        if (!player) return scenarioError("classic.auto.021");
         if (action.type === "markLeftBunker") {
           return markLeftBunker(action.payload.targetPlayerId);
         }
@@ -2539,8 +2682,8 @@ export const scenario: ScenarioModule = {
         if (action.type === "applySpecial") {
           return applySpecial(player, action.payload.specialInstanceId, action.payload.payload ?? {});
         }
-        if (player.status !== "alive") return { error: "Вы исключены из игры." };
-        if (phase === "ended") return { error: "Игра уже завершена." };
+        if (player.status !== "alive") return scenarioError("classic.auto.006");
+        if (phase === "ended") return scenarioError("classic.auto.019");
 
         switch (action.type) {
           case "revealCard":
@@ -2552,7 +2695,7 @@ export const scenario: ScenarioModule = {
           case "finalizeVoting":
             return finalizeVotingWindow();
           default:
-            return { error: "Неизвестное действие." };
+            return scenarioError("classic.auto.047");
         }
       },
     } as ScenarioSession;

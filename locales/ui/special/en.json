@@ -1,0 +1,19 @@
+{
+  "specialTitle": "Special conditions",
+  "specialApplied": "Card applied.",
+  "specialDialogChooseCategory": "Choose category",
+  "specialDialogChooseSpecial": "Choose special condition",
+  "specialDialogChooseBunkerCard": "Choose bunker card",
+  "specialDialogLeftPrefix": "Left: ",
+  "specialDialogRightPrefix": "Right: ",
+  "specialDialogChooseNeighbor": "Choose neighbor",
+  "specialDialogChoosePlayer": "Choose player",
+  "specialDialogChooseBaggage": "Choose exact baggage card",
+  "specialDialogStepOwnCard": "1) Your card",
+  "specialDialogStepPlayer": "2) Player",
+  "specialDialogStepTargetCard": "3) Player card",
+  "specialDialogLabelTargetCard": "Player card",
+  "specialDialogPlaceholderOwnCard": "Select your card",
+  "specialDialogPlaceholderPlayer": "Select player",
+  "specialDialogPlaceholderTargetCard": "Select player card"
+}

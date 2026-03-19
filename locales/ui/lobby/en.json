@@ -1,0 +1,21 @@
+{
+  "lobbyTitle": "Lobby",
+  "lobbyLoading": "Waiting for server data...",
+  "roomCodeTitle": "Room code",
+  "showSecret": "Show",
+  "hideSecret": "Hide",
+  "playersTitle": "Players",
+  "lobbyKickTitle": "Kick player",
+  "lobbyKickSelectPlaceholder": "Select player",
+  "lobbyKickButton": "Kick",
+  "hostMarker": " (host)",
+  "controlMarker": " (CONTROL)",
+  "transferHostTitle": "Transfer host",
+  "transferHostSelectPlaceholder": "No available players",
+  "offlineMarker": " (offline)",
+  "startButton": "Start",
+  "transferHostButton": "Transfer host",
+  "transferHostSelectLabel": "Transfer host to",
+  "transferHostAgreeLabel": "I confirm host transfer",
+  "lobbyKickAgreeLabel": "I confirm kicking the selected player"
+}

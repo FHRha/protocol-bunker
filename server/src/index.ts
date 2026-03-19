@@ -44,6 +44,7 @@ import {
 import { getDisasterTextByAssetId } from "./world_texts.js";
 import { normalizeServerLocale, tServer, type ServerLocaleCode } from "./serverLocale.js";
 import { localizeScenarioMessage } from "./scenarioLocale.js";
+import { localizeSpecialConditionField } from "./specialConditionLocale.js";
 import { loadScenarios } from "@bunker/scenarios";
 
 interface Player {
@@ -1489,9 +1490,50 @@ function localizeControlDeckCatalogForLocale(
   );
 }
 
+
+function localizeSpecialConditionForLocale(
+  scenarioId: string | undefined,
+  special: ReturnType<ScenarioSession["getGameView"]>["you"]["specialConditions"][number],
+  locale: CardLocaleCode
+) {
+  const localizeSpecialField = (specialId: string | undefined, field: "title" | "text", fallback: string): string => {
+    const fromSpecials = localizeSpecialConditionField(scenarioId, specialId, field, fallback, locale);
+    if (fromSpecials && fromSpecials !== fallback) return fromSpecials;
+    return localizeScenarioMessage(fallback, locale, scenarioId);
+  };
+
+  const params = special.effect?.params;
+  let nextParams = params;
+  const rawOptions = params && typeof params === "object" ? (params as { specialOptions?: unknown }).specialOptions : undefined;
+  if (Array.isArray(rawOptions)) {
+    nextParams = {
+      ...params,
+      specialOptions: rawOptions.map((option) => {
+        const source = option as { id?: unknown; title?: unknown };
+        const optionId = String(source.id ?? "").trim();
+        const fallbackTitle = String(source.title ?? optionId);
+        return {
+          ...source,
+          id: optionId,
+          title: localizeSpecialField(optionId, "title", fallbackTitle),
+        };
+      }),
+    };
+  }
+
+  return {
+    ...special,
+    title: localizeSpecialField(special.id, "title", special.title),
+    text: localizeSpecialField(special.id, "text", special.text),
+    imgUrl: localizeAssetUrl(special.imgUrl, locale),
+    effect: special.effect ? { ...special.effect, params: nextParams } : special.effect,
+  };
+}
+
 function localizeGameViewForLocale(
   view: ReturnType<ScenarioSession["getGameView"]>,
-  locale: CardLocaleCode
+  locale: CardLocaleCode,
+  scenarioId?: string
 ): ReturnType<ScenarioSession["getGameView"]> {
   const localizedHand = view.you.hand.map((card) => ({
     ...card,
@@ -1502,7 +1544,7 @@ function localizeGameViewForLocale(
   return {
     ...view,
     lastStageText: view.lastStageText
-      ? localizeScenarioMessage(view.lastStageText, locale)
+      ? localizeScenarioMessage(view.lastStageText, locale, scenarioId)
       : view.lastStageText,
     world: localizeWorldStateForLocale(view.world, locale),
     you: {
@@ -1515,29 +1557,24 @@ function localizeGameViewForLocale(
           labelShort: handLabelByInstanceId.get(card.instanceId) ?? card.labelShort,
         })),
       })),
-      specialConditions: view.you.specialConditions.map((special) => ({
-	  ...special,
-	  title: localizeScenarioMessage(special.title, locale),
-	  text: localizeScenarioMessage(special.text, locale),
-      imgUrl: localizeAssetUrl(special.imgUrl, locale),
-	  })),
+      specialConditions: view.you.specialConditions.map((special) => localizeSpecialConditionForLocale(scenarioId, special, locale)),
     },
     public: {
       ...view.public,
       votesPublic: view.public.votesPublic?.map((vote) => ({
         ...vote,
         reason: vote.reason
-          ? localizeScenarioMessage(vote.reason, locale)
+          ? localizeScenarioMessage(vote.reason, locale, scenarioId)
           : vote.reason,
       })),
       resolutionNote: view.public.resolutionNote
-        ? localizeScenarioMessage(view.public.resolutionNote, locale)
+        ? localizeScenarioMessage(view.public.resolutionNote, locale, scenarioId)
         : view.public.resolutionNote,
       threatModifier: view.public.threatModifier
         ? {
             ...view.public.threatModifier,
             reasons: view.public.threatModifier.reasons.map((reason) =>
-              localizeScenarioMessage(reason, locale)
+              localizeScenarioMessage(reason, locale, scenarioId)
             ),
           }
         : view.public.threatModifier,
@@ -2006,7 +2043,7 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
     const subtitleMap = await getSubtitleMap(locale);
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) return fallback;
-    const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale);
+    const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale, room.scenarioId);
     const world = view.world;
     const bunkerOpened = world?.bunker.filter((card) => card.isRevealed).length ?? 0;
     const bunkerTotal = world?.counts.bunker ?? 0;
@@ -2215,7 +2252,7 @@ function buildOverlayPresenterState(room: Room) {
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) return base;
     const locale = getRoomCardLocale(room);
-    const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale);
+    const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale, room.scenarioId);
     const votesByPlayer = new Map((view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.status]));
     const voteTargetNameByVoter = new Map(
       (view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.targetName ?? ""])
@@ -2254,7 +2291,8 @@ function buildOverlayPresenterState(room: Room) {
       try {
         const personalView = localizeGameViewForLocale(
           room.session!.getGameView(publicPlayer.playerId),
-          locale
+          locale,
+          room.scenarioId
         );
         hand = personalView.you.hand.map((card) => ({
           instanceId: String(card.instanceId ?? card.id ?? `${publicPlayer.playerId}-card`),
@@ -2335,10 +2373,16 @@ function buildOverlayPresenterState(room: Room) {
     };
     const rawSpecialCatalog = sessionWithCatalog.getSpecialCatalog?.();
     const specialCatalog = Array.isArray(rawSpecialCatalog)
-      ? rawSpecialCatalog.map((item) => ({
-          id: String(item.id ?? "").trim(),
-          title: String(item.title ?? item.id ?? "").trim(),
-          text: String(item.text ?? "").trim(),
+      ? rawSpecialCatalog.map((item) => {
+          const specialId = String(item.id ?? "").trim();
+          const fallbackTitle = String(item.title ?? item.id ?? "").trim();
+          const fallbackText = String(item.text ?? "").trim();
+          const localizedTitleRaw = localizeSpecialConditionField(room.scenarioId, specialId, "title", fallbackTitle, locale);
+          const localizedTextRaw = localizeSpecialConditionField(room.scenarioId, specialId, "text", fallbackText, locale);
+          return {
+          id: specialId,
+          title: localizedTitleRaw !== fallbackTitle ? localizedTitleRaw : localizeScenarioMessage(fallbackTitle, locale, room.scenarioId),
+          text: localizedTextRaw !== fallbackText ? localizedTextRaw : localizeScenarioMessage(fallbackText, locale, room.scenarioId),
           implemented: Boolean(item.implemented ?? true),
           choiceKind: item.choiceKind ? String(item.choiceKind) : undefined,
           targetScope: item.targetScope ? String(item.targetScope) : undefined,
@@ -2347,7 +2391,8 @@ function buildOverlayPresenterState(room: Room) {
           requires: Array.isArray(item.requires)
             ? item.requires.map((entry) => String(entry ?? "").trim()).filter(Boolean)
             : undefined,
-        }))
+        };
+      })
       : [];
 
     return {
@@ -2490,7 +2535,7 @@ function tServerForRoom(
 }
 
 function localizeScenarioMessageForRoom(room: Room, message: string): string {
-  return localizeScenarioMessage(message, normalizeServerLocale(room.settings.cardLocale));
+  return localizeScenarioMessage(message, normalizeServerLocale(room.settings.cardLocale), room.scenarioId);
 }
 
 function sendLocalizedError(
@@ -2635,7 +2680,7 @@ function sendGameView(room: Room, player: Player): void {
         players: enrichedPlayers,
       },
     };
-    const localizedPayload = localizeGameViewForLocale(payload, getRoomCardLocale(room));
+    const localizedPayload = localizeGameViewForLocale(payload, getRoomCardLocale(room), room.scenarioId);
     if (!room.lastGameViews) {
       room.lastGameViews = new Map();
     }
@@ -4129,7 +4174,8 @@ async function main() {
               try {
                 const payloadView = localizeGameViewForLocale(
                   room.session.getGameView(controlPlayer.playerId),
-                  getRoomCardLocale(room)
+                  getRoomCardLocale(room),
+                  room.scenarioId
                 );
                 send(ws, { type: "gameView", payload: payloadView });
               } catch {
@@ -4171,7 +4217,8 @@ async function main() {
               try {
                 const payloadView = localizeGameViewForLocale(
                   room.session.getGameView(existingPlayer.playerId),
-                  getRoomCardLocale(room)
+                  getRoomCardLocale(room),
+                  room.scenarioId
                 );
                 send(ws, { type: "gameView", payload: payloadView });
               } catch {

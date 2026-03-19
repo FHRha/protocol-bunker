@@ -64,9 +64,25 @@ export default function TableLayout({
     return () => window.clearInterval(id);
   }, []);
 
+  const timerStateSignature = useMemo(
+    () =>
+      players
+        .map((player) =>
+          [
+            player.playerId,
+            player.connected ? "1" : "0",
+            player.leftBunker ? "1" : "0",
+            player.status,
+            player.kickRemainingMs ?? "",
+          ].join(":"),
+        )
+        .join("|"),
+    [players],
+  );
+
   useEffect(() => {
     lastUpdateRef.current = Date.now();
-  }, [players]);
+  }, [timerStateSignature]);
 
   const orderedPlayers = useMemo(() => {
     if (!youId) return players;
@@ -180,10 +196,12 @@ export default function TableLayout({
                 }}
                 onClick={() => onSelect?.(player.playerId)}
               >
-                <div className="seat-name">{label || text.t("playerFallback", { index: index + 1 })}</div>
-                {remainingText ? (
-                  <div className="seat-remaining">{text.t("leftTimeLabel", { time: remainingText })}</div>
-                ) : null}
+                <div className="seat-content">
+                  <div className="seat-name">{label || text.t("playerFallback", { index: index + 1 })}</div>
+                  {remainingText ? (
+                    <div className="seat-remaining">{text.t("leftTimeLabel", { time: remainingText })}</div>
+                  ) : null}
+                </div>
               </button>
             );
           })}

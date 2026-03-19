@@ -10,32 +10,44 @@ const SCENARIO_LOCALE_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), "..", "..", "locales", "scenario"),
 ];
 
-function loadScenarioDictionary(locale: ScenarioLocaleCode): ScenarioDictionary {
-  if (locale === "ru") return {};
-  for (const root of SCENARIO_LOCALE_ROOT_CANDIDATES) {
-    const filePath = path.join(root, `${locale}.json`);
-    if (!fs.existsSync(filePath)) continue;
-    try {
-      const raw = fs.readFileSync(filePath, "utf8");
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object") continue;
-      const next: ScenarioDictionary = {};
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof key !== "string" || typeof value !== "string") continue;
-        next[key] = value;
-      }
-      return next;
-    } catch {
-      // ignore malformed file and keep fallback search
+function mergeScenarioDictionary(into: ScenarioDictionary, filePath: string): void {
+  if (!fs.existsSync(filePath)) return;
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return;
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof key !== "string" || typeof value !== "string") continue;
+      into[key] = value;
     }
+  } catch {
+    // ignore malformed file
   }
-  return {};
 }
 
-const SCENARIO_DICTIONARIES: Record<ScenarioLocaleCode, ScenarioDictionary> = {
-  ru: {},
-  en: loadScenarioDictionary("en"),
-};
+function loadScenarioDictionary(locale: ScenarioLocaleCode, scenarioId?: string): ScenarioDictionary {
+  if (locale === "ru") return {};
+  const next: ScenarioDictionary = {};
+  for (const root of SCENARIO_LOCALE_ROOT_CANDIDATES) {
+    mergeScenarioDictionary(next, path.join(root, `${locale}.json`));
+    if (scenarioId) {
+      mergeScenarioDictionary(next, path.join(root, scenarioId, `${locale}.json`));
+    }
+  }
+  return next;
+}
+
+const SCENARIO_DICTIONARIES = new Map<string, ScenarioDictionary>();
+
+function getScenarioDictionary(locale: ScenarioLocaleCode, scenarioId?: string): ScenarioDictionary {
+  if (locale === "ru") return {};
+  const key = `${locale}:${scenarioId ?? "*"}`;
+  const cached = SCENARIO_DICTIONARIES.get(key);
+  if (cached) return cached;
+  const loaded = loadScenarioDictionary(locale, scenarioId);
+  SCENARIO_DICTIONARIES.set(key, loaded);
+  return loaded;
+}
 
 const EN_PATTERN_RULES: Array<(message: string) => string | null> = [
   (message) => {
@@ -126,9 +138,9 @@ const EN_PATTERN_RULES: Array<(message: string) => string | null> = [
   },
 ];
 
-export function localizeScenarioMessage(message: string, locale: ScenarioLocaleCode): string {
+export function localizeScenarioMessage(message: string, locale: ScenarioLocaleCode, scenarioId?: string): string {
   if (!message || locale === "ru") return message;
-  const dict = SCENARIO_DICTIONARIES[locale];
+  const dict = getScenarioDictionary(locale, scenarioId);
   const exact = dict[message];
   if (exact) return exact;
   for (const rule of EN_PATTERN_RULES) {

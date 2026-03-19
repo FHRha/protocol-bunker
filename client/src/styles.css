@@ -2422,6 +2422,15 @@ button.ghost {
   color: var(--text);
 }
 
+.seat-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+
 .table-seat:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -2470,16 +2479,20 @@ button.ghost {
 
 .seat-name {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
 }
 
 .seat-remaining {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 11px;
+  line-height: 1.15;
   color: var(--status-red-text);
+  width: 100%;
+  white-space: nowrap;
 }
 
 .card-tile {

@@ -85,6 +85,16 @@ export function localizeSpecialConditionField(
 ): string {
   const code: LocaleCode = locale === "en" ? "en" : "ru";
   if (!scenarioId) return fallback;
+
+  // Prefer matching by the current displayed fallback text first.
+  // This is important for dev-choice cards whose instance id stays like
+  // `dev-choice-<playerId>` even after the player picks a concrete special.
+  // After selection, the card title/text changes to the chosen special, so
+  // blindly normalizing the id back to `dev-choice` would incorrectly keep
+  // returning the chooser translation and break downstream logic/tests.
+  const byFallback = findByFallbackValue(scenarioId, code, field, fallback);
+  if (byFallback) return byFallback;
+
   const normalizedId = normalizeSpecialId(specialId);
   if (normalizedId) {
     const entry = getMap(scenarioId, code)[normalizedId];
@@ -93,6 +103,5 @@ export function localizeSpecialConditionField(
       return value;
     }
   }
-  const byFallback = findByFallbackValue(scenarioId, code, field, fallback);
-  return byFallback ?? fallback;
+  return fallback;
 }

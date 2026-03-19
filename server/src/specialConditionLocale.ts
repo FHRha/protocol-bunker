@@ -61,7 +61,6 @@ function findByFallbackValue(
   field: FieldName,
   fallback: string,
 ): string | undefined {
-  if (locale === "ru") return undefined;
   const localizedMap = getMap(scenarioId, locale);
   const ruMap = getMap(scenarioId, "ru");
   const { base, hasDevSuffix } = field === "title" ? stripDevSuffix(fallback) : { base: fallback, hasDevSuffix: false };
@@ -100,7 +99,16 @@ export function localizeSpecialConditionField(
     const entry = getMap(scenarioId, code)[normalizedId];
     const value = entry?.[field];
     if (typeof value === "string" && value.trim()) {
-      return value;
+      if (String(value).trim() === String(fallback).trim()) {
+        return value;
+      }
+      const directRu = getMap(scenarioId, "ru")[normalizedId]?.[field];
+      if (typeof directRu === "string" && String(directRu).trim() === String(fallback).trim()) {
+        return value;
+      }
+      if (normalizedId === String(specialId ?? "").trim()) {
+        return value;
+      }
     }
   }
   return fallback;

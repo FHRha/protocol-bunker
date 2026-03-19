@@ -812,9 +812,12 @@ test("ws integration: applySpecial + continueRound in immediate sequence keeps s
     const discussionViewMsg = await nextMessage(hostWs, matchGameView((view) => view?.phase === "reveal_discussion"));
     const discussionView = getGameViewFromMessage(discussionViewMsg);
     assert.ok(discussionView, "Discussion gameView must be available");
-    const devSpecial = discussionView.you.specialConditions.find((item) =>
-      String(item.title ?? "").toLowerCase().includes("dev")
-    );
+    const devSpecial = discussionView.you.specialConditions.find((item) => {
+      const options = Array.isArray(item?.effect?.params?.specialOptions)
+        ? item.effect.params.specialOptions
+        : [];
+      return options.length > 0;
+    });
     assert.ok(devSpecial, "Dev scenario must provide dev special chooser");
     const specialOptions = Array.isArray(devSpecial?.effect?.params?.specialOptions)
       ? devSpecial.effect.params.specialOptions
@@ -968,7 +971,10 @@ test("http integration: overlay-control/action end-to-end with presenter mode gu
     assert.equal(beforePresenterResp.status, 400, "START_GAME via control API must be blocked when presenter disabled");
     const beforePresenterJson = await beforePresenterResp.json();
     assert.equal(beforePresenterJson.ok, false);
-    assert.match(String(beforePresenterJson.message ?? ""), /Presenter mode is disabled/i);
+    assert.match(
+      String(beforePresenterJson.message ?? ""),
+      /Presenter mode is disabled|Режим ведущего отключён(?: для этой комнаты)?/i,
+    );
 
     sendJson(hostWs, {
       type: "updateSettings",

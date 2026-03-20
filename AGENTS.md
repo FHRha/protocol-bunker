@@ -1,200 +1,340 @@
 ﻿# AGENTS.md
 
-## 1. Краткое резюме проекта
-- `Bunker_browser` — монорепозиторий браузерной игры «Бункер»: сервер хранит комнаты и игровое состояние, клиент рендерит UI и отправляет действия, сценарии содержат правила игры (`server/src/index.ts`, `client/src/App.tsx`, `scenarios/src/classic.ts`).
-- Стек: TypeScript + pnpm workspaces (`package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`).
-- Протокол и типы общие для всех частей через `shared/src/index.ts` (интерфейсы + Zod-схемы сообщений/состояния).
-- В репозитории используется один основной файл документации для агентов: `AGENTS.md` (этот файл).
+## О проекте
 
-## 2. Архитектура (server/client/shared/scenarios/assets) + карта папок
-- `server/` — Express + WebSocket сервер, управление комнатами, авторизация токенами, overlay/overlay-control HTTP-роуты (`server/src/index.ts`).
-- `client/` — React + Vite приложение с роутами `/`, `/lobby`, `/game` (`client/src/main.tsx`, `client/src/App.tsx`, `client/vite.config.ts`).
-- `shared/` — контракты данных и валидация (типы `RoomState`, `GameView`, `OverlayState`, схемы `ClientMessageSchema`/`ServerMessageSchema`) (`shared/src/index.ts`).
-- `scenarios/` — игровая логика и сессии сценариев, автозагрузка файлов сценариев из `scenarios/src` (`scenarios/src/index.ts`).
-- `assets/` — изображения колод; сервер индексирует `assets/decks/<deckName>/*.{jpg,jpeg,png,webp}` (`assets/README.md`, `server/src/catalog.ts`).
+Protocol: Bunker — это монорепозиторий браузерной адаптации игры «Бункер».
 
-Карта папок (фактическая):
+Проект включает:
+- клиентскую часть;
+- серверную часть;
+- общие типы и контракты;
+- сценарии и игровой контент;
+- стримерские и зрительские режимы;
+- сборку релизов под разные платформы;
+- документацию для игроков, хостов, стримеров и разработчиков.
+
+Игровой сценарий для обычных участников происходит в браузере. Хост поднимает игру локально, на своём устройстве или на сервере, а остальные подключаются по ссылке.
+
+## Зачем нужен этот файл
+
+Этот файл — обзорная карта репозитория.
+
+Он нужен, чтобы быстро понять:
+- как устроен проект;
+- за что отвечают основные директории;
+- куда вносить изменения;
+- какие документы считаются каноническими;
+- где проходит граница между кодом, контентом, локализацией, стримингом и документацией.
+
+Этот файл не заменяет профильную документацию из `docs/`. Его задача — быстро дать общую картину проекта.
+
+## Карта папок
+
+Ниже — обзорная карта верхнего уровня репозитория.
+
 ```text
-.
-├─ server/
-│  ├─ src/
-│  └─ public/overlay/
-├─ client/
-│  └─ src/
-├─ shared/
-│  └─ src/
-├─ scenarios/
-│  ├─ src/
-│  └─ tests/
-├─ assets/
-│  └─ decks/
-├─ scripts/
-├─ README.md
-├─ MANUAL.md
-├─ package.json
-└─ pnpm-workspace.yaml
-```
+protocol-bunker/
+├─ client/                  # браузерный клиент, UI, лобби, комната, карточки, overlay-related части
+├─ server/                  # сервер, комнаты, websocket-логика, состояние матча
+├─ shared/                  # общие типы, контракты, payload'ы, доменные сущности
+├─ scenarios/               # сценарии, карты, игровые данные, special conditions
+├─ tests/                   # интеграционные и другие автоматические проверки
+├─ scripts/                 # сборка, упаковка, release/helper-скрипты
+├─ docs/                    # документация по ролям и сценариям
+│  ├─ user/                 # материалы для игроков
+│  ├─ host/                 # self-host, deployment, Linux/nginx
+│  ├─ streaming/            # OBS, overlay, streamer flow
+│  ├─ dev/                  # архитектура, setup, testing, content system, releases
+│  └─ internal/             # QA checklist, заметки, миграции, служебные материалы
+├─ locales/                 # UI-локализация, переводы, интерфейсные тексты
+├─ package.json             # корневые скрипты и workspace-конфигурация
+├─ install.sh               # Linux-установщик и сценарий обновления
+├─ README.md                # главный вход в репозиторий
+├─ MANUAL.md                # общий пользовательский мануал
+└─ AGENTS.md                # обзорная карта проекта и репозитория
 
-## 3. Как запустить локально (Windows/Linux)
-Зависимости:
-- Node.js LTS (в мануале рекомендован 20.x) (`MANUAL.md`).
-- pnpm (workspace-проект, `pnpm@9.12.0`) (`package.json`, `pnpm-lock.yaml`).
+## Общая структура репозитория
 
-Windows (готовые лаунчеры):
-```powershell
-.\run-dev.bat
-.\run-selfhost.bat
-```
-- `run-dev.bat` вызывает `scripts/launchers/run-dev.ps1`, выставляет `PORT=3001`, `BUNKER_SERVE_CLIENT=false`, dev-identity (`scripts/launchers/run-dev.ps1`).
-- `run-selfhost.bat` вызывает `scripts/launchers/run-selfhost.ps1`, собирает проект и запускает `node server/dist/index.js` (`scripts/launchers/run-selfhost.ps1`).
+Ниже перечислены основные верхнеуровневые части проекта и их назначение.
 
-Linux/macOS (готовые скрипты):
-```bash
-./run-dev.sh
-./run-selfhost.sh
-```
-- Скрипты выставляют нужные env для dev/prod режимов (`run-dev.sh`, `run-selfhost.sh`).
+### `client/`
 
-Ручной запуск через pnpm (из корня):
-```bash
-pnpm install
-pnpm dev
-pnpm build
-pnpm start
-pnpm typecheck
-```
-- Реальные скрипты определены в корневом `package.json`.
+Браузерный интерфейс игры.
 
-Переменные окружения:
-- Корень: серверные override-переменные (`.env.example`).
-- Сервер: `HOST`, `PORT`, `TRUST_PROXY`, `PUBLIC_ORIGIN`, `BUNKER_IDENTITY_MODE`, `BUNKER_ENABLE_DEV_SCENARIOS` (`server/.env.example`).
-- Клиент: `VITE_IDENTITY_MODE`, `VITE_WS_URL`, `VITE_API_BASE`, `VITE_ASSET_BASE` (`client/.env.example`).
+Здесь находится всё, что связано с отображением:
+- входа;
+- лобби;
+- игровой комнаты;
+- игроков;
+- карточек;
+- голосования;
+- состояний игры;
+- мобильного и адаптивного поведения;
+- UI для стримерских и зрительских сценариев.
 
-## 4. Как работает сеть и состояние
-Транспорт и формат сообщений:
-- Игровой транспорт — WebSocket; сервер поднимает `WebSocketServer` на том же HTTP-сервере (`server/src/index.ts`).
-- Формат WS-сообщений типизирован и валидируется Zod-схемами (`shared/src/index.ts`: `ClientMessageSchema`, `ServerMessageSchema`).
-- HTTP используется для служебных endpoint'ов: `/api/scenarios`, `/overlay`, `/overlay-control`, `/overlay-control/state`, `/overlay-control/save` (`server/src/index.ts`).
+Если меняется визуальная часть, пользовательский интерфейс или отображение состояния матча, основная точка входа обычно находится здесь.
 
-Где хранится room state и как обновляется:
-- Комнаты живут в памяти процесса: `const rooms = new Map<string, Room>()` (`server/src/index.ts`).
-- Снимок комнаты собирается в `buildRoomState`, рассылается в `broadcastRoomState` (`server/src/index.ts`).
-- Для уменьшения трафика используется top-level patch: `diffTopLevel` и событие `statePatch` (`server/src/index.ts`, `shared/src/index.ts`).
-- Игровой view по игроку формируется сценарием `session.getGameView(playerId)` и отправляется через `sendGameView`/`broadcastGameViews` (`server/src/index.ts`, `scenarios/src/classic.ts`).
+### `server/`
 
-Где валидация входящих действий:
-- Сервер валидирует каждое входящее WS-сообщение через `ClientMessageSchema.safeParse` перед `switch`-обработкой (`server/src/index.ts`).
-- Клиент валидирует входящие серверные WS-сообщения через `ServerMessageSchema.safeParse` (`client/src/wsClient.ts`).
-- Сохранение Overlay Overrides валидируется `OverlayOverridesSchema.safeParse` (`server/src/index.ts`, `shared/src/index.ts`).
+Серверная часть проекта.
 
-## 5. Сценарии
-Как добавить новый сценарий:
-- Создать файл в `scenarios/src` и экспортировать `scenario` типа `ScenarioModule` (`scenarios/src/classic.ts`, `scenarios/src/dev_test.ts`, `shared/src/index.ts`).
+Здесь находится логика:
+- создания и жизненного цикла комнат;
+- подключений;
+- websocket-взаимодействия;
+- синхронизации состояния;
+- хода партии;
+- обработки игровых действий;
+- ролей хоста, игроков, spectator / control и служебных соединений.
 
-Как появляется в списке/регистрации:
-- Лоадер `scenarios/src/index.ts` автоматически читает файлы `*.ts/*.js` в папке `scenarios/src` (кроме `index.*`) и импортирует `mod.scenario`.
-- Сервер фильтрует dev-сценарии по `meta.devOnly` и env `BUNKER_ENABLE_DEV_SCENARIOS`, затем отдаёт список на `GET /api/scenarios` (`server/src/index.ts`).
+Если меняется серверная логика, сетевое поведение или поведение комнаты, основная точка входа обычно находится здесь.
 
-## 6. Клиент (UI)
-Ключевые страницы/роутинг:
-- Роутинг через `react-router-dom`: `/` (Home), `/lobby`, `/game` (`client/src/App.tsx`).
-- Точка входа клиента: `client/src/main.tsx`.
+### `shared/`
 
-Принцип «клиент только рисует и отправляет actions»:
-- Клиент отправляет действия (`startGame`, `revealCard`, `vote`, `applySpecial`, `updateSettings`, и т.д.) через `client.send(...)` (`client/src/App.tsx`).
-- Игровые правила/переходы фаз реализованы в сценариях на сервере (`scenarios/src/classic.ts`, `scenarios/src/dev_test.ts`).
-- Отдельный overlay UI не входит в React-клиент и живёт как статическая страница (`server/public/overlay/overlay.html`, `server/public/overlay/overlay.js`).
+Общие типы, контракты и структуры данных.
 
-## 7. Кодстайл и правила внесения изменений
-TS-правила:
-- Включён `strict: true` и базовые строгие опции в `tsconfig.base.json`.
-- Пакеты расширяют базовый tsconfig (`server/tsconfig.json`, `client/tsconfig.json`, `shared/tsconfig.json`, `scenarios/tsconfig.json`).
+Это слой, который связывает клиент и сервер между собой.
 
-Инструменты форматирования/линта:
-- ESLint/Prettier конфиги не обнаружены (проверено поиском по репозиторию: `rg --files -g "*eslint*" -g "*prettier*"`).
-- Отдельного `lint`-скрипта в `package.json`-файлах нет (проверено: `package.json`, `server/package.json`, `client/package.json`, `shared/package.json`, `scenarios/package.json`).
+Здесь обычно находятся:
+- типы сообщений;
+- payload’ы событий;
+- общие доменные сущности;
+- перечисления;
+- контракты состояния;
+- общие утилиты без привязки к конкретной стороне приложения.
 
-Что нельзя делать:
-- Не переносить игровую логику на клиент: изменения правил/фаз/резолва делаются в `scenarios/src/*` и серверной оркестрации (`server/src/index.ts`), а не в React-компонентах (`client/src/*`).
-- Не менять сетевые payload'ы только в одном месте: любые изменения сообщений синхронно править в `shared/src/index.ts`, сервере и клиенте.
-- Не вставлять HTML в overlay overrides: сервер и UI ожидают plain text + лимиты (`server/src/index.ts`, `shared/src/index.ts`, `server/public/overlay/overlay-control.js`).
+Если меняется формат данных между клиентом и сервером, почти всегда затрагивается `shared/`.
 
-## 8. Частые задачи (recipes)
-Добавить карту/ассет:
-1. Положить файлы в `assets/decks/<deckName>/...` (`assets/README.md`).
-2. Допустимые расширения: `.jpg/.jpeg/.png/.webp` (`server/src/catalog.ts`).
-3. Проверить, что нужный deckName совпадает с тем, что ожидает сценарий (`scenarios/src/classic.ts`, `scenarios/src/world_deck.ts`).
+### `scenarios/`
 
-Добавить действие/ивент:
-1. Добавить тип и Zod-схему в `shared/src/index.ts` (`ScenarioAction`, `ClientMessageSchema`, `ServerMessageSchema`).
-2. Добавить отправку на клиенте (`client/src/App.tsx` или целевой компонент).
-3. Добавить обработку на сервере в `switch (message.type)` (`server/src/index.ts`).
-4. Добавить фактическую игровую логику в `handleAction` сценария (`scenarios/src/classic.ts`/`scenarios/src/dev_test.ts`).
+Сценарии и игровой контент.
 
-Добавить поле в room state без поломки совместимости:
-1. Добавить поле в `RoomState` + `RoomStateSchema` (желательно optional на переходном этапе) (`shared/src/index.ts`).
-2. Наполнить поле в `buildRoomState` (`server/src/index.ts`).
-3. Убедиться, что patch-рассылка `statePatch` остаётся корректной (`server/src/index.ts`: `diffTopLevel`, `broadcastRoomState`).
-4. Обновить клиентские чтения/дефолты (`client/src/App.tsx` и соответствующие страницы).
+Здесь находятся:
+- сценарии;
+- наборы карт;
+- игровые данные;
+- special conditions;
+- контентные сущности и связанная с ними логика.
 
-## 9. Отладка и логирование
-Где смотреть логи:
-- Основные серверные lifecycle-логи: создание/вход/дисконнекты комнат (`server/src/index.ts`, `logRoomLifecycle`).
-- Dev-логи включаются флагами (`BUNKER_DEV_LOGS`, `BUNKER_IDENTITY_MODE=dev_tab`) (`server/src/index.ts`, `scripts/launchers/run-dev.ps1`).
+Это слой, который отвечает за содержимое партии и сценарные правила.
 
-OBS/overlay отладка:
-- При создании комнаты сервер печатает overlay URL и control URL (`printOverlayInfo` в `server/src/index.ts`).
-- Debug overlay режим: параметр `debug=1` у `/overlay` (`server/public/overlay/overlay.js`).
+Если меняются карты, сценарные данные, специальные условия или контентная модель — основная точка входа обычно находится здесь.
 
-Безопасность логов:
-- Токены используются для доступа к overlay/control (`server/src/index.ts`), не добавляйте их в новые debug-логи и внешние отчёты.
+### `tests/`
 
-## 10. Чеклист перед PR/коммитом
-- Проверить типы во всех пакетах:
-```bash
-pnpm typecheck
-```
-- Проверить сборку:
-```bash
-pnpm build
-```
-- Прогнать существующие тесты сценариев:
-```bash
-pnpm -C scenarios test
-```
-- Ручная проверка критичных потоков: создание комнаты, старт игры, reconnect, overlay/view/control (`client/src/App.tsx`, `server/src/index.ts`, `server/public/overlay/*`).
-- Тестов для `client` и `server` не обнаружено (проверено: `rg --files -g "**/*.{spec,test}.{ts,tsx,js}" client server shared scenarios`; найдено только `scenarios/tests/*`).
+Автоматические проверки проекта.
 
-## 11. Приложение: ключевые файлы
+Здесь хранятся тесты, связанные с:
+- критичными игровыми сценариями;
+- websocket-flow;
+- комнатами;
+- подключениями;
+- host transfer;
+- установкой и обновлением, если это входит в текущий набор тестов.
+
+Если нужно понять, что уже проверяется автоматически, или добавить новую важную проверку, начинать стоит здесь.
+
+### `scripts/`
+
+Служебные скрипты.
+
+Здесь находятся скрипты для:
+- сборки;
+- упаковки;
+- подготовки релизов;
+- platform-specific сценариев;
+- вспомогательных технических операций.
+
+Если меняется packaging, release-flow или build-helper логика, точка входа обычно здесь.
+
+### `docs/`
+
+Документация проекта.
+
+Она разделена по аудиториям:
+- `docs/user/` — документы для игроков;
+- `docs/host/` — документы для хостинга и развёртывания;
+- `docs/streaming/` — документы для стриминга, OBS и оверлеев;
+- `docs/dev/` — документы для разработки;
+- `docs/internal/` — внутренние checklist’ы, заметки, миграции и служебные материалы.
+
+### `locales/`
+
+Локализация интерфейса и связанные с ней данные.
+
+Здесь находятся UI-строки и связанные локализационные материалы.
+
+Важно различать:
+- локализацию интерфейса, которая нужна приложению;
+- человекочитаемую документацию в `docs/`, которая нужна людям.
+
+Если меняются тексты интерфейса, переводы и UI-ключи, начинать нужно здесь и в соответствующих клиентских местах.
+
+### Прочие верхнеуровневые файлы
+
+#### `README.md`
+Главный вход в репозиторий. Это короткий роутер по основным сценариям:
+- играть;
+- хостить;
+- стримить;
+- разрабатывать.
+
+#### `MANUAL.md`
+Общий пользовательский мануал. Более длинный и человекочитаемый документ, чем `README.md`.
+
+#### `AGENTS.md`
+Этот файл. Обзорная карта проекта и структуры репозитория.
+
+#### `package.json`
+Корневые скрипты проекта, включая:
+- `dev`
+- `build`
+- `typecheck`
+- `test:integration`
+- `pack:*`
+- `locale:*`
+
+#### `install.sh`
+Linux-установщик и сценарий быстрой установки / обновления для готового self-host / server deployment.
+
+## Как части проекта связаны между собой
+
+В упрощённом виде структура проекта работает так:
+
+- `server/` поднимает игру, управляет комнатой и держит состояние матча;
+- `client/` подключается к серверу и отображает интерфейс игрокам, хосту, зрителям и стримеру;
+- `shared/` задаёт общие контракты между клиентом и сервером;
+- `scenarios/` поставляет игровые данные и сценарную логику;
+- `tests/` проверяет, что критичные части системы корректно работают вместе;
+- `scripts/` собирает и упаковывает релизные артефакты;
+- `docs/` объясняет всё это разным аудиториям;
+- `locales/` обеспечивает локализацию интерфейса и связанных UI-текстов.
+
+## Куда вносить изменения
+
+Ниже — простой ориентир по типам задач.
+
+### Если меняется интерфейс
+Смотри:
+- `client/`
+- `locales/`, если затронуты тексты интерфейса
+
+### Если меняется серверная логика
+Смотри:
+- `server/`
+
+### Если меняются события, payload’ы или общие типы
+Смотри:
+- `shared/`
+- затем соответствующие места в `client/` и `server/`
+
+### Если меняются карты, сценарии, special conditions или игровые данные
+Смотри:
+- `scenarios/`
+
+### Если меняется стримерский режим, overlay или viewer / control flow
+Смотри:
+- `client/`
+- `server/`
+- `docs/streaming/`, если меняется пользовательская логика или инструкция
+
+### Если меняется локализация
+Смотри:
+- `locales/`
+- `client/`
+- при необходимости `docs/user/`, если меняется человекочитаемая версия правил или объяснений
+
+### Если меняется сборка, упаковка или release-flow
+Смотри:
+- `scripts/`
 - `package.json`
-- `pnpm-workspace.yaml`
-- `tsconfig.base.json`
+- `docs/dev/release-process.md`
+
+### Если меняется установка или Linux deployment
+Смотри:
+- `install.sh`
+- `docs/host/self-hosting.md`
+- `docs/host/linux-nginx.md`
+- `docs/host/deployment.md`
+
+### Если меняется документация
+Смотри:
 - `README.md`
 - `MANUAL.md`
-- `.env.example`
-- `server/.env.example`
-- `client/.env.example`
-- `server/src/index.ts`
-- `server/src/catalog.ts`
-- `server/public/overlay/overlay.html`
-- `server/public/overlay/overlay.js`
-- `server/public/overlay/overlay.css`
-- `server/public/overlay/overlay-control.html`
-- `server/public/overlay/overlay-control.js`
-- `server/public/overlay/overlay-control.css`
-- `client/src/main.tsx`
-- `client/src/App.tsx`
-- `client/src/wsClient.ts`
-- `client/src/config.ts`
-- `client/src/storage.ts`
-- `client/src/pages/HomePage.tsx`
-- `client/src/pages/LobbyPage.tsx`
-- `client/src/pages/GamePage.tsx`
-- `shared/src/index.ts`
-- `scenarios/src/index.ts`
-- `scenarios/src/classic.ts`
-- `scenarios/src/dev_test.ts`
-- `scenarios/src/world_deck.ts`
-- `scenarios/src/threat_modifier.ts`
-- `scenarios/tests/dev_test.spec.ts`
-- `scenarios/tests/threat_modifier.spec.ts`
+- соответствующий раздел в `docs/`
+
+## Канонические документы
+
+Ниже перечислены основные документы, которые считаются актуальной основной документацией проекта.
+
+### Корневые документы
+- `README.md`
+- `MANUAL.md`
+- `AGENTS.md`
+
+### Документы для разработки
+- `docs/dev/setup.md`
+- `docs/dev/architecture.md`
+- `docs/dev/testing.md`
+- `docs/dev/content-system.md`
+- `docs/dev/release-process.md`
+
+### Документы для стриминга
+- `docs/streaming/streamer-quick-start.md`
+- `docs/streaming/overlay-guide.md`
+- `docs/streaming/overlay-presets.md`
+
+### Документы для игроков
+- `docs/user/getting-started.md`
+- `docs/user/game-rules.md`
+- `docs/user/faq.md`
+
+### Документы для хостов
+- `docs/host/self-hosting.md`
+- `docs/host/linux-nginx.md`
+- `docs/host/deployment.md`
+
+### Внутренние документы
+- `docs/internal/qa-checklist.md`
+
+## Документы переходного периода и legacy-материалы
+
+В репозитории могут оставаться старые документы, временные заметки, технические миграции и файлы переходного периода.
+
+К ним стоит относиться так:
+- если документ не входит в список канонических выше, он не должен считаться основной точкой правды без отдельной проверки;
+- временные и одноразовые материалы должны постепенно переезжать в `docs/internal/notes/` и `docs/internal/migrations/`;
+- устаревшие документы не должны дублировать новую структуру документации.
+
+Если старый документ противоречит новому разделу `docs/`, ориентироваться нужно на актуальные канонические документы.
+
+## Документация и уровень детализации
+
+Важно различать уровни документации:
+
+### `README.md`
+Короткий вход в проект.
+
+### `MANUAL.md`
+Общий пользовательский мануал и единая понятная инструкция.
+
+### `docs/*`
+Профильные документы по ролям и сценариям.
+
+### `AGENTS.md`
+Обзорная карта репозитория и структуры проекта.
+
+## Практический принцип работы с репозиторием
+
+Перед изменением чего-либо полезно сначала определить тип задачи:
+
+- визуальная правка;
+- серверная правка;
+- изменение контракта;
+- изменение контента;
+- изменение локализации;
+- изменение стримерского сценария;
+- изменение установки или deployment;
+- изменение документации.
+
+После этого уже выбирать нужную часть проекта, а не искать вслепую по всему репозиторию.

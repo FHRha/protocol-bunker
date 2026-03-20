@@ -1,121 +1,121 @@
 {
-  "Особые условия/БУДЬ ДРУГОМ.jpg": {
+  "Special/special.bud-drugom.png": {
     "title": "Be a Friend",
     "text": "The chosen player cannot vote against you until the end of the game."
   },
-  "Особые условия/ВЗЯЛ С СОБОЙ.jpg": {
+  "Special/special.vzyal-s-soboy.png": {
     "title": "Took It Along",
     "text": "Play this card only if you are eliminated. While everyone was distracted, something disappeared from the bunker. Take any revealed bunker card — it now belongs to the eliminated players."
   },
-  "Особые условия/ВКЛЮЧИЛ СВЕТ.jpg": {
+  "Special/special.vklyuchil-svet.png": {
     "title": "Turned On the Lights",
     "text": "Replace any revealed bunker card with a random one from the deck."
   },
-  "Особые условия/ГРОМКИЙ ГОЛОС.jpg": {
+  "Special/special.gromkiy-golos.png": {
     "title": "Loud Voice",
     "text": "Your vote counts as two votes in this voting round."
   },
-  "Особые условия/ДАВАЙТЕ НА ЧИСТОТУ БАГАЖА.jpg": {
+  "Special/special.davayte-na-chistotu-bagazha.png": {
     "title": "Let's Clear Up the Baggage",
     "text": "Collect all revealed baggage cards from non-eliminated players, shuffle them, and redeal them."
   },
-  "Особые условия/ДАВАЙТЕ НА ЧИСТОТУ БИОЛОГИЯ.jpg": {
+  "Special/special.davayte-na-chistotu-biologiya.png": {
     "title": "Let's Clear Up Biology",
     "text": "Collect all revealed biology cards from non-eliminated players, shuffle them, and redeal them."
   },
-  "Особые условия/ДАВАЙТЕ НА ЧИСТОТУ ЗДОРОВЬЯ.jpg": {
+  "Special/special.davayte-na-chistotu-zdorovya.png": {
     "title": "Let's Clear Up Health",
     "text": "Collect all revealed health cards from non-eliminated players, shuffle them, and redeal them."
   },
-  "Особые условия/ДАВАЙТЕ НА ЧИСТОТУ ФАКТОВ.jpg": {
+  "Special/special.davayte-na-chistotu-faktov.png": {
     "title": "Let's Clear Up the Facts",
     "text": "Collect all revealed fact cards from non-eliminated players, shuffle them, and redeal them."
   },
-  "Особые условия/ДАВАЙТЕ НА ЧИСТОТУ ХОББИ.jpg": {
+  "Special/special.davayte-na-chistotu-hobbi.png": {
     "title": "Let's Clear Up Hobbies",
     "text": "Collect all revealed hobby cards from non-eliminated players, shuffle them, and redeal them."
   },
-  "Особые условия/ДИВЕРСИЯ.jpg": {
+  "Special/special.diversiya.png": {
     "title": "Sabotage",
     "text": "Play this card only if you are eliminated. While everyone was distracted, someone got into the bunker. Discard any revealed bunker card."
   },
-  "Особые условия/ДИСКРЕДИТАЦИЯ.jpg": {
+  "Special/special.diskreditatsiya.png": {
     "title": "Discredit",
     "text": "The chosen player's vote does not count in this voting round."
   },
-  "Особые условия/ЗАЩИТИ ИГРОКА СЛЕВА.jpg": {
+  "Special/special.zaschiti-igroka-sleva.png": {
     "title": "Protect the Player on the Left",
     "text": "Keep this secret. If the nearest player on your left is eliminated, next time you must vote against yourself."
   },
-  "Особые условия/ЗАЩИТИ ИГРОКА СПРАВА.jpg": {
+  "Special/special.zaschiti-igroka-sprava.png": {
     "title": "Protect the Player on the Right",
     "text": "Keep this secret. If the nearest player on your right is eliminated, next time you must vote against yourself."
   },
-  "Особые условия/ЗАЩИТИ МЛАДШЕГО.jpg": {
+  "Special/special.zaschiti-mladshego.png": {
     "title": "Protect the Youngest",
     "text": "Keep this secret. If the youngest player is eliminated (among those whose age is revealed), next time you must vote against yourself."
   },
-  "Особые условия/ЗАЩИТИ СМЕЛОГО.jpg": {
+  "Special/special.zaschiti-smelogo.png": {
     "title": "Protect the Brave One",
     "text": "Keep this secret. If the player who revealed health first is eliminated, next time you must vote against yourself."
   },
-  "Особые условия/ЗАЩИТИ СТАРШЕГО.jpg": {
+  "Special/special.zaschiti-starshego.png": {
     "title": "Protect the Oldest",
     "text": "Keep this secret. If the oldest player is eliminated (among those whose age is revealed), next time you must vote against yourself."
   },
-  "Особые условия/КОМПРОМАТ.jpg": {
+  "Special/special.kompromat.png": {
     "title": "Compromising Evidence",
     "text": "Votes against the chosen player are doubled in this voting round, but you do not vote yourself. (your vote is canceled)"
   },
-  "Особые условия/МНЕ НУЖНЕЕ.jpg": {
+  "Special/special.mne-nuzhnee.png": {
     "title": "I Need It More",
     "text": "Take a baggage card from any player. The affected player draws 1 more special condition card from the deck."
   },
-  "Особые условия/МОЛЧАНИЕ.jpg": {
+  "Special/special.molchanie.png": {
     "title": "Silence",
     "text": "No one may speak for the rest of this round until the vote. Gestures and pantomime are allowed."
   },
-  "Особые условия/ОБМЕН КАРТ БАГАЖ.jpg": {
+  "Special/special.obmen-kart-bagazh.png": {
     "title": "Swap Baggage Cards",
     "text": "Swap revealed “Baggage” cards with the nearest player on your left or right."
   },
-  "Особые условия/ОБМЕН КАРТ БИОЛОГИЯ.jpg": {
+  "Special/special.obmen-kart-biologiya.png": {
     "title": "Swap Biology Cards",
     "text": "Swap revealed “Biology” cards with the nearest player on your left or right."
   },
-  "Особые условия/ОБМЕН КАРТ ЗДОРОВЬЕ.jpg": {
+  "Special/special.obmen-kart-zdorove.png": {
     "title": "Swap Health Cards",
     "text": "Swap revealed “Health” cards with the nearest player on your left or right."
   },
-  "Особые условия/ОБМЕН КАРТ ФАКТОВ.jpg": {
+  "Special/special.obmen-kart-faktov.png": {
     "title": "Swap Fact Cards",
     "text": "Swap revealed “Facts” cards with the nearest player on your left or right."
   },
-  "Особые условия/ОБМЕН КАРТ ХОББИ.jpg": {
+  "Special/special.obmen-kart-hobbi.png": {
     "title": "Swap Hobby Cards",
     "text": "Swap revealed “Hobby” cards with the nearest player on your left or right."
   },
-  "Особые условия/ПЛАН Б.jpg": {
+  "Special/special.plan-b.png": {
     "title": "Plan B",
     "text": "Everyone must vote again, choosing a different candidate."
   },
-  "Особые условия/ПРОСРОЧЕННЫЕ ТАБЛЕТКИ.jpg": {
+  "Special/special.prosrochennye-tabletki.png": {
     "title": "Expired Pills",
     "text": "Replace any player's revealed health card with a random one from the deck."
   },
-  "Особые условия/ПРЯМОЙ ВОПРОС.jpg": {
+  "Special/special.pryamoy-vopros.png": {
     "title": "Direct Question",
     "text": "Choose a card type. Until the end of the round, on their turn everyone must reveal a card of that type if it is not already revealed."
   },
-  "Особые условия/ТАЙНАЯ УГРОЗА.jpg": {
+  "Special/special.taynaya-ugroza.png": {
     "title": "Secret Threat",
     "text": "Play this card only if you are eliminated. A gang of marauders has learned about the bunker. In the finale this card becomes an additional threat for those inside the bunker: they must defend themselves or negotiate."
   },
-  "Особые условия/ФЕЙКОВЫЙ ДИПЛОМ.jpg": {
+  "Special/special.feykovyy-diplom.png": {
     "title": "Fake Diploma",
     "text": "Replace any player's revealed profession card with a random one from the deck."
   },
-  "Особые условия/ХОРОШИЕ ТАБЛЕТКИ.jpg": {
+  "Special/special.horoshie-tabletki.png": {
     "title": "Good Pills",
     "text": "Discard any player's revealed health card."
   }

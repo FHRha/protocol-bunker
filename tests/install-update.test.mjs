@@ -95,11 +95,11 @@ for ((i=0; i<\${#args[@]}; i++)); do
   fi
 done
 if [[ "$url" == *"/releases/latest" ]]; then
-  printf '{"tag_name":"0.2.5"}'
+  printf '{"tag_name":"0.2.6"}'
   exit 0
 fi
 if [[ "$url" == *"/releases/tags/"* ]]; then
-  printf '{"tag_name":"0.2.5"}'
+  printf '{"tag_name":"0.2.6"}'
   exit 0
 fi
 if [[ "$url" == *"/releases/download/"* ]]; then
@@ -134,7 +134,7 @@ exit 1
     [
       mockedInstall,
       "--version",
-      "0.2.5",
+      "0.2.6",
       "--edition",
       "server",
       "--arch",
@@ -161,7 +161,7 @@ exit 1
   assert.match(launcher, /--quality "\$QUALITY"/);
   assert.match(launcher, /--service-scope "\$SERVICE_SCOPE"/);
 
-  await run("bash", [launcherPath, "--update", "v0.2.5"], { env: commonEnv, cwd: root });
+  await run("bash", [launcherPath, "--update", "v0.2.6"], { env: commonEnv, cwd: root });
   const envAfterUpdate = await readFile(portableEnvPath, "utf8");
   assert.match(envAfterUpdate, /^PORT=9999$/m);
   assert.match(envAfterUpdate, /^CUSTOM_KEEP=yes$/m);

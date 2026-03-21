@@ -4,8 +4,7 @@ import path from "node:path";
 const ROOT = process.cwd();
 const REPORT_PATH = path.join(ROOT, "docs", "TEMP-localization-open-items.txt");
 
-const uiRuPath = path.join(ROOT, "locales", "ui", "ru.json");
-const uiEnPath = path.join(ROOT, "locales", "ui", "en.json");
+const uiRoot = path.join(ROOT, "locales", "ui");
 const cardsRuPath = path.join(ROOT, "locales", "cards", "ru.json");
 const cardsEnPath = path.join(ROOT, "locales", "cards", "en.json");
 const serverRuPath = path.join(ROOT, "locales", "server", "ru.json");
@@ -22,6 +21,28 @@ const strictMode = process.argv.includes("--strict");
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function readLocaleTree(rootDir, locale) {
+  const merged = {};
+  if (!fs.existsSync(rootDir)) return merged;
+
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || entry.name !== `${locale}.json`) continue;
+      const parsed = readJson(fullPath);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      Object.assign(merged, parsed);
+    }
+  };
+
+  walk(rootDir);
+  return merged;
 }
 
 function readText(filePath) {
@@ -148,7 +169,7 @@ function pushDictionaryAudit(lines, title, diff, options = {}) {
   };
 }
 
-const uiDiff = diffDictionaries(readJson(uiEnPath), readJson(uiRuPath));
+const uiDiff = diffDictionaries(readLocaleTree(uiRoot, "en"), readLocaleTree(uiRoot, "ru"));
 const cardsDiff = diffDictionaries(readJson(cardsEnPath), readJson(cardsRuPath));
 const serverDiff = diffDictionaries(readJson(serverRuPath), readJson(serverEnPath));
 const classicScenarioDiff = diffDictionaries(readJson(classicScenarioEnPath), readJson(classicScenarioRuPath));

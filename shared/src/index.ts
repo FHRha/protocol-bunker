@@ -78,6 +78,14 @@ export interface OverlayTagView {
   value: string;
 }
 
+export interface OverlayBiologyView {
+  kind: "traits" | "special";
+  cardId?: string;
+  specialType?: string;
+  shortLabel?: string;
+  fullLabel?: string;
+}
+
 export interface OverlayCategoryView {
   key: string;
   label: string;
@@ -146,6 +154,7 @@ export interface OverlayPlayerView {
   nickname: string;
   connected?: boolean;
   alive: boolean;
+  biology?: OverlayBiologyView;
   tags: {
     sex: OverlayTagView;
     age: OverlayTagView;
@@ -239,6 +248,7 @@ export interface CardRef {
   deck: string;
   instanceId?: string;
   labelShort?: string;
+  imgUrl?: string;
   secret?: boolean;
   missing?: boolean;
 }
@@ -288,6 +298,7 @@ export interface YouCategoryCard {
   instanceId: string;
   labelShort: string;
   revealed: boolean;
+  imgUrl?: string;
 }
 
 export interface PlayerSummary {
@@ -654,6 +665,14 @@ export const OverlayTagViewSchema = z.object({
   value: z.string(),
 });
 
+export const OverlayBiologyViewSchema = z.object({
+  kind: z.union([z.literal("traits"), z.literal("special")]),
+  cardId: z.string().optional(),
+  specialType: z.string().optional(),
+  shortLabel: z.string().optional(),
+  fullLabel: z.string().optional(),
+});
+
 export const OverlayCategoryViewSchema = z.object({
   key: z.string(),
   label: z.string(),
@@ -722,6 +741,7 @@ export const OverlayPlayerViewSchema = z.object({
   nickname: z.string(),
   connected: z.boolean().optional(),
   alive: z.boolean(),
+  biology: OverlayBiologyViewSchema.optional(),
   tags: z.object({
     sex: OverlayTagViewSchema,
     age: OverlayTagViewSchema,
@@ -797,6 +817,7 @@ export const CardRefSchema = z.object({
   deck: z.string(),
   instanceId: z.string().optional(),
   labelShort: z.string().optional(),
+  imgUrl: z.string().optional(),
   secret: z.boolean().optional(),
   missing: z.boolean().optional(),
 });
@@ -862,6 +883,7 @@ export const YouCategoryCardSchema = z.object({
   instanceId: z.string(),
   labelShort: z.string(),
   revealed: z.boolean(),
+  imgUrl: z.string().optional(),
 });
 
 export const PublicCategorySlotSchema = z.object({
@@ -1233,4 +1255,3 @@ export { formatLabelShort } from "./labelFormat.js";
 export { getRulesetForPlayerCount, RULESET_PRESET_COUNTS, RULESET_TABLE } from "./ruleset.js";
 export { buildLinkSet, normalizeBase, LINK_PATHS } from "./urlBuilder.js";
 export type { BuildLinkSetInput, BuiltLinkSet, UrlPair } from "./urlBuilder.js";
-

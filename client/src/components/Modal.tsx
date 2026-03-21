@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useUiLocaleNamespace } from "../localization";
 
 interface ModalProps {
   open: boolean;
@@ -21,6 +22,7 @@ export default function Modal({
 }: ModalProps) {
   const [mounted, setMounted] = useState(open);
   const reduceMotion = useReducedMotion();
+  const text = useUiLocaleNamespace("common");
 
   useEffect(() => {
     if (open) {
@@ -106,7 +108,7 @@ export default function Modal({
             <div className="modal-header">
               {title ? <h3>{title}</h3> : null}
               {dismissible ? (
-                <button className="icon-button" onClick={onClose} aria-label="Close">
+                <button className="icon-button" onClick={onClose} aria-label={text.t("closeButton")}>
                   {"\u00D7"}
                 </button>
               ) : null}
@@ -118,3 +120,5 @@ export default function Modal({
     </AnimatePresence>
   );
 }
+
+

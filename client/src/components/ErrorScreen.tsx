@@ -5,7 +5,6 @@ interface ErrorScreenProps {
   canRetry: boolean;
   reconnecting?: boolean;
   onRetry: () => void;
-  onExitToMenu: () => void;
 }
 
 export default function ErrorScreen({
@@ -13,7 +12,6 @@ export default function ErrorScreen({
   canRetry,
   reconnecting = false,
   onRetry,
-  onExitToMenu,
 }: ErrorScreenProps) {
   const text = useUiLocaleNamespace("reconnect", { fallbacks: ["common"] });
 
@@ -29,9 +27,6 @@ export default function ErrorScreen({
               {text.t("retryButton")}
             </button>
           ) : null}
-          <button className="ghost" onClick={onExitToMenu}>
-            {text.t("errorScreenExitToMenu")}
-          </button>
         </div>
       </div>
     </div>

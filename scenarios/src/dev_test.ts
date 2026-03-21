@@ -42,17 +42,17 @@ const FACTS_LABELS: Record<(typeof FACTS_SLOTS)[number], string> = {
   facts2: tDev("category.fact2"),
 };
 const MAIN_DECKS = [...CORE_DECKS, FACTS_DECK] as const;
-const SPECIAL_CATEGORY = tDev("deck.special");
+const SPECIAL_CATEGORY = "special";
 const CATEGORY_ORDER = [
-  tDev("deck.profession"),
-  tDev("deck.health"),
-  tDev("deck.hobby"),
-  tDev("deck.baggage"),
-  FACTS_LABELS.facts1,
-  FACTS_LABELS.facts2,
-  tDev("deck.biology"),
+  "profession",
+  "health",
+  "hobby",
+  "baggage",
+  "facts1",
+  "facts2",
+  "biology",
   SPECIAL_CATEGORY,
-];
+] as const;
 const BUNKER_CAPACITY = 5;
 const RESOLUTION_DELAY_MS = 2000;
 const DEV_SHOW_ALL_PUBLIC = true;
@@ -2369,6 +2369,7 @@ export const scenario: ScenarioModule = {
       deck: card.deck,
       instanceId: card.instanceId,
       labelShort: card.labelShort,
+      imgUrl: card.id ? `/assets/${card.id}` : undefined,
       missing: card.missing,
     });
 
@@ -2377,6 +2378,7 @@ export const scenario: ScenarioModule = {
       deck: card.deck,
       instanceId: card.instanceId,
       labelShort: card.labelShort,
+      imgUrl: card.id ? `/assets/${card.id}` : undefined,
       missing: card.missing,
       revealed: card.revealed,
     });
@@ -2410,7 +2412,9 @@ export const scenario: ScenarioModule = {
             cards,
           };
         }
-        const deckInfo = CATEGORY_LABEL_TO_DECK[category];
+        const deck = CATEGORY_KEY_TO_DECK[category];
+        const slotKey = CATEGORY_KEY_TO_SLOT[category];
+        const deckInfo = deck ? { deck, slotKey } : undefined;
         if (!deckInfo) {
           return { category, status: "hidden", cards: [] };
         }
@@ -2437,7 +2441,9 @@ export const scenario: ScenarioModule = {
 
     const buildYouCategories = (player: PlayerState): YouCategorySlot[] => {
       return CATEGORY_ORDER.filter((category) => category !== SPECIAL_CATEGORY).map((category) => {
-        const deckInfo = CATEGORY_LABEL_TO_DECK[category];
+        const deck = CATEGORY_KEY_TO_DECK[category];
+        const slotKey = CATEGORY_KEY_TO_SLOT[category];
+        const deckInfo = deck ? { deck, slotKey } : undefined;
         const cards = deckInfo
           ? player.hand
               .filter(

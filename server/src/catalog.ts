@@ -48,8 +48,13 @@ type DeckSource = {
 };
 
 const normalizeKey = (value: string) => value.trim().toLowerCase();
+const localeDictionaryCache = new Map<string, DeckLocalesFile>();
 
 const readLocaleDictionary = (assetsRoot: string, locale: string): DeckLocalesFile => {
+  const cacheKey = `${path.resolve(assetsRoot)}::${locale}`;
+  const cached = localeDictionaryCache.get(cacheKey);
+  if (cached) return cached;
+
   // Try multiple paths to find locale dictionary
   const paths = [
     // Primary: assetsRoot/../locales/cards/{locale}.json (for portable: app/assets/../locales = app/locales)
@@ -59,28 +64,27 @@ const readLocaleDictionary = (assetsRoot: string, locale: string): DeckLocalesFi
     // Fallback 2: legacy path in decks folder
     path.join(assetsRoot, "decks", "locales", `${locale}.json`),
   ];
-  
-  console.log(`[readLocaleDictionary] assetsRoot=${assetsRoot}, locale=${locale}`);
-  
+
   for (const filePath of paths) {
     const resolved = path.resolve(filePath);
-    console.log(`[readLocaleDictionary] checking ${resolved}, exists=${fs.existsSync(resolved)}`);
     if (fs.existsSync(resolved)) {
       try {
         const raw = fs.readFileSync(resolved, "utf8");
         const parsed = JSON.parse(raw) as DeckLocalesFile;
         const decks = parsed.decks && typeof parsed.decks === "object" ? parsed.decks : undefined;
         const cards = parsed.cards && typeof parsed.cards === "object" ? parsed.cards : undefined;
-        console.log(`[readLocaleDictionary] SUCCESS: cards=${cards ? Object.keys(cards).length : 0} keys`);
-        return { decks, cards };
+        const result = { decks, cards };
+        localeDictionaryCache.set(cacheKey, result);
+        return result;
       } catch (error) {
         console.warn(`[assets] failed to read locale dictionary ${resolved}:`, error);
       }
     }
   }
-  
-  console.log(`[readLocaleDictionary] NO FILE FOUND, returning empty`);
-  return {};
+
+  const empty: DeckLocalesFile = {};
+  localeDictionaryCache.set(cacheKey, empty);
+  return empty;
 };
 
 // Simple Cyrillic to Latin transliteration for card IDs
@@ -173,10 +177,8 @@ export function buildAssetCatalog(assetsRoot: string): AssetCatalog {
   const source = selectDeckSourceRoot(decksRoot);
   // Always read locale dictionary for card labels, even in non-localized mode
   const localeDictionary = readLocaleDictionary(assetsRoot, source.locale);
-  const baseLocaleDictionary = readLocaleDictionary(assetsRoot, "en");
-  
-  console.log(`[catalog] assetsRoot=${assetsRoot}, source.locale=${source.locale}, source.localized=${source.localized}`);
-  console.log(`[catalog] localeDictionary.cards keys=${localeDictionary.cards ? Object.keys(localeDictionary.cards).length : 0}`);
+  const baseLocaleDictionary =
+    source.locale === "en" ? localeDictionary : readLocaleDictionary(assetsRoot, "en");
   
   const deckDirs = fs.readdirSync(source.root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
 
@@ -230,5 +232,4 @@ export function buildAssetCatalog(assetsRoot: string): AssetCatalog {
 
   return { decks };
 }
-
 

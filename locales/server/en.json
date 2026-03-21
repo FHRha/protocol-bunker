@@ -82,5 +82,7 @@
   "info.playerDisconnectedGrace": "Player {playerName} disconnected. {remaining} left before removal.",
   "info.playerLeftBunker": "Player {playerName} left the bunker.",
   "info.playerMissingGrace": "Player {playerName} is still absent. {remaining} left before removal.",
-  "info.playerReconnected": "Player {playerName} reconnected."
+  "info.playerReconnected": "Player {playerName} reconnected.",
+  "info.playerFallbackName": "player",
+  "info.botDefaultName": "Bot"
 }

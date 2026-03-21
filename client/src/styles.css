@@ -244,6 +244,21 @@ body {
   gap: 8px;
 }
 
+.topbar-uiTools,
+.topbar-actionButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-uiTools {
+  flex-shrink: 0;
+}
+
+.topbar-actionButtons {
+  flex-wrap: nowrap;
+}
+
 .topbar-popover {
   position: relative;
   display: inline-flex;
@@ -272,6 +287,7 @@ body {
   top: calc(100% + 8px);
   right: 0;
   min-width: 220px;
+  max-width: min(360px, calc(100vw - 24px));
   padding: 10px;
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -531,26 +547,47 @@ body {
 
 @media (max-width: 900px) {
   .topbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
+    align-items: start;
   }
   .topbar-left,
-  .topbar-center,
-  .topbar-rightArea,
   .topbar-actions {
+    justify-self: start;
+  }
+  .topbar-left {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .topbar-center {
+    grid-column: 1 / -1;
+    grid-row: 3;
     justify-self: start;
   }
   .topbar-rightArea {
-    width: 100%;
-    display: grid;
-    gap: 8px;
+    display: contents;
   }
   .topbar-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
     flex-wrap: wrap;
+    justify-self: stretch;
   }
   .topbar-rightStack {
-    justify-self: start;
-    display: inline-flex;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+  }
+  .topbar-actionButtons {
+    justify-content: flex-end;
     flex-wrap: wrap;
   }
   .topbar-room {
@@ -3243,20 +3280,20 @@ button.ghost {
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    padding-bottom: 12px;
     display: block;
     touch-action: pan-y;
     overscroll-behavior: contain;
   }
 
   .mobile-dossier-footer {
-    position: sticky;
-    bottom: 0;
+    flex: 0 0 auto;
     padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
     border-top: none;
     display: flex;
     justify-content: center;
-    background: transparent;
+    background:
+      linear-gradient(180deg, rgba(18, 24, 20, 0) 0%, color-mix(in srgb, var(--panel) 92%, transparent) 28%, var(--panel) 100%);
   }
 
   .mobile-dossier-footer .primary {
@@ -4701,23 +4738,22 @@ body.viewport-compact .selected-panel {
   }
 
   .topbar-rightArea {
-    width: 100%;
-    justify-self: stretch;
-    display: grid;
-    gap: 8px;
+    display: contents;
   }
 
   .topbar-rightStack {
     position: static;
-    display: grid;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 8px;
-    width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    justify-self: stretch;
+    width: auto;
+    justify-self: end;
+    max-width: min(160px, 42vw);
   }
 
   .topbar-rightStack > * {
-    width: 100%;
+    width: auto;
     min-width: 0;
   }
 
@@ -4733,7 +4769,11 @@ body.viewport-compact .selected-panel {
   .topbar-room {
     width: 100%;
     justify-content: flex-start;
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .topbar-room > span {
+    white-space: normal;
   }
 
   .topbar-room-controls {
@@ -4742,12 +4782,31 @@ body.viewport-compact .selected-panel {
     flex-wrap: wrap;
   }
 
+  .topbar-actionButtons {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    max-width: min(160px, 42vw);
+  }
+
   .topbar-rightStack .button-small,
-  .topbar-rightStack .topbar-icon-toggle,
   .topbar-rightStack .topbar-exit-button {
     white-space: normal;
     line-height: 1.2;
     min-height: 42px;
+  }
+
+  .topbar-popover-menu {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 72px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100dvh - 88px - env(safe-area-inset-bottom));
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .rulesButton {

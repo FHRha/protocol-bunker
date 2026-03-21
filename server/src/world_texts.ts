@@ -24,7 +24,7 @@ function normalizeCardKey(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/ё/g, "е")
+    .replace(/\u0451/g, "\u0435")
     .replace(/[\s_]+/g, "-")
     .replace(/-+/g, "-");
 }

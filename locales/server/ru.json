@@ -82,5 +82,7 @@
   "info.playerDisconnectedGrace": "Игрок {playerName} отключился. До удаления осталось {remaining}.",
   "info.playerLeftBunker": "Игрок {playerName} покинул бункер.",
   "info.playerMissingGrace": "Игрок {playerName} всё ещё отсутствует. До удаления осталось {remaining}.",
-  "info.playerReconnected": "Игрок {playerName} переподключился."
+  "info.playerReconnected": "Игрок {playerName} переподключился.",
+  "info.playerFallbackName": "?????",
+  "info.botDefaultName": "???"
 }

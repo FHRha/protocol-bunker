@@ -23,10 +23,10 @@ pnpm run pack:win-exe
 ```
 
 Результат:
-- `artifacts/win-exe/protocol-bunker-win-x64-exe-setup-v0.2.5.exe`
+- `artifacts/win-exe/protocol-bunker-win-x64-exe-setup-v0.2.6.exe`
 - `artifacts/win-exe/Protocol-Bunker/ProtocolBunker.exe`
 - `artifacts/win-exe/Protocol-Bunker/icons/`
-- `artifacts/win-exe/protocol-bunker-win-x64-exe-v0.2.5.zip`
+- `artifacts/win-exe/protocol-bunker-win-x64-exe-v0.2.6.zip`
 
 Быстрая пересборка (без JS build):
 

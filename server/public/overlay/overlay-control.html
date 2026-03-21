@@ -20,7 +20,7 @@
             <span id="controlLocaleLabel">Язык</span>
             <select id="controlLocaleSelect">
               <option value="ru" data-locale="control.locale.ru">Русский</option>
-              <option value="en">English (Beta)</option>
+              <option value="en" data-locale="control.locale.en">English (Beta)</option>
             </select>
           </label>
           <span id="dirtyBadge" class="badge" data-locale="control.dirty.clean">Синхронизировано</span>
@@ -426,14 +426,50 @@
                 <span data-locale="control.obs.top">Top (160-320)</span>
                 <input id="urlParamTop" type="number" min="160" max="320" step="1" placeholder="200" />
               </label>
-              <label class="field">
-                <span data-locale="control.obs.debug">Debug</span>
-                <select id="urlParamDebug">
-                  <option value="">off</option>
-                  <option value="1">on (debug=1)</option>
+                <label class="field">
+                  <span data-locale="control.obs.topBunkerAlign">Вертикальное выравнивание: Бункер</span>
+                  <select id="urlParamTopBunkerAlign">
+                    <option value="center" data-locale="control.option.middle">По центру</option>
+                    <option value="top" data-locale="control.option.top">Сверху</option>
+                    <option value="bottom" data-locale="control.option.bottom">Снизу</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-locale="control.obs.topCatastropheAlign">Вертикальное выравнивание: Катастрофа</span>
+                <select id="urlParamTopCatastropheAlign">
+                  <option value="center" data-locale="control.option.middle">По центру</option>
+                  <option value="top" data-locale="control.option.top">Сверху</option>
+                  <option value="bottom" data-locale="control.option.bottom">Снизу</option>
                 </select>
               </label>
-            </div>
+                    <label class="field">
+                      <span data-locale="control.obs.topThreatsAlign">Вертикальное выравнивание: Угрозы</span>
+                      <select id="urlParamTopThreatsAlign">
+                        <option value="center" data-locale="control.option.middle">По центру</option>
+                        <option value="top" data-locale="control.option.top">Сверху</option>
+                        <option value="bottom" data-locale="control.option.bottom">Снизу</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span data-locale="control.obs.debug">Debug</span>
+                      <select id="urlParamDebug">
+                      <option value="">off</option>
+                      <option value="1">on (debug=1)</option>
+                    </select>
+                    </label>
+                    <label class="field">
+                      <span data-locale="control.obs.topBunkerScale">Text scale: Bunker (0.7-2.0)</span>
+                      <input id="urlParamTopBunkerScale" type="number" min="0.7" max="2.0" step="0.05" placeholder="1.0" />
+                    </label>
+                    <label class="field">
+                      <span data-locale="control.obs.topCatastropheScale">Text scale: Catastrophe (0.7-2.0)</span>
+                      <input id="urlParamTopCatastropheScale" type="number" min="0.7" max="2.0" step="0.05" placeholder="1.0" />
+                    </label>
+                    <label class="field">
+                      <span data-locale="control.obs.topThreatsScale">Text scale: Threats (0.7-2.0)</span>
+                      <input id="urlParamTopThreatsScale" type="number" min="0.7" max="2.0" step="0.05" placeholder="1.0" />
+                    </label>
+              </div>
             <label class="field">
               <span data-locale="control.obs.readyUrl">Готовый URL для OBS</span>
               <input id="overlayUrlPresetValue" type="text" readonly />
@@ -560,7 +596,7 @@
                 <button id="applyCategoriesJsonBtn" type="button" class="btn" data-locale="control.playerEditor.applyJson">Применить JSON</button>
               </div>
               <label class="field">
-                <span>categories JSON</span>
+                <span data-locale="control.playerEditor.categoriesJsonLabel">categories JSON</span>
                 <textarea id="playerCategoriesJson" rows="8" placeholder="{\n  \"profession\": \"...\"\n}"></textarea>
               </label>
             </details>
@@ -584,7 +620,7 @@
                 <button id="applyExtraTextsJsonBtn" type="button" class="btn" data-locale="control.extraTexts.applyJson">Применить JSON</button>
               </div>
               <label class="field">
-                <span>extraTexts JSON</span>
+                <span data-locale="control.extraTexts.jsonLabel">extraTexts JSON</span>
                 <textarea id="extraTextsJson" rows="8"></textarea>
               </label>
             </details>

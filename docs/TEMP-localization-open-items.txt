@@ -1,0 +1,216 @@
+# TEMP: localization open items
+
+Generated: 2026-03-21T09:40:07.024Z
+
+## UI (en -> ru)
+- keys en: 462
+- keys ru: 462
+- missing in ru: 0
+- missing in en: 0
+- ru equals en: 2
+- en with cyrillic: 0
+- en suspicious placeholders: 0
+
+### UI ru equals en
+- hostMenuVoteTotalRow = {name}: {count}
+- rulesPresetOptions = 4,5,6,7,8,9,10,11,12,13,14,15,16
+
+## Cards (en -> ru)
+- keys en: 352
+- keys ru: 352
+- missing in ru: 0
+- missing in en: 0
+- en with cyrillic value: 0
+- en with cyrillic key: 0
+
+## Server error keys (index.ts -> locales/server)
+- used keys in index.ts: 61
+- keys in locales/server/ru.json: 77
+- keys in locales/server/en.json: 77
+- missing in server ru: 0
+- missing in server en: 0
+- unused in index.ts: 16
+- en with cyrillic value: 0
+- en suspicious placeholders: 0
+
+### Server keys unused in index.ts
+- error.control.actorPlayerRequired
+- error.control.bunkerOutcomeInvalid
+- error.control.cardIdRequired
+- error.control.kickTargetRequired
+- error.control.markLeftBunkerTargetRequired
+- error.control.playerCardRequired
+- error.control.specialInstanceIdRequired
+- error.control.specialSelectionRequired
+- error.control.threatIndexInvalid
+- error.control.unsupportedScenarioAction
+- error.control.voteTargetRequired
+- error.control.worldCardIndexInvalid
+- error.control.worldCountInvalid
+- error.control.worldIndexRequiredForBunkerThreat
+- error.control.worldKindBunkerThreatDisasterRequired
+- error.control.worldKindBunkerThreatRequired
+
+## Scenario classic (classic.ts -> locales/scenario/classic)
+- keys in classic.ts: 161
+- keys in locales/scenario/classic/en.json: 179
+- keys in locales/scenario/classic/ru.json: 179
+- missing in classic en: 0
+- missing in classic ru: 0
+- missing in classic en dictionary: 0
+- unused in classic en: 18
+- classic en with cyrillic: 0
+- classic en suspicious placeholders: 0
+
+### Classic scenario entries unused in code
+- card.noCard
+- category.fact1
+- category.fact2
+- classic.auto.016
+- classic.auto.036
+- classic.auto.039
+- deck.baggage
+- deck.biology
+- deck.bunker
+- deck.fact
+- deck.health
+- deck.hobby
+- deck.profession
+- deck.special
+- meta.description
+- meta.name
+- special.none.text
+- special.none.title
+
+## Scenario dev_test (dev_test.ts -> locales/scenario/dev_test)
+- keys in dev_test.ts: 49
+- keys in locales/scenario/dev_test/en.json: 169
+- keys in locales/scenario/dev_test/ru.json: 169
+- missing in dev_test en: 0
+- missing in dev_test ru: 0
+- missing in dev_test en dictionary: 0
+- unused in dev_test en: 120
+- dev_test en with cyrillic: 0
+- dev_test en suspicious placeholders: 0
+
+### Dev_test scenario entries unused in code
+- bot.prefix
+- card.noCard
+- category.fact1
+- category.fact2
+- deck.baggage
+- deck.biology
+- deck.bunker
+- deck.fact
+- deck.health
+- deck.hobby
+- deck.profession
+- deck.special
+- error.action.unknown
+- error.baggage.pickSpecific
+- error.bunker.invalid
+- error.bunker.noReplacement
+- error.bunker.noRevealed
+- error.bunker.pickRequired
+- error.bunker.revealedOnly
+- error.card.alreadyRevealed
+- error.card.notFound
+- error.category.required
+- error.continue.hostOnly
+- error.continue.notNow
+- error.continue.revealerOnly
+- error.deck.emptyCategory
+- error.deck.unavailable
+- error.effect.unsupported
+- error.game.alreadyEnded
+- error.host.onlyManualSpecial
+- error.host.onlyPlayerCards
+- error.host.onlySkipRound
+- error.host.onlyThreatReveal
+- error.host.onlyWorldCards
+- error.neighbor.invalid
+- error.neighbor.notFound
+- error.player.excluded
+- error.player.notFound
+- error.playerCard.notFound
+- error.playerCard.replaceFailed
+- error.redeal.none
+- error.removePlayer.none
+- error.replace.pickSpecificCard
+- error.replace.randomFailed
+- error.replace.selectedCardMissing
+- error.reveal.alreadyThisRound
+- error.reveal.forcedCategory
+- error.reveal.notNow
+- error.skipRound.voting
+- error.sourcePlayer.notFound
+- error.special.alreadyUsed
+- error.special.autoTrigger
+- error.special.catalogMissing
+- error.special.choiceNotFound
+- error.special.choiceRequired
+- error.special.notFound
+- error.special.notImplemented
+- error.special.onlyVoting
+- error.special.payloadRequired
+- error.special.pickRequired
+- error.special.playerMissing
+- error.special.replaceFailed
+- error.special.unimplemented
+- error.swap.invalidCards
+- error.target.cannotSelf
+- error.target.invalid
+- error.target.noRevealedCategory
+- error.target.none
+- error.target.notAlive
+- error.target.required
+- error.threat.invalid
+- error.threats.onlyEnd
+- error.turn.otherPlayer
+- error.vote.alreadySubmitted
+- error.vote.blocked
+- error.vote.candidateNotAlive
+- error.vote.cannotAgainst
+- error.vote.collectionClosed
+- error.vote.disallowedCandidate
+- error.vote.invalidCandidate
+- error.vote.self
+- error.vote.specialWindowNotOpen
+- error.voting.noSource
+- error.voting.notNow
+- error.voting.notStarted
+- error.world.cardNotFound
+- error.world.deckUnknown
+- error.world.invalidCount
+- error.world.invalidIndex
+- error.world.replaceFailed
+- fallback.unknown
+- fallback.unknownPlayer
+- meta.description
+- meta.name
+- parse.target.bunker
+- parse.target.category
+- parse.target.left
+- parse.target.neighbor
+- parse.target.right
+- parse.target.special
+- special.none.text
+- special.none.title
+- validate.age.noneRevealed
+- validate.category.unknown
+- validate.health.firstRevealMissing
+- validate.neighbor.noRevealedCard
+- validate.neighbor.notEnoughPlayers
+- validate.phase.reveal
+- validate.phase.voting
+- validate.special.deckEmpty
+- validate.target.noBaggage
+- validate.target.noRevealedHealth
+- validate.target.noRevealedProfession
+- validate.voting.started
+- world.action.hidden
+- world.action.revealed
+- world.bunker.lost.description
+- world.bunker.lost.title
+- world.bunker.stolen.description
+- world.bunker.stolen.title

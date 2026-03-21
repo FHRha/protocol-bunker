@@ -5,6 +5,7 @@ export type SubtitleMap = Map<string, string>;
 
 type SubtitleLocaleFile = {
   subtitles?: Record<string, string>;
+  overlayShort?: Record<string, string>;
 };
 
 const LOCALE_CANDIDATE_ROOTS = [
@@ -17,21 +18,21 @@ const KNOWN_LOCALES = ["ru", "en"] as const;
 const KNOWN_VARIANTS = ["1x", "2x"] as const;
 const SUBTITLE_GROUPS = ["bunker", "threats"] as const;
 
-const cache = new Map<string, SubtitleMap>();
+const subtitleCache = new Map<string, SubtitleMap>();
+const threatOverlayShortCache = new Map<string, SubtitleMap>();
 
 function normalizeLocale(locale: string | undefined): string {
   const normalized = String(locale ?? "").trim().toLowerCase();
   return KNOWN_LOCALES.includes(normalized as (typeof KNOWN_LOCALES)[number]) ? normalized : "ru";
 }
 
-
 function transliterateCyrillic(value: string): string {
   const mapping: Record<string, string> = {
-    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh",
-    з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
-    п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts",
-    ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu",
-    я: "ya",
+    "\u0430": "a", "\u0431": "b", "\u0432": "v", "\u0433": "g", "\u0434": "d", "\u0435": "e", "\u0451": "e", "\u0436": "zh",
+    "\u0437": "z", "\u0438": "i", "\u0439": "y", "\u043a": "k", "\u043b": "l", "\u043c": "m", "\u043d": "n", "\u043e": "o",
+    "\u043f": "p", "\u0440": "r", "\u0441": "s", "\u0442": "t", "\u0443": "u", "\u0444": "f", "\u0445": "h", "\u0446": "ts",
+    "\u0447": "ch", "\u0448": "sh", "\u0449": "sch", "\u044a": "", "\u044b": "y", "\u044c": "", "\u044d": "e", "\u044e": "yu",
+    "\u044f": "ya",
   };
   return value
     .toLowerCase()
@@ -44,7 +45,7 @@ function normalizeCardKey(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/ё/g, "е")
+    .replace(/\u0451/g, "\u0435")
     .replace(/[\s_]+/g, "-")
     .replace(/-+/g, "-");
 }
@@ -81,6 +82,22 @@ function buildSubtitleMap(locale: string): SubtitleMap {
       if (!cardKey || !subtitle) continue;
       map.set(cardKey, subtitle);
     }
+  }
+
+  return map;
+}
+
+function buildThreatOverlayShortMap(locale: string): SubtitleMap {
+  const normalizedLocale = normalizeLocale(locale);
+  const map: SubtitleMap = new Map();
+  const primary = readLocaleFile("threats", normalizedLocale).overlayShort ?? {};
+  const fallback = normalizedLocale === "en" ? {} : readLocaleFile("threats", "en").overlayShort ?? {};
+
+  for (const [cardKeyRaw, subtitleRaw] of Object.entries({ ...fallback, ...primary })) {
+    const cardKey = normalizeCardKey(cardKeyRaw);
+    const subtitle = String(subtitleRaw ?? "").replace(/\s+/g, " ").trim();
+    if (!cardKey || !subtitle) continue;
+    map.set(cardKey, subtitle);
   }
 
   return map;
@@ -125,9 +142,18 @@ export function resolveCardKeyFromAssetId(assetId: string | undefined): string |
 
 export async function getSubtitleMap(locale: string | undefined): Promise<SubtitleMap> {
   const normalizedLocale = normalizeLocale(locale);
-  const cached = cache.get(normalizedLocale);
+  const cached = subtitleCache.get(normalizedLocale);
   if (cached) return cached;
   const map = buildSubtitleMap(normalizedLocale);
-  cache.set(normalizedLocale, map);
+  subtitleCache.set(normalizedLocale, map);
+  return map;
+}
+
+export async function getThreatOverlayShortMap(locale: string | undefined): Promise<SubtitleMap> {
+  const normalizedLocale = normalizeLocale(locale);
+  const cached = threatOverlayShortCache.get(normalizedLocale);
+  if (cached) return cached;
+  const map = buildThreatOverlayShortMap(normalizedLocale);
+  threatOverlayShortCache.set(normalizedLocale, map);
   return map;
 }

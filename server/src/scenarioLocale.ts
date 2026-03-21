@@ -3,6 +3,7 @@ import path from "node:path";
 
 type ScenarioLocaleCode = "ru" | "en";
 type ScenarioDictionary = Record<string, string>;
+type ReverseDictionary = Map<string, string>;
 
 const SCENARIO_LOCALE_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), "locales", "scenario"),
@@ -10,43 +11,61 @@ const SCENARIO_LOCALE_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), "..", "..", "locales", "scenario"),
 ];
 
-function mergeScenarioDictionary(into: ScenarioDictionary, filePath: string): void {
-  if (!fs.existsSync(filePath)) return;
+function readScenarioDictionaryFile(filePath: string): ScenarioDictionary {
+  if (!fs.existsSync(filePath)) return {};
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return;
+    if (!parsed || typeof parsed !== "object") return {};
+    const next: ScenarioDictionary = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof key !== "string" || typeof value !== "string") continue;
-      into[key] = value;
+      if (typeof key === "string" && typeof value === "string") {
+        next[key] = value;
+      }
     }
+    return next;
   } catch {
-    // ignore malformed file
+    return {};
   }
 }
 
 function loadScenarioDictionary(locale: ScenarioLocaleCode, scenarioId?: string): ScenarioDictionary {
-  if (locale === "ru") return {};
-  const next: ScenarioDictionary = {};
+  if (locale === "ru" || !scenarioId) return {};
   for (const root of SCENARIO_LOCALE_ROOT_CANDIDATES) {
-    mergeScenarioDictionary(next, path.join(root, `${locale}.json`));
-    if (scenarioId) {
-      mergeScenarioDictionary(next, path.join(root, scenarioId, `${locale}.json`));
+    const filePath = path.join(root, scenarioId, `${locale}.json`);
+    const dict = readScenarioDictionaryFile(filePath);
+    if (Object.keys(dict).length > 0) {
+      return dict;
     }
   }
-  return next;
+  return {};
 }
 
 const SCENARIO_DICTIONARIES = new Map<string, ScenarioDictionary>();
+const SCENARIO_REVERSE_DICTIONARIES = new Map<string, ReverseDictionary>();
 
 function getScenarioDictionary(locale: ScenarioLocaleCode, scenarioId?: string): ScenarioDictionary {
-  if (locale === "ru") return {};
-  const key = `${locale}:${scenarioId ?? "*"}`;
+  if (locale === "ru" || !scenarioId) return {};
+  const key = `${locale}:${scenarioId}`;
   const cached = SCENARIO_DICTIONARIES.get(key);
   if (cached) return cached;
   const loaded = loadScenarioDictionary(locale, scenarioId);
   SCENARIO_DICTIONARIES.set(key, loaded);
   return loaded;
+}
+
+function getScenarioReverseDictionary(locale: ScenarioLocaleCode, scenarioId?: string): ReverseDictionary {
+  if (!scenarioId) return new Map();
+  const key = `${locale}:${scenarioId}`;
+  const cached = SCENARIO_REVERSE_DICTIONARIES.get(key);
+  if (cached) return cached;
+  const dict = locale === "ru" ? loadScenarioDictionary("ru", scenarioId) : getScenarioDictionary(locale, scenarioId);
+  const reverse: ReverseDictionary = new Map();
+  for (const [dictKey, value] of Object.entries(dict)) {
+    if (!reverse.has(value)) reverse.set(value, dictKey);
+  }
+  SCENARIO_REVERSE_DICTIONARIES.set(key, reverse);
+  return reverse;
 }
 
 const EN_PATTERN_RULES: Array<(message: string) => string | null> = [
@@ -143,9 +162,24 @@ export function localizeScenarioMessage(message: string, locale: ScenarioLocaleC
   const dict = getScenarioDictionary(locale, scenarioId);
   const exact = dict[message];
   if (exact) return exact;
+  const reverseRu = getScenarioReverseDictionary("ru", scenarioId);
+  const messageKey = reverseRu.get(message);
+  if (messageKey) {
+    const localized = dict[messageKey];
+    if (localized) return localized;
+  }
   for (const rule of EN_PATTERN_RULES) {
     const localized = rule(message);
     if (localized) return localized;
   }
   return message;
+}
+
+export function resolveScenarioLocaleKey(message: string, scenarioId?: string): string | null {
+  if (!message || !scenarioId) return null;
+  const directRu = getScenarioReverseDictionary("ru", scenarioId).get(message);
+  if (directRu) return directRu;
+  const directEn = getScenarioReverseDictionary("en", scenarioId).get(message);
+  if (directEn) return directEn;
+  return null;
 }

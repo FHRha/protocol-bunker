@@ -38,13 +38,16 @@ import { buildAssetCatalog } from "./catalog.js";
 import { createRandomRng } from "./rng.js";
 import {
   getSubtitleMap,
+  getThreatOverlayShortMap,
   resolveCardKeyFromAssetId as resolveSubtitleCardKeyFromAssetId,
   type SubtitleMap,
 } from "./card_subtitles.js";
 import { getDisasterTextByAssetId } from "./world_texts.js";
 import { normalizeServerLocale, tServer, type ServerLocaleCode } from "./serverLocale.js";
-import { localizeScenarioMessage } from "./scenarioLocale.js";
+import { tOverlay } from "./overlayLocale.js";
+import { localizeScenarioMessage, resolveScenarioLocaleKey } from "./scenarioLocale.js";
 import { localizeSpecialConditionField } from "./specialConditionLocale.js";
+import { buildDefaultOverlayBioTags, buildOverlayBiology } from "./biologyLocale.js";
 import { loadScenarios } from "@bunker/scenarios";
 
 interface Player {
@@ -681,17 +684,17 @@ const DECK_LABEL_TO_ID: Record<string, string> = {
   disaster: "disaster",
   threat: "threat",
   back: "back",
-  профессия: "profession",
-  здоровье: "health",
-  хобби: "hobby",
-  багаж: "baggage",
-  факты: "fact",
-  биология: "biology",
+  "профессия": "profession",
+  "здоровье": "health",
+  "хобби": "hobby",
+  "багаж": "baggage",
+  "факты": "fact",
+  "биология": "biology",
   "особые условия": "special",
-  бункер: "bunker",
-  катастрофа: "disaster",
-  угроза: "threat",
-  рубашки: "back",
+  "бункер": "bunker",
+  "катастрофа": "disaster",
+  "угроза": "threat",
+  "рубашки": "back",
 };
 
 function normalizeDeckLookup(value: string): string {
@@ -840,6 +843,7 @@ function sanitizeSingleLine(value: unknown, maxLength: number): string {
   const text = String(value ?? "");
   const normalized = text
     .replace(/\r\n?/g, " ")
+    .replace(/[—–]/g, "-")
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, maxLength);
   return normalized;
@@ -849,6 +853,7 @@ function sanitizeMultiLine(value: unknown, maxLength: number): string {
   const text = String(value ?? "");
   const normalized = text
     .replace(/\r\n?/g, "\n")
+    .replace(/[—–]/g, "-")
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
     .slice(0, maxLength);
   return normalized;
@@ -1248,11 +1253,11 @@ const normalizeCardKey = (value: string): string =>
 
 const transliterateCyrillic = (value: string): string => {
   const mapping: Record<string, string> = {
-    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh",
-    з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
-    п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts",
-    ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu",
-    я: "ya",
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh",
+    "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts",
+    "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu",
+    "я": "ya",
   };
 
   return value
@@ -1535,14 +1540,46 @@ function localizeGameViewForLocale(
   locale: CardLocaleCode,
   scenarioId?: string
 ): ReturnType<ScenarioSession["getGameView"]> {
+  const normalizeViewCategoryKey = (category: string): string => {
+    const raw = String(category ?? "").trim();
+    if (!raw) return "";
+    const lowered = raw.toLowerCase();
+    const directAliases: Record<string, string> = {
+      fact1: "facts1",
+      fact2: "facts2",
+      facts: "facts1",
+      special_conditions: "special",
+      specialconditions: "special",
+      bio: "biology",
+    };
+    if (directAliases[lowered]) return directAliases[lowered];
+    const stableKeys = new Set(["profession", "health", "hobby", "baggage", "facts1", "facts2", "biology", "special"]);
+    if (stableKeys.has(lowered)) return lowered;
+    const scenarioKey = resolveScenarioLocaleKey(raw, scenarioId);
+    const scenarioCategoryMap: Record<string, string> = {
+      "deck.profession": "profession",
+      "deck.health": "health",
+      "deck.hobby": "hobby",
+      "deck.baggage": "baggage",
+      "deck.biology": "biology",
+      "deck.special": "special",
+      "category.fact1": "facts1",
+      "category.fact2": "facts2",
+      "deck.fact": "facts1",
+    };
+    return (scenarioKey && scenarioCategoryMap[scenarioKey]) || lowered;
+  };
+
   const localizedHand = view.you.hand.map((card) => ({
     ...card,
     labelShort: localizeCardLabel(card.id, card.labelShort ?? "", locale),
+    imgUrl: localizeAssetUrl(card.imgUrl, locale),
   }));
   const handLabelByInstanceId = new Map(localizedHand.map((card) => [card.instanceId, card.labelShort] as const));
 
   return {
     ...view,
+    categoryOrder: view.categoryOrder.map((category) => normalizeViewCategoryKey(category)),
     lastStageText: view.lastStageText
       ? localizeScenarioMessage(view.lastStageText, locale, scenarioId)
       : view.lastStageText,
@@ -1552,6 +1589,7 @@ function localizeGameViewForLocale(
       hand: localizedHand,
       categories: view.you.categories.map((slot) => ({
         ...slot,
+        category: normalizeViewCategoryKey(slot.category),
         cards: slot.cards.map((card) => ({
           ...card,
           labelShort: handLabelByInstanceId.get(card.instanceId) ?? card.labelShort,
@@ -1561,6 +1599,14 @@ function localizeGameViewForLocale(
     },
     public: {
       ...view.public,
+      roundRules: view.public.roundRules
+        ? {
+            ...view.public.roundRules,
+            forcedRevealCategory: view.public.roundRules.forcedRevealCategory
+              ? normalizeViewCategoryKey(view.public.roundRules.forcedRevealCategory)
+              : view.public.roundRules.forcedRevealCategory,
+          }
+        : view.public.roundRules,
       votesPublic: view.public.votesPublic?.map((vote) => ({
         ...vote,
         reason: vote.reason
@@ -1586,6 +1632,7 @@ function localizeGameViewForLocale(
         })),
         categories: player.categories.map((slot) => ({
           ...slot,
+          category: normalizeViewCategoryKey(slot.category),
           cards: slot.cards.map((card) => ({
             ...card,
             labelShort: localizeCardLabel(
@@ -1602,6 +1649,8 @@ function localizeGameViewForLocale(
 }
 
 const getRoomCardLocale = (room: Room): CardLocaleCode => normalizeCardLocale(room.settings.cardLocale);
+const getOverlayLocale = (room: Room): CardLocaleCode =>
+  normalizeCardLocale(room.overlayOverrides?.overlayUrlParams?.lang ?? getRoomCardLocale(room));
 
 function resolveBackDeckAssetPath(fileName: string, requestedLocaleRaw?: string): string | null {
   const safeFileName = path.basename(fileName);
@@ -1661,11 +1710,14 @@ function hasOverlaySubscribers(roomCode: string): boolean {
   return false;
 }
 
+function getCachedGameView(room: Room): ReturnType<ScenarioSession["getGameView"]> | undefined {
+  if (!room.lastGameViews || room.lastGameViews.size === 0) return undefined;
+  return room.lastGameViews.values().next().value as ReturnType<ScenarioSession["getGameView"]> | undefined;
+}
+
 function getRoomGamePhase(room: Room): string | undefined {
-  if (room.lastGameViews && room.lastGameViews.size > 0) {
-    const cached = room.lastGameViews.values().next().value as { phase?: string } | undefined;
-    if (cached?.phase) return cached.phase;
-  }
+  const cached = getCachedGameView(room);
+  if (cached?.phase) return cached.phase;
   if (!room.session) return undefined;
   const anchorId = room.players.has(room.hostId)
     ? room.hostId
@@ -1741,13 +1793,6 @@ function generateRoomCode(): string {
 
 function buildRoomState(room: Room): RoomState {
   const locale = getRoomCardLocale(room);
-  if (room.session) {
-    try {
-      room.world = room.session.getGameView(room.hostId).world;
-    } catch {
-      // ignore world sync errors
-    }
-  }
   return {
     roomCode: room.code,
     players: Array.from(room.players.values()).map((player) => ({
@@ -1782,62 +1827,45 @@ function buildRoomState(room: Room): RoomState {
 
 // Overlay category configuration with localization keys
 const OVERLAY_CATEGORY_KEYS = [
-  { key: "profession", labelKey: "categoryProfession", aliasesRu: ["Профессия"], aliasesEn: ["Profession"] },
-  { key: "health", labelKey: "categoryHealth", aliasesRu: ["Здоровье"], aliasesEn: ["Health"] },
-  { key: "hobby", labelKey: "categoryHobby", aliasesRu: ["Хобби"], aliasesEn: ["Hobby"] },
-  { key: "phobia", labelKey: "categoryPhobia", aliasesRu: ["Фобия"], aliasesEn: ["Phobia"] },
-  { key: "baggage", labelKey: "categoryBaggage", aliasesRu: ["Багаж"], aliasesEn: ["Baggage"] },
-  { key: "fact1", labelKey: "categoryFact1", aliasesRu: ["Факт №1", "Факт 1"], aliasesEn: ["Fact #1", "Fact 1"] },
-  { key: "fact2", labelKey: "categoryFact2", aliasesRu: ["Факт №2", "Факт 2"], aliasesEn: ["Fact #2", "Fact 2"] },
-  { key: "biology", labelKey: "categoryBiology", aliasesRu: ["Биология"], aliasesEn: ["Biology"] },
+  { key: "profession" },
+  { key: "health" },
+  { key: "hobby" },
+  { key: "phobia" },
+  { key: "baggage" },
+  { key: "facts1" },
+  { key: "facts2" },
+  { key: "biology" },
 ] as const;
 
 // Runtime overlay categories with localized labels (built per-request)
 interface OverlayCategoryConfig {
   key: string;
   label: string;
-  aliases: readonly string[];
 }
 
 function buildOverlayCategories(locale: "ru" | "en"): OverlayCategoryConfig[] {
-  const localeDict = locale === "en"
-    ? {
-        categoryProfession: "Profession",
-        categoryHealth: "Health",
-        categoryHobby: "Hobby",
-        categoryPhobia: "Phobia",
-        categoryBaggage: "Baggage",
-        categoryFact1: "Fact #1",
-        categoryFact2: "Fact #2",
-        categoryBiology: "Biology",
-      }
-    : {
-        categoryProfession: "Профессия",
-        categoryHealth: "Здоровье",
-        categoryHobby: "Хобби",
-        categoryPhobia: "Фобия",
-        categoryBaggage: "Багаж",
-        categoryFact1: "Факт №1",
-        categoryFact2: "Факт №2",
-        categoryBiology: "Биология",
-      };
-  
   return OVERLAY_CATEGORY_KEYS.map((entry) => ({
     key: entry.key,
-    label: localeDict[entry.labelKey as keyof typeof localeDict] ?? entry.key,
-    aliases: locale === "en" ? entry.aliasesEn : entry.aliasesRu,
+    label: tOverlay(
+      locale,
+      entry.key === "facts1"
+        ? "overlay.category.fact1"
+        : entry.key === "facts2"
+          ? "overlay.category.fact2"
+          : `overlay.category.${entry.key}`
+    ),
   }));
 }
 
-function clampLine(value: string, max = 56): string {
+function clampLine(value: string, locale: "ru" | "en", max = 56): string {
   const trimmed = value.trim().replace(/\s+/g, " ");
-  if (!trimmed) return "?";
+  if (!trimmed) return tOverlay(locale, "overlay.unknownShort");
   if (trimmed.length <= max) return trimmed;
   return `${trimmed.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 function getOverlayHiddenText(locale: "ru" | "en"): string {
-  return locale === "en" ? "hidden" : "скрыто";
+  return tOverlay(locale, "overlay.hidden");
 }
 
 function normalizeOverlayCatastropheText(value: string | undefined, locale: "ru" | "en"): string {
@@ -1895,11 +1923,11 @@ function normalizeOverlayCompareValue(value: string | undefined): string {
 }
 
 function readMappedSubtitle(
-  subtitleMap: SubtitleMap,
+  subtitleMap: SubtitleMap | undefined,
   assetId: string | undefined,
   titleRendered: string
 ): string | undefined {
-  if (subtitleMap.size === 0) return undefined;
+  if (!subtitleMap || subtitleMap.size === 0) return undefined;
   if (!assetId) return "";
   const cardKey = resolveSubtitleCardKeyFromAssetId(assetId);
   if (!cardKey) return undefined;
@@ -1914,20 +1942,27 @@ function readMappedSubtitle(
 
 function buildTopItems(
   cards: Array<{ isRevealed?: boolean; title?: string; description?: string; imageId?: string; id?: string }>,
-  subtitleMap: SubtitleMap
+  subtitleMap: SubtitleMap,
+  locale: "ru" | "en",
+  preferredSubtitleMap?: SubtitleMap
 ) {
   const revealedCards = cards.filter((card) => card.isRevealed);
   return revealedCards.map((card) => {
-    const titleRaw = sanitizeSingleLine(card.title || card.description || "?", OVERLAY_MAX_LINE_LEN).trim() || "?";
+    const unknownShort = tOverlay(locale, "overlay.unknownShort");
+    const titleRaw =
+      sanitizeSingleLine(card.title || card.description || unknownShort, OVERLAY_MAX_LINE_LEN).trim() || unknownShort;
     const title = titleRaw;
     const description = sanitizeSingleLine(card.description || "", OVERLAY_MAX_LINE_LEN)
       .trim()
       .replace(/\s+/g, " ");
     const titleNorm = normalizeOverlayCompareValue(title);
     const descNorm = normalizeOverlayCompareValue(description);
-    let subtitle = description && description !== "?" && descNorm !== titleNorm ? description : undefined;
+    let subtitle = readMappedSubtitle(preferredSubtitleMap, card.imageId || card.id, title);
     if (!subtitle) {
       subtitle = readMappedSubtitle(subtitleMap, card.imageId || card.id, title);
+    }
+    if (!subtitle && description && description !== "?" && descNorm !== titleNorm) {
+      subtitle = description;
     }
     if (subtitle && normalizeOverlayCompareValue(subtitle) === normalizeOverlayCompareValue(title)) {
       subtitle = undefined;
@@ -1938,17 +1973,21 @@ function buildTopItems(
 
 function buildTopLinesFromItems(items: Array<{ title: string }>, locale: "ru" | "en") {
   if (!items.length) return [getOverlayHiddenText(locale)];
-  return items.map((item) => item.title || "?");
+  return items.map((item) => item.title || tOverlay(locale, "overlay.unknownShort"));
 }
 
-function findCategory(player: PublicPlayerView, aliases: readonly string[]) {
-  return player.categories.find((item) => aliases.includes(item.category));
+function findCategory(player: PublicPlayerView, key: string) {
+  return player.categories.find((item) => item.category === key);
 }
 
-function readCategoryValue(player: PublicPlayerView, aliases: readonly string[]) {
-  const category = findCategory(player, aliases);
+function readCategoryValue(player: PublicPlayerView, key: string, locale: "ru" | "en") {
+  const category = findCategory(player, key);
   if (!category || category.status !== "revealed" || category.cards.length === 0) {
-    return { revealed: false, value: "?", imgUrl: undefined as string | undefined };
+    return {
+      revealed: false,
+      value: tOverlay(locale, "overlay.unknownShort"),
+      imgUrl: undefined as string | undefined,
+    };
   }
   return {
     revealed: true,
@@ -1956,60 +1995,31 @@ function readCategoryValue(player: PublicPlayerView, aliases: readonly string[])
     imgUrl: category.cards[0]?.imgUrl,
   };
 }
+function readCategoryCardId(player: PublicPlayerView, key: string) {
+  const category = findCategory(player, key);
+  if (!category || category.status !== "revealed" || category.cards.length === 0) {
+    return undefined;
+  }
+  const assetId = resolveAssetIdFromImageUrl(category.cards[0]?.imgUrl);
+  const resolved = assetId ? resolveCardKeyFromAssetId(assetId) : null;
+  return resolved?.cardId;
+}
 
 function extractBioTags(player: PublicPlayerView, locale: "ru" | "en") {
-  const bioAliases = locale === "en" ? ["Biology", "Bio"] : ["Биология"];
-  const orientationAliases = locale === "en" ? ["Orientation"] : ["Ориентация"];
-  
-  const bio = readCategoryValue(player, bioAliases);
-  if (!bio.revealed) {
-    const sexLabel = locale === "en" ? "Sex" : "Пол";
-    const ageLabel = locale === "en" ? "Age" : "Возраст";
-    const orientationLabel = locale === "en" ? "Orientation" : "Ориентация";
-    return {
-      sex: { label: sexLabel, revealed: false, value: "?" },
-      age: { label: ageLabel, revealed: false, value: "?" },
-      orientation: { label: orientationLabel, revealed: false, value: "?" },
-    };
-  }
-
-  const raw = bio.value;
-  const sexMatch = raw.match(/\b([МЖ])\b/i);
-  const ageMatch = raw.match(/\b(\d{1,3})\b/);
-  const orientationDirect = readCategoryValue(player, orientationAliases);
-
-  const sexLabel = locale === "en" ? "Sex" : "Пол";
-  const ageLabel = locale === "en" ? "Age" : "Возраст";
-  const orientationLabel = locale === "en" ? "Orientation" : "Ориентация";
-
-  return {
-    sex: {
-      label: sexLabel,
-      revealed: Boolean(sexMatch),
-      value: sexMatch ? sexMatch[1].toUpperCase() : "?",
-    },
-    age: {
-      label: ageLabel,
-      revealed: Boolean(ageMatch),
-      value: ageMatch ? ageMatch[1] : "?",
-    },
-    orientation: orientationDirect.revealed
-      ? { label: orientationLabel, revealed: true, value: orientationDirect.value }
-      : { label: orientationLabel, revealed: false, value: "?" },
-  };
+  return buildOverlayBiology(readCategoryCardId(player, "biology"), locale);
 }
 
 async function getOverlayState(room: Room): Promise<OverlayState | null> {
-  const roomLocale = getRoomCardLocale(room);
-  const overlayCategories = buildOverlayCategories(roomLocale);
+  const overlayLocale = getOverlayLocale(room);
+  const overlayCategories = buildOverlayCategories(overlayLocale);
   const fallback = {
     roomId: room.code,
-    locale: roomLocale,
+    locale: overlayLocale,
     playerCount: room.players.size,
     top: {
-      bunker: { revealed: 0, total: 0, lines: [getOverlayHiddenText(roomLocale)] },
-      catastrophe: { text: getOverlayHiddenText(roomLocale), title: undefined, imageId: undefined },
-      threats: { revealed: 0, total: 0, lines: [getOverlayHiddenText(roomLocale)] },
+      bunker: { revealed: 0, total: 0, lines: [getOverlayHiddenText(overlayLocale)] },
+      catastrophe: { text: getOverlayHiddenText(overlayLocale), title: undefined, imageId: undefined },
+      threats: { revealed: 0, total: 0, lines: [getOverlayHiddenText(overlayLocale)] },
     },
     players: room.joinOrder
       .map((id) => room.players.get(id))
@@ -2019,16 +2029,15 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
         nickname: player!.name,
         connected: player!.connected,
         alive: !player!.leftBunker,
+        biology: undefined,
         tags: {
-          sex: { label: roomLocale === "en" ? "Sex" : "Пол", revealed: false, value: "?" },
-          age: { label: roomLocale === "en" ? "Age" : "Возраст", revealed: false, value: "?" },
-          orientation: { label: roomLocale === "en" ? "Orientation" : "Ориентация", revealed: false, value: "?" },
+          ...buildDefaultOverlayBioTags(overlayLocale),
         },
         categories: overlayCategories.map((entry) => ({
           key: entry.key,
           label: entry.label,
           revealed: false,
-          value: "?",
+          value: tOverlay(overlayLocale, "overlay.unknownShort"),
         })),
       })),
     overrides: room.overlayOverrides,
@@ -2039,30 +2048,33 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
   }
 
   try {
-    const locale = getRoomCardLocale(room);
+    const locale = overlayLocale;
     const subtitleMap = await getSubtitleMap(locale);
+    const threatOverlayShortMap = await getThreatOverlayShortMap(locale);
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) return fallback;
     const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale, room.scenarioId);
     const world = view.world;
-    const bunkerOpened = world?.bunker.filter((card) => card.isRevealed).length ?? 0;
-    const bunkerTotal = world?.counts.bunker ?? 0;
-    const threatOpened = world?.threats.filter((card) => card.isRevealed).length ?? 0;
-    const threatTotal = world?.counts.threats ?? 0;
-    const bunkerItems = buildTopItems(world?.bunker ?? [], subtitleMap);
-    const threatItems = buildTopItems(world?.threats ?? [], subtitleMap);
-    const bunkerLines = buildTopLinesFromItems(bunkerItems, roomLocale);
-    const threatLines = buildTopLinesFromItems(threatItems, roomLocale);
+    const bunkerTotal = world?.counts.bunker ?? world?.bunker.length ?? 0;
+    const threatTotal = world?.counts.threats ?? world?.threats.length ?? 0;
+    const bunkerCards = (world?.bunker ?? []).slice(0, bunkerTotal);
+    const threatCards = (world?.threats ?? []).slice(0, threatTotal);
+    const bunkerOpened = bunkerCards.filter((card) => card.isRevealed).length;
+    const threatOpened = threatCards.filter((card) => card.isRevealed).length;
+    const bunkerItems = buildTopItems(bunkerCards, subtitleMap, overlayLocale);
+    const threatItems = buildTopItems(threatCards, subtitleMap, overlayLocale, threatOverlayShortMap);
+    const bunkerLines = buildTopLinesFromItems(bunkerItems, overlayLocale);
+    const threatLines = buildTopLinesFromItems(threatItems, overlayLocale);
     const catastropheTitle = normalizeOverlayCatastropheTitle(
       world?.disaster.title,
       world?.disaster.description,
       (world?.disaster as { labelShort?: string } | undefined)?.labelShort
     );
-    const catastropheText = normalizeOverlayCatastropheText(buildOverlayCatastropheBody(world?.disaster, roomLocale), roomLocale);
+    const catastropheText = normalizeOverlayCatastropheText(buildOverlayCatastropheBody(world?.disaster, overlayLocale), overlayLocale);
 
     return {
       roomId: room.code,
-      locale: roomLocale,
+      locale: overlayLocale,
       playerCount: view.public.players.length,
       top: {
         bunker: { revealed: bunkerOpened, total: bunkerTotal, lines: bunkerLines, items: bunkerItems },
@@ -2076,7 +2088,7 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
       players: view.public.players.map((player) => {
         const roomPlayer = room.players.get(player.playerId);
         const categories = overlayCategories.map((entry) => {
-          const value = readCategoryValue(player, entry.aliases);
+          const value = readCategoryValue(player, entry.key, overlayLocale);
           return {
             key: entry.key,
             label: entry.label,
@@ -2086,12 +2098,15 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
           };
         });
 
+        const bio = extractBioTags(player, overlayLocale);
+
         return {
           id: player.playerId,
           nickname: player.name,
           connected: roomPlayer?.connected ?? true,
           alive: player.status === "alive",
-          tags: extractBioTags(player, roomLocale),
+          biology: bio.biology,
+          tags: bio.tags,
           categories,
         };
       }),
@@ -2288,17 +2303,20 @@ function buildOverlayPresenterState(room: Room) {
         requires?: string[];
         imgUrl?: string;
       }> = [];
+      const cachedPersonalView = room.lastGameViews?.get(publicPlayer.playerId);
       try {
-        const personalView = localizeGameViewForLocale(
-          room.session!.getGameView(publicPlayer.playerId),
-          locale,
-          room.scenarioId
-        );
+        const personalView =
+          cachedPersonalView ??
+          localizeGameViewForLocale(
+            room.session!.getGameView(publicPlayer.playerId),
+            locale,
+            room.scenarioId
+          );
         hand = personalView.you.hand.map((card) => ({
           instanceId: String(card.instanceId ?? card.id ?? `${publicPlayer.playerId}-card`),
           id: String(card.id ?? ""),
           deck: card.deck,
-          labelShort: String(card.labelShort ?? card.deck ?? "Карта"),
+          labelShort: String(card.labelShort ?? card.deck ?? tOverlay(locale, "control.world.cardFallback")),
           revealed: card.revealed,
           missing: card.missing,
         }));
@@ -2680,6 +2698,7 @@ function sendGameView(room: Room, player: Player): void {
         players: enrichedPlayers,
       },
     };
+    room.world = payload.world;
     const localizedPayload = localizeGameViewForLocale(payload, getRoomCardLocale(room), room.scenarioId);
     if (!room.lastGameViews) {
       room.lastGameViews = new Map();
@@ -2751,6 +2770,12 @@ function syncScenarioStatuses(room: Room, players: Array<{ playerId: string; sta
 function getScenarioStatus(room: Room, playerId: string): PlayerStatus | undefined {
   const cached = room.players.get(playerId)?.scenarioStatus;
   if (cached) return cached;
+  const cachedView = getCachedGameView(room);
+  const cachedStatus = cachedView?.public.players.find((entry) => entry.playerId === playerId)?.status;
+  if (cachedStatus) {
+    syncScenarioStatuses(room, cachedView.public.players);
+    return room.players.get(playerId)?.scenarioStatus ?? cachedStatus;
+  }
   if (!room.session) return undefined;
   try {
     const view = room.session.getGameView(playerId);
@@ -2786,6 +2811,10 @@ function pickNextHost(room: Room, excludeId?: string): string | undefined {
 }
 
 function getCurrentTurnPlayerId(room: Room): string | undefined {
+  const cached = getCachedGameView(room);
+  if (cached?.public.currentTurnPlayerId) {
+    return cached.public.currentTurnPlayerId;
+  }
   if (!room.session) return undefined;
   const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
   if (!anchorId) return undefined;
@@ -2891,7 +2920,7 @@ function addLobbyBotPlayer(room: Room, preferredName?: string): Player | null {
   const maxPlayers = getEffectiveMaxPlayers(room);
   if (room.players.size >= maxPlayers) return null;
 
-  const baseName = String(preferredName ?? "").trim() || "Бот";
+  const baseName = String(preferredName ?? "").trim() || tServerForRoom(room, "info.botDefaultName");
   const existingNames = new Set(
     Array.from(room.players.values()).map((player) => String(player.name || "").trim().toLocaleLowerCase("ru-RU"))
   );
@@ -2947,7 +2976,7 @@ function transferHost(
     room.sessionContext.hostId = nextHostId;
   }
   broadcastRoomState(room);
-  const hostName = room.players.get(nextHostId)?.name ?? "игрок";
+  const hostName = room.players.get(nextHostId)?.name ?? tServerForRoom(room, "info.playerFallbackName");
   broadcastEvent(
     room,
     buildSystemEvent(
@@ -3017,6 +3046,7 @@ function markPlayerLeftBunker(room: Room, player: Player) {
     room.hostId && room.players.has(room.hostId)
       ? room.hostId
       : Array.from(room.players.keys())[0];
+  let didBroadcastGameViews = false;
   if (room.session && systemActorId) {
     const result = room.session.handleAction(systemActorId, {
       type: "markLeftBunker",
@@ -3024,10 +3054,13 @@ function markPlayerLeftBunker(room: Room, player: Player) {
     });
     if (result.stateChanged) {
       broadcastGameViews(room);
+      didBroadcastGameViews = true;
     }
   }
   broadcastRoomState(room);
-  broadcastGameViews(room);
+  if (!didBroadcastGameViews) {
+    broadcastGameViews(room);
+  }
   broadcastEvent(
     room,
     buildSystemEvent(
@@ -4172,11 +4205,13 @@ async function main() {
             send(ws, { type: "roomState", payload: buildRoomState(room) });
             if (room.phase === "game" && room.session) {
               try {
-                const payloadView = localizeGameViewForLocale(
-                  room.session.getGameView(controlPlayer.playerId),
-                  getRoomCardLocale(room),
-                  room.scenarioId
-                );
+                const payloadView =
+                  room.lastGameViews?.get(controlPlayer.playerId) ??
+                  localizeGameViewForLocale(
+                    room.session.getGameView(controlPlayer.playerId),
+                    getRoomCardLocale(room),
+                    room.scenarioId
+                  );
                 send(ws, { type: "gameView", payload: payloadView });
               } catch {
                 // ignore transient gameView errors for companion sockets
@@ -4215,11 +4250,13 @@ async function main() {
             send(ws, { type: "roomState", payload: buildRoomState(room) });
             if (room.phase === "game" && room.session) {
               try {
-                const payloadView = localizeGameViewForLocale(
-                  room.session.getGameView(existingPlayer.playerId),
-                  getRoomCardLocale(room),
-                  room.scenarioId
-                );
+                const payloadView =
+                  room.lastGameViews?.get(existingPlayer.playerId) ??
+                  localizeGameViewForLocale(
+                    room.session.getGameView(existingPlayer.playerId),
+                    getRoomCardLocale(room),
+                    room.scenarioId
+                  );
                 send(ws, { type: "gameView", payload: payloadView });
               } catch {
                 // ignore transient gameView errors for companion sockets
@@ -4468,7 +4505,11 @@ async function main() {
             });
             return;
           }
-          room.settings.cardLocale = normalizeCardLocale(message.payload.locale);
+          const nextLocale = normalizeCardLocale(message.payload.locale);
+          if (room.settings.cardLocale === nextLocale) {
+            return;
+          }
+          room.settings.cardLocale = nextLocale;
           room.lastRoomState = undefined;
           room.lastGameViews?.clear();
           for (const player of room.players.values()) {
@@ -4530,13 +4571,6 @@ async function main() {
 			  cardLocale: normalizeCardLocale(message.payload.cardLocale),
 			};
 			broadcastRoomState(room);
-			if (room.session) {
-			  room.lastGameViews?.clear();
-			  for (const player of room.players.values()) {
-				player.needsFullGameView = true;
-			  }
-			  broadcastGameViews(room);
-			}
 			return;
         }
         case "updateRules": {

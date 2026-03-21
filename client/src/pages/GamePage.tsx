@@ -56,24 +56,13 @@ const DOSSIER_GRID_ROW_KEYS: string[][] = [
   ["facts1", "facts2"],
 ];
 
-const CATEGORY_KEY_TO_LABELS: Record<string, string[]> = {
-  profession: ["profession", "профессия", "prof"],
-  health: ["health", "здоровье", "hp"],
-  hobby: ["hobby", "хобби"],
-  baggage: ["baggage", "багаж", "bag"],
-  facts: ["facts", "fact #1", "fact #2", "факт"],
-  facts1: ["fact1", "facts1", "fact #1", "факт 1", "факт №1"],
-  facts2: ["fact2", "facts2", "fact #2", "факт 2", "факт №2"],
-  biology: ["biology", "биология", "bio"],
-  special: ["special", "special conditions", "особые условия", "особое условие", "specialconditions"],
-};
-
 const CATEGORY_KEY_ALIASES: Record<string, string> = {
   fact1: "facts1",
   fact2: "facts2",
   facts: "facts1",
   special_conditions: "special",
   specialconditions: "special",
+  bio: "biology",
 };
 
 type GameCategoryLabels = Pick<UiDictionary,
@@ -106,24 +95,7 @@ function normalizeCategoryKey(category: string): string {
   const raw = String(category ?? "").trim();
   if (!raw) return "";
   const lowered = raw.toLowerCase();
-  const direct = CATEGORY_KEY_ALIASES[lowered] ?? lowered;
-  if (CATEGORY_KEY_TO_LABELS[direct]) return direct;
-  for (const [key, aliases] of Object.entries(CATEGORY_KEY_TO_LABELS)) {
-    if (aliases.some((value) => value.toLowerCase() === lowered)) {
-      return key;
-    }
-  }
-  // Map localized Russian labels to keys (for server compatibility)
-  if (lowered === "факт №1" || lowered === "факт 1") return "facts1";
-  if (lowered === "факт №2" || lowered === "факт 2") return "facts2";
-  if (
-  lowered.includes("special") ||
-  lowered.includes("особ") ||
-  lowered.includes("спец")
-  ) {
-    return "special";
-    }
-  return raw;
+  return CATEGORY_KEY_ALIASES[lowered] ?? lowered;
 }
 
 function getCategoryDisplayLabelFromRaw(category: string, text: GameCategoryLabels): string {
@@ -2418,7 +2390,7 @@ export default function GamePage({
                         const card = slot?.cards?.[0];
                         const handCard = card ? handByInstanceId.get(card.instanceId) : undefined;
                         const isRevealed = showOwnSelectedFacesImmediately || Boolean(card?.revealed || handCard?.revealed);
-                        const faceUrl = isRevealed && handCard?.id ? getCardFaceUrl(handCard.id) : undefined;
+                        const faceUrl = isRevealed ? getCardFaceUrl(handCard?.imgUrl ?? card?.imgUrl) : undefined;
                         const backUrl = getCardBackUrl(category, cardLocale);
 
                         return (
@@ -2537,8 +2509,9 @@ export default function GamePage({
                   setDossierOpen(false);
                   onClearMobileDossierError?.();
                 }}
+                aria-label={gameText.t("closeButton")}
               >
-                ×
+                <span aria-hidden="true">×</span>
               </button>
             </div>
             <div className="mobile-dossier-body">
@@ -2548,15 +2521,15 @@ export default function GamePage({
                 </div>
               ) : null}
               <MobileDossierPanel />
-              <div className="mobile-dossier-footer">
-                <button
-                  className="primary"
-                  disabled={!canReveal || !selectedCardId || !canRevealSelectedCard}
-                  onClick={() => selectedCardId && onRevealCard(selectedCardId)}
-                >
-                  {canRevealPostGame ? gameText.t("revealPostGameAction") : gameText.t("revealAction")}
-                </button>
-              </div>
+            </div>
+            <div className="mobile-dossier-footer">
+              <button
+                className="primary"
+                disabled={!canReveal || !selectedCardId || !canRevealSelectedCard}
+                onClick={() => selectedCardId && onRevealCard(selectedCardId)}
+              >
+                {canRevealPostGame ? gameText.t("revealPostGameAction") : gameText.t("revealAction")}
+              </button>
             </div>
           </div>
         </div>
@@ -2718,11 +2691,12 @@ export default function GamePage({
                       slot && slot.status === "revealed" && slot.cards.length > 0
                         ? slot.cards.map((card) => card.labelShort ?? "—").join(", ")
                         : gameLocale.slotHidden;
+                    const categoryLabel = getCategoryDisplayLabel(normalizeCategoryKey(category), gameLocale);
 
                     return (
                       <div key={category} className="vote-candidate-card">
                         <span className="vote-candidate-text">
-                          {category}: {labels}
+                          {categoryLabel}: {labels}
                         </span>
                       </div>
                     );
@@ -3132,7 +3106,7 @@ export default function GamePage({
           >
             <div className="mobile-special-header">
               <div className="mobile-special-title">{specialDialog.title}</div>
-              <button className="icon-button" onClick={closeSpecialDialog}>
+              <button className="icon-button" onClick={closeSpecialDialog} aria-label={gameText.t("closeButton")}>
                 ×
               </button>
             </div>
@@ -3234,6 +3208,7 @@ export default function GamePage({
     </div>
   );
 }
+
 
 
 

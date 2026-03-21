@@ -170,6 +170,12 @@
   const urlParamLang = $("urlParamLang");
   const urlParamScale = $("urlParamScale");
   const urlParamTop = $("urlParamTop");
+  const urlParamTopBunkerAlign = $("urlParamTopBunkerAlign");
+  const urlParamTopCatastropheAlign = $("urlParamTopCatastropheAlign");
+  const urlParamTopThreatsAlign = $("urlParamTopThreatsAlign");
+  const urlParamTopBunkerScale = $("urlParamTopBunkerScale");
+  const urlParamTopCatastropheScale = $("urlParamTopCatastropheScale");
+  const urlParamTopThreatsScale = $("urlParamTopThreatsScale");
   const urlParamDebug = $("urlParamDebug");
   const enabledTopBunker = $("enabled_topBunker");
   const enabledTopCatastrophe = $("enabled_topCatastrophe");
@@ -285,7 +291,9 @@
     !topCatastropheText || !topThreatsLines || !topBunkerMeta || !topCatastropheMeta || !topThreatsMeta ||
     !backgroundPresetSelect || !backgroundPresetHint ||
     !overlayUrlPresetButtons || !overlayUrlPresetHint || !overlayUrlPresetValue || !overlayUrlPresetTemplate || !overlayUrlPresetOpenBtn || !overlayUrlPresetCopyBtn ||
-    !urlParamTheme || !urlParamLang || !urlParamScale || !urlParamTop || !urlParamDebug ||
+    !urlParamTheme || !urlParamLang || !urlParamScale || !urlParamTop ||
+    !urlParamTopBunkerAlign || !urlParamTopCatastropheAlign || !urlParamTopThreatsAlign ||
+    !urlParamTopBunkerScale || !urlParamTopCatastropheScale || !urlParamTopThreatsScale || !urlParamDebug ||
     !enabledTopBunker || !enabledTopCatastrophe || !enabledTopThreats ||
     !playerEnabledName || !playerEnabledTraits || !playerEnabledCategories || !playerNameInput ||
     !traitSexInput || !traitAgeInput || !traitOrientInput || !currentPlayerName || !currentTraitSex ||
@@ -326,18 +334,18 @@
     controlConnection.textContent = tr(
       "control.connection.summary",
       {
-        connected: tr("control.connection.no", {}, "нет"),
+        connected: tr("control.connection.no"),
         role: "-",
         room: roomCode || "-",
       },
       `Подключено: нет • Роль: - • Комната: ${roomCode || "-"}`
     );
-    setStatus(tr("control.status.missingRoomToken", {}, "Нет roomCode/token в ссылке."), true);
+    setStatus(tr("control.status.missingRoomToken"), true);
     return;
   }
 
   urlParamsDebug.textContent = `roomCodeFromUrl: ${roomCode} • tokenPresent: yes`;
-  roomLabel.textContent = tr("control.room.label", { room: roomCode }, `Комната: ${roomCode}`);
+  roomLabel.textContent = tr("control.room.label", { room: roomCode });
   console.log("[overlay-control] parsed URL params", {
     roomCodeFromUrl: roomCode,
     tokenPresent: Boolean(token),
@@ -350,14 +358,14 @@
   const MAX_THREAT_LINES = 6;
 
   const DEFAULT_CATEGORIES = [
-    { key: "profession", label: tr("overlay.category.profession", {}, "Профессия") },
-    { key: "health", label: tr("overlay.category.health", {}, "Здоровье") },
-    { key: "hobby", label: tr("overlay.category.hobby", {}, "Хобби") },
-    { key: "phobia", label: tr("overlay.category.phobia", {}, "Фобия") },
-    { key: "baggage", label: tr("overlay.category.baggage", {}, "Багаж") },
-    { key: "fact1", label: tr("overlay.category.fact1", {}, "Факт №1") },
-    { key: "fact2", label: tr("overlay.category.fact2", {}, "Факт №2") },
-    { key: "biology", label: tr("overlay.category.biology", {}, "Биология") },
+    { key: "profession", label: tr("overlay.category.profession") },
+    { key: "health", label: tr("overlay.category.health") },
+    { key: "hobby", label: tr("overlay.category.hobby") },
+    { key: "phobia", label: tr("overlay.category.phobia") },
+    { key: "baggage", label: tr("overlay.category.baggage") },
+    { key: "fact1", label: tr("overlay.category.fact1") },
+    { key: "fact2", label: tr("overlay.category.fact2") },
+    { key: "biology", label: tr("overlay.category.biology") },
   ];
 
   const CATEGORY_KEY_ALIASES = {
@@ -423,20 +431,20 @@
       id: "base",
       label: "Base",
       urlTemplate: `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&lang={LANG}`,
-      comment: tr("control.urlPreset.comment.base", {}, "Базовый URL без дополнительных параметров."),
+      comment: tr("control.urlPreset.comment.base"),
     },
     {
       id: "debug",
       label: "Debug",
       urlTemplate: `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&lang={LANG}&debug=1`,
-      comment: tr("control.urlPreset.comment.debug", {}, "Включает отладочную информацию поверх оверлея."),
+      comment: tr("control.urlPreset.comment.debug"),
     },
     {
       id: "fullhd",
       label: "FullHD",
       urlTemplate:
         `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&lang={LANG}&top=200&scale=1.3&theme=mint`,
-      comment: tr("control.urlPreset.comment.fullhd", {}, "Базовый preset для 1920x1080."),
+      comment: tr("control.urlPreset.comment.fullhd"),
     },
     {
       id: "fullhd-bg",
@@ -445,8 +453,7 @@
         `${window.location.origin}/overlay?room={ROOM}&token={TOKEN}&lang={LANG}&top=200&scale=1.3&theme=mint&bgPreset={BG_PRESET}`,
       comment: tr(
         "control.urlPreset.comment.fullhdBg",
-        {},
-        "Использует выбранный пресет фона через тег {BG_PRESET}."
+        {}
       ),
     },
   ];
@@ -454,99 +461,99 @@
   const CONTROL_ACTION_META = {
     revealCard: {
       titleKey: "control.meta.revealCard.title",
-      titleFallback: "Раскрыть карту",
+      titleFallback: "",
       hintKey: "control.meta.revealCard.hint",
-      hintFallback: "Выбери игрока и карту из его досье.",
+      hintFallback: "",
       guideKey: "control.meta.revealCard.guide",
-      guideFallback: "Используй для ручного контроля раскрытий вместо хода игрока.",
+      guideFallback: "",
     },
     applySpecial: {
       titleKey: "control.meta.applySpecial.title",
-      titleFallback: "Применить спецусловие",
+      titleFallback: "",
       hintKey: "control.meta.applySpecial.hint",
-      hintFallback: "Выбери спецусловие игрока и, при необходимости, цель.",
+      hintFallback: "",
       guideKey: "control.meta.applySpecial.guide",
-      guideFallback: "Для сложных спецкарт можно дописать payload JSON в Advanced.",
+      guideFallback: "",
     },
     vote: {
       titleKey: "control.meta.vote.title",
-      titleFallback: "Проголосовать",
+      titleFallback: "",
       hintKey: "control.meta.vote.hint",
-      hintFallback: "Игрок-исполнитель голосует в выбранную цель.",
+      hintFallback: "",
       guideKey: "control.meta.vote.guide",
-      guideFallback: "Работает только в активной фазе голосования.",
+      guideFallback: "",
     },
     continueRound: {
       titleKey: "control.meta.continueRound.title",
-      titleFallback: "Следующий шаг",
+      titleFallback: "",
       hintKey: "control.meta.continueRound.hint",
-      hintFallback: "Эквивалент continueRound от имени игрока.",
+      hintFallback: "",
       guideKey: "control.meta.continueRound.guide",
-      guideFallback: "Переход между шагами раунда без кликов в основной UI.",
+      guideFallback: "",
     },
     finalizeVoting: {
       titleKey: "control.meta.finalizeVoting.title",
-      titleFallback: "Завершить голосование",
+      titleFallback: "",
       hintKey: "control.meta.finalizeVoting.hint",
-      hintFallback: "Принудительно закрывает окно голосования.",
+      hintFallback: "",
       guideKey: "control.meta.finalizeVoting.guide",
-      guideFallback: "Выполняется от ведущего.",
+      guideFallback: "",
     },
     revealWorldThreat: {
       titleKey: "control.meta.revealWorldThreat.title",
-      titleFallback: "Раскрыть угрозу",
+      titleFallback: "",
       hintKey: "control.meta.revealWorldThreat.hint",
-      hintFallback: "Выбери индекс угрозы мира.",
+      hintFallback: "",
       guideKey: "control.meta.revealWorldThreat.guide",
-      guideFallback: "Удобно для ручного режима и стрим-контроля.",
+      guideFallback: "",
     },
     setBunkerOutcome: {
       titleKey: "control.meta.setBunkerOutcome.title",
-      titleFallback: "Итог бункера",
+      titleFallback: "",
       hintKey: "control.meta.setBunkerOutcome.hint",
-      hintFallback: "Выбери исход пост-игры.",
+      hintFallback: "",
       guideKey: "control.meta.setBunkerOutcome.guide",
-      guideFallback: "Используется в фазе финального исхода.",
+      guideFallback: "",
     },
     markLeftBunker: {
       titleKey: "control.meta.markLeftBunker.title",
-      titleFallback: "Во вне бункера",
+      titleFallback: "",
       hintKey: "control.meta.markLeftBunker.hint",
-      hintFallback: "Переводит выбранного игрока в статус left_bunker.",
+      hintFallback: "",
       guideKey: "control.meta.markLeftBunker.guide",
-      guideFallback: "Полезно для ручной модерации стола.",
+      guideFallback: "",
     },
     devKickPlayer: {
       titleKey: "control.meta.devKickPlayer.title",
-      titleFallback: "DEV: выгнать игрока",
+      titleFallback: "",
       hintKey: "control.meta.devKickPlayer.hint",
-      hintFallback: "DEV-команда исключения игрока.",
+      hintFallback: "",
       guideKey: "control.meta.devKickPlayer.guide",
-      guideFallback: "Только для тестов и отладки сценариев.",
+      guideFallback: "",
     },
     devSkipRound: {
       titleKey: "control.meta.devSkipRound.title",
-      titleFallback: "DEV: пропустить раунд",
+      titleFallback: "",
       hintKey: "control.meta.devSkipRound.hint",
-      hintFallback: "Быстрый пропуск раунда.",
+      hintFallback: "",
       guideKey: "control.meta.devSkipRound.guide",
-      guideFallback: "Только для тестов.",
+      guideFallback: "",
     },
     devAddPlayer: {
       titleKey: "control.meta.devAddPlayer.title",
-      titleFallback: "DEV: добавить бота",
+      titleFallback: "",
       hintKey: "control.meta.devAddPlayer.hint",
-      hintFallback: "Добавляет бота в текущую комнату.",
+      hintFallback: "",
       guideKey: "control.meta.devAddPlayer.guide",
-      guideFallback: "Имя можно задать ниже.",
+      guideFallback: "",
     },
     devRemovePlayer: {
       titleKey: "control.meta.devRemovePlayer.title",
-      titleFallback: "DEV: удалить бота",
+      titleFallback: "",
       hintKey: "control.meta.devRemovePlayer.hint",
-      hintFallback: "Удаляет выбранного бота/игрока (DEV).",
+      hintFallback: "",
       guideKey: "control.meta.devRemovePlayer.guide",
-      guideFallback: "Только для тестовых сценариев.",
+      guideFallback: "",
     },
   };
   renderConnectionStatus();
@@ -585,8 +592,8 @@
       const discussionPlayer = listedPlayers.find((player) => player && player.playerId === turnPlayerId);
       const shortName = formatPlayerNameShort(discussionPlayer?.name || "");
       return shortName
-        ? `${tr("control.gamePhase.revealDiscussion", {}, "Обсуждение карты игрока")} ${shortName}`
-        : tr("control.gamePhase.revealDiscussion", {}, "Обсуждение карты игрока");
+        ? `${tr("control.gamePhase.revealDiscussion")} ${shortName}`
+        : tr("control.gamePhase.revealDiscussion");
     }
     return tr(`control.gamePhase.${key}`, {}, key || "-");
   }
@@ -603,14 +610,15 @@
 
   function commandLabel(action) {
     const code = String(action || "").trim();
-    if (!code) return tr("control.command.fallback", {}, "команда");
+    if (!code) return tr("control.command.fallback");
     return tr(`control.command.${code}`, {}, code);
   }
 
   function renderConnectionStatus() {
-    const connectedText = isRealtimeConnected && wsRoomReady
-      ? tr("control.connection.yes", {}, "да")
-      : tr("control.connection.no", {}, "нет");
+    const connectedText =
+      isRealtimeConnected && wsRoomReady
+        ? tr("control.connection.yes", {})
+        : tr("control.connection.no");
     const roleText = controlRole || "-";
     controlConnection.textContent = tr(
       "control.connection.summary",
@@ -640,7 +648,7 @@
     if (!isRecord(nextRoomState)) return;
     latestRoomState = nextRoomState;
     connectedRoomCode = String(nextRoomState.roomCode || roomCode || "-").toUpperCase();
-    roomLabel.textContent = tr("control.room.label", { room: connectedRoomCode }, `Комната: ${connectedRoomCode}`);
+    roomLabel.textContent = tr("control.room.label", { room: connectedRoomCode });
 
     if (wsPlayerId) {
       if (String(nextRoomState.controlId || "") === wsPlayerId) {
@@ -658,7 +666,7 @@
     wsRoomReady = true;
     renderConnectionStatus();
     if (controlRole !== "CONTROL") {
-      setStatus(tr("control.status.connectedNotControl", {}, "Токен подключён, но роль не CONTROL."), true);
+      setStatus(tr("control.status.connectedNotControl"), true);
     }
     renderPresenter();
   }
@@ -757,6 +765,12 @@
     return "ru";
   }
 
+  function normalizeTopVerticalAlign(value) {
+    const normalized = sanitizeLine(value, 16).trim().toLowerCase();
+    if (normalized === "top" || normalized === "bottom") return normalized;
+    return "center";
+  }
+
   function sanitizeOverlayUrlParamsForOverrides(raw) {
     if (!isRecord(raw)) return {};
     const out = {};
@@ -825,7 +839,7 @@
 
     const noneOption = document.createElement("option");
     noneOption.value = BACKGROUND_PRESET_NONE;
-    noneOption.textContent = tr("control.background.none", {}, "Прозрачный (без фона)");
+    noneOption.textContent = tr("control.background.none");
     backgroundPresetSelect.append(noneOption);
 
     for (const preset of backgroundCatalog.presets) {
@@ -861,7 +875,7 @@
         : normalizeBackgroundPresetId(backgroundPresetSelect.value);
     const chosenPreset = getBackgroundPresetById(effectivePresetId);
     if (!chosenPreset) {
-      backgroundPresetHint.textContent = tr("control.background.hint.unknown", {}, "Выбран неизвестный пресет.");
+      backgroundPresetHint.textContent = tr("control.background.hint.unknown");
       return;
     }
     const availableLayouts = [];
@@ -1045,6 +1059,13 @@
     urlParamTheme.value = String(params.theme || "");
     urlParamScale.value = String(params.scale || "1.3");
     urlParamTop.value = String(params.top || "");
+    urlParamTopBunkerAlign.value = normalizeTopVerticalAlign(params.topBunkerAlign || "center");
+    urlParamTopCatastropheAlign.value = normalizeTopVerticalAlign(params.topCatastropheAlign || "center");
+    urlParamTopThreatsAlign.value = normalizeTopVerticalAlign(params.topThreatsAlign || "center");
+    const fallbackTopScale = String(params.topTextScale || "1");
+    urlParamTopBunkerScale.value = String(params.topBunkerScale || fallbackTopScale);
+    urlParamTopCatastropheScale.value = String(params.topCatastropheScale || fallbackTopScale);
+    urlParamTopThreatsScale.value = String(params.topThreatsScale || fallbackTopScale);
     urlParamDebug.value = String(params.debug === "1" ? "1" : "");
   }
 
@@ -1074,6 +1095,47 @@
     } else {
       delete params.top;
     }
+
+    const bunkerAlign = normalizeTopVerticalAlign(urlParamTopBunkerAlign.value || "center");
+    if (bunkerAlign === "center") delete params.topBunkerAlign;
+    else params.topBunkerAlign = bunkerAlign;
+
+    const catastropheAlign = normalizeTopVerticalAlign(urlParamTopCatastropheAlign.value || "center");
+    if (catastropheAlign === "center") delete params.topCatastropheAlign;
+    else params.topCatastropheAlign = catastropheAlign;
+
+    const threatsAlign = normalizeTopVerticalAlign(urlParamTopThreatsAlign.value || "center");
+    if (threatsAlign === "center") delete params.topThreatsAlign;
+    else params.topThreatsAlign = threatsAlign;
+
+    const topBunkerScaleNum = Number.parseFloat(String(urlParamTopBunkerScale.value || "").trim());
+    if (Number.isFinite(topBunkerScaleNum)) {
+      const normalizedTopBunkerScale = Math.max(0.7, Math.min(2, topBunkerScaleNum));
+      if (Math.abs(normalizedTopBunkerScale - 1) < 0.0001) delete params.topBunkerScale;
+      else params.topBunkerScale = normalizedTopBunkerScale.toFixed(2).replace(/\.?0+$/, "");
+    } else {
+      delete params.topBunkerScale;
+    }
+
+    const topCatastropheScaleNum = Number.parseFloat(String(urlParamTopCatastropheScale.value || "").trim());
+    if (Number.isFinite(topCatastropheScaleNum)) {
+      const normalizedTopCatastropheScale = Math.max(0.7, Math.min(2, topCatastropheScaleNum));
+      if (Math.abs(normalizedTopCatastropheScale - 1) < 0.0001) delete params.topCatastropheScale;
+      else params.topCatastropheScale = normalizedTopCatastropheScale.toFixed(2).replace(/\.?0+$/, "");
+    } else {
+      delete params.topCatastropheScale;
+    }
+
+    const topThreatsScaleNum = Number.parseFloat(String(urlParamTopThreatsScale.value || "").trim());
+    if (Number.isFinite(topThreatsScaleNum)) {
+      const normalizedTopThreatsScale = Math.max(0.7, Math.min(2, topThreatsScaleNum));
+      if (Math.abs(normalizedTopThreatsScale - 1) < 0.0001) delete params.topThreatsScale;
+      else params.topThreatsScale = normalizedTopThreatsScale.toFixed(2).replace(/\.?0+$/, "");
+    } else {
+      delete params.topThreatsScale;
+    }
+
+    delete params.topTextScale;
 
     if (String(urlParamDebug.value || "").trim() === "1") params.debug = "1";
     else delete params.debug;
@@ -1288,11 +1350,11 @@
 
   function syncDirtyBadge() {
     if (isDirty()) {
-      dirtyBadge.textContent = tr("control.dirty.dirty", {}, "Есть несохраненные изменения");
+      dirtyBadge.textContent = tr("control.dirty.dirty");
       dirtyBadge.classList.add("is-dirty");
       return;
     }
-    dirtyBadge.textContent = tr("control.dirty.clean", {}, "Синхронизировано");
+    dirtyBadge.textContent = tr("control.dirty.clean");
     dirtyBadge.classList.remove("is-dirty");
   }
 
@@ -1412,7 +1474,7 @@
     const bunker = Array.isArray(top.bunker?.lines) ? top.bunker.lines.map((line) => String(line || "")).filter(Boolean) : [];
     const catastrophe = typeof top.catastrophe?.text === "string" ? top.catastrophe.text : "";
     const threats = Array.isArray(top.threats?.lines) ? top.threats.lines.map((line) => String(line || "")).filter(Boolean) : [];
-    const hiddenText = tr("overlay.hidden", {}, "скрыто");
+    const hiddenText = tr("overlay.hidden");
     return {
       bunker: bunker.length ? bunker : [hiddenText],
       catastrophe: catastrophe || hiddenText,
@@ -1423,7 +1485,7 @@
   function getBaseTop() {
     const top = isRecord(latestOverlayState?.top) ? latestOverlayState.top : {};
     const catastrophe = typeof top.catastrophe?.text === "string" ? top.catastrophe.text : "";
-    const hiddenText = tr("overlay.hidden", {}, "скрыто");
+    const hiddenText = tr("overlay.hidden");
     return {
       catastrophe: catastrophe || hiddenText,
     };
@@ -1499,7 +1561,7 @@
     const selectedName = selected
       ? fixMojibake(selected.name || selected.nickname || selected.playerId, "Игрок")
       : "-";
-    kickSelectedLabel.textContent = tr("control.sidebar.selectedNamed", { name: selectedName }, `Выбран: ${selectedName}`);
+    kickSelectedLabel.textContent = tr("control.sidebar.selectedNamed", { name: selectedName });
   }
 
   function renderPlayersList() {
@@ -1518,12 +1580,14 @@
       const meta = document.createElement("span");
       meta.className = "player-btn__meta";
       if (player.connected === false) meta.classList.add("offline");
-      const aliveText = player.alive === false
-        ? tr("control.playerMeta.leftBunker", {}, "вне бункера")
-        : tr("control.playerMeta.inGame", {}, "в игре");
-      const onlineText = player.connected === false
-        ? tr("control.playerMeta.offline", {}, "оффлайн")
-        : tr("control.playerMeta.online", {}, "онлайн");
+      const aliveText =
+        player.alive === false
+          ? tr("control.playerMeta.leftBunker", {})
+          : tr("control.playerMeta.inGame");
+      const onlineText =
+        player.connected === false
+          ? tr("control.playerMeta.offline", {})
+          : tr("control.playerMeta.online");
       meta.textContent = `${aliveText} | ${onlineText}`;
 
       button.append(name, meta);
@@ -1561,27 +1625,27 @@
     const errors = [];
     if (bunker.tooMany) {
       errors.push(
-        tr("control.top.error.bunkerLinesMax", { max: MAX_BUNKER_LINES }, `Бункер: максимум ${MAX_BUNKER_LINES} строк.`)
+        tr("control.top.error.bunkerLinesMax", { max: MAX_BUNKER_LINES })
       );
     }
     if (bunker.tooLong) {
       errors.push(
-        tr("control.top.error.bunkerLineCharsMax", { max: MAX_LINE_LEN }, `Бункер: максимум ${MAX_LINE_LEN} символов в строке.`)
+        tr("control.top.error.bunkerLineCharsMax", { max: MAX_LINE_LEN })
       );
     }
     if (threats.tooMany) {
       errors.push(
-        tr("control.top.error.threatLinesMax", { max: MAX_THREAT_LINES }, `Угрозы: максимум ${MAX_THREAT_LINES} строк.`)
+        tr("control.top.error.threatLinesMax", { max: MAX_THREAT_LINES })
       );
     }
     if (threats.tooLong) {
       errors.push(
-        tr("control.top.error.threatLineCharsMax", { max: MAX_LINE_LEN }, `Угрозы: максимум ${MAX_LINE_LEN} символов в строке.`)
+        tr("control.top.error.threatLineCharsMax", { max: MAX_LINE_LEN })
       );
     }
     if (cataTooLong) {
       errors.push(
-        tr("control.top.error.catastropheCharsMax", { max: MAX_CATA_LEN }, `Катастрофа: максимум ${MAX_CATA_LEN} символов.`)
+        tr("control.top.error.catastropheCharsMax", { max: MAX_CATA_LEN })
       );
     }
 
@@ -1664,7 +1728,7 @@
       traits: Boolean(current?.__overlayHideTraits),
       categories: Boolean(current?.__overlayHideCategories),
     };
-    const hiddenByToggleText = tr("control.playerEditor.hiddenByToggle", {}, "(скрыто переключателем)");
+    const hiddenByToggleText = tr("control.playerEditor.hiddenByToggle");
     return {
       name: hidden.name ? hiddenByToggleText : String(current?.nickname || "-"),
       sex: hidden.traits ? hiddenByToggleText : String(current?.tags?.sex?.value || "?"),
@@ -1694,15 +1758,15 @@
   function renderPlayerEditor() {
     const player = getSelectedPlayer();
     if (!player) {
-      playerEditorTitle.textContent = tr("control.playerEditor.title", {}, "Игрок");
+      playerEditorTitle.textContent = tr("control.playerEditor.title");
       playerNameInput.value = "";
       traitSexInput.value = "";
       traitAgeInput.value = "";
       traitOrientInput.value = "";
-      currentPlayerName.textContent = tr("control.obs.currentWithValue", { value: "-" }, "Сейчас в OBS: -");
-      currentTraitSex.textContent = tr("control.obs.currentWithValue", { value: "-" }, "Сейчас в OBS: -");
-      currentTraitAge.textContent = tr("control.obs.currentWithValue", { value: "-" }, "Сейчас в OBS: -");
-      currentTraitOrient.textContent = tr("control.obs.currentWithValue", { value: "-" }, "Сейчас в OBS: -");
+      currentPlayerName.textContent = tr("control.obs.currentWithValue", { value: "-" });
+      currentTraitSex.textContent = tr("control.obs.currentWithValue", { value: "-" });
+      currentTraitAge.textContent = tr("control.obs.currentWithValue", { value: "-" });
+      currentTraitOrient.textContent = tr("control.obs.currentWithValue", { value: "-" });
       playerEnabledName.checked = true;
       playerEnabledTraits.checked = true;
       playerEnabledCategories.checked = true;
@@ -1734,10 +1798,10 @@
     traitOrientInput.value = String(traits.orient || "");
     traitOrientInput.placeholder = current.orient;
 
-    currentPlayerName.textContent = tr("control.obs.currentWithValue", { value: current.name }, `Сейчас в OBS: ${current.name}`);
-    currentTraitSex.textContent = tr("control.obs.currentWithValue", { value: current.sex }, `Сейчас в OBS: ${current.sex}`);
-    currentTraitAge.textContent = tr("control.obs.currentWithValue", { value: current.age }, `Сейчас в OBS: ${current.age}`);
-    currentTraitOrient.textContent = tr("control.obs.currentWithValue", { value: current.orient }, `Сейчас в OBS: ${current.orient}`);
+    currentPlayerName.textContent = tr("control.obs.currentWithValue", { value: current.name });
+    currentTraitSex.textContent = tr("control.obs.currentWithValue", { value: current.sex });
+    currentTraitAge.textContent = tr("control.obs.currentWithValue", { value: current.age });
+    currentTraitOrient.textContent = tr("control.obs.currentWithValue", { value: current.orient });
 
     playerEnabledName.checked = enabled.name !== false;
     playerEnabledTraits.checked = enabled.traits !== false;
@@ -1757,7 +1821,7 @@
       title.textContent = category.label;
       const keyMeta = document.createElement("div");
       keyMeta.className = "meta";
-      keyMeta.textContent = tr("control.playerEditor.categoryKey", { key: category.key }, `Ключ: ${category.key}`);
+      keyMeta.textContent = tr("control.playerEditor.categoryKey", { key: category.key });
       left.append(title, keyMeta);
       head.append(left);
 
@@ -1774,7 +1838,7 @@
       toggle.dataset.categoryKey = category.key;
       toggle.checked = getCategoryEnabledFlag(enabledCategories, category.key);
       const toggleText = document.createElement("span");
-      toggleText.textContent = tr("control.playerEditor.showCategory", {}, "Показывать");
+      toggleText.textContent = tr("control.playerEditor.showCategory");
       toggleLabel.append(toggle, toggleText);
       head.append(toggleLabel);
       card.append(head);
@@ -1783,8 +1847,8 @@
       const currentMeta = document.createElement("div");
       currentMeta.className = "meta";
       currentMeta.textContent = currentCategory.shown
-        ? tr("control.obs.currentWithValue", { value: currentCategory.value || "-" }, `Сейчас в OBS: ${currentCategory.value || "-"}`)
-        : tr("control.obs.currentHidden", {}, "Сейчас в OBS: скрыто");
+        ? tr("control.obs.currentWithValue", { value: currentCategory.value || "-" })
+        : tr("control.obs.currentHidden");
       card.append(currentMeta);
 
       const input = document.createElement("input");
@@ -1793,7 +1857,7 @@
       input.dataset.action = "category-input";
       input.dataset.categoryKey = category.key;
       input.value = isRecord(entry.categories) ? String(entry.categories[category.key] || "") : "";
-      input.placeholder = currentCategory.value || tr("control.placeholder.categoryText", {}, "Текст категории");
+      input.placeholder = currentCategory.value || tr("control.placeholder.categoryText");
       card.append(input);
 
       const actions = document.createElement("div");
@@ -1803,13 +1867,13 @@
       randomBtn.className = "btn btn-small";
       randomBtn.dataset.action = "category-random";
       randomBtn.dataset.categoryKey = category.key;
-      randomBtn.textContent = tr("control.button.random", {}, "Случайно");
+      randomBtn.textContent = tr("control.button.random");
       const clearBtn = document.createElement("button");
       clearBtn.type = "button";
       clearBtn.className = "btn btn-small";
       clearBtn.dataset.action = "category-clear";
       clearBtn.dataset.categoryKey = category.key;
-      clearBtn.textContent = tr("control.button.clear", {}, "Очистить");
+      clearBtn.textContent = tr("control.button.clear");
       actions.append(randomBtn, clearBtn);
       card.append(actions);
 
@@ -1843,7 +1907,7 @@
     if (!items.length) {
       const empty = document.createElement("p");
       empty.className = "hint";
-      empty.textContent = tr("control.extraTexts.empty", {}, "Нет дополнительных текстовых блоков.");
+      empty.textContent = tr("control.extraTexts.empty");
       extraTextsList.append(empty);
       syncExtraTextsJson();
       return;
@@ -1857,19 +1921,19 @@
       head.className = "extra-card__head";
       const title = document.createElement("span");
       title.className = "extra-card__title";
-      title.textContent = tr("control.extraTexts.blockTitle", { index: index + 1, id: item.id }, `Блок #${index + 1} (id: ${item.id})`);
+      title.textContent = tr("control.extraTexts.blockTitle", { index: index + 1, id: item.id });
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";
       removeBtn.className = "btn btn-small btn--danger";
       removeBtn.dataset.action = "extra-remove";
       removeBtn.dataset.index = String(index);
-      removeBtn.textContent = tr("control.button.delete", {}, "Удалить");
+      removeBtn.textContent = tr("control.button.delete");
       head.append(title, removeBtn);
       card.append(head);
 
       const textField = document.createElement("label");
       textField.className = "field";
-      textField.innerHTML = `<span>${tr("control.extraTexts.textLabel", {}, "Текст (видно в overlay поверх карточек)")}</span>`;
+      textField.innerHTML = `<span>${tr("control.extraTexts.textLabel")}</span>`;
       const textInput = document.createElement("input");
       textInput.type = "text";
       textInput.maxLength = MAX_LINE_LEN;
@@ -1883,11 +1947,11 @@
       const grid = document.createElement("div");
       grid.className = "extra-card__grid";
       const fields = [
-        { label: tr("control.extraTexts.field.id", {}, "Служебный id"), field: "id", type: "text", value: item.id, attrs: {} },
-        { label: tr("control.extraTexts.field.x", {}, "X (0..1)"), field: "x", type: "number", value: String(item.x), attrs: { step: "0.01", min: "0", max: "1" } },
-        { label: tr("control.extraTexts.field.y", {}, "Y (0..1)"), field: "y", type: "number", value: String(item.y), attrs: { step: "0.01", min: "0", max: "1" } },
-        { label: tr("control.extraTexts.field.size", {}, "Размер (8..96)"), field: "size", type: "number", value: String(item.size ?? 20), attrs: { step: "1", min: "8", max: "96" } },
-        { label: tr("control.extraTexts.field.color", {}, "Цвет (CSS)"), field: "color", type: "text", value: item.color || "", attrs: {} },
+        { label: tr("control.extraTexts.field.id"), field: "id", type: "text", value: item.id, attrs: {} },
+        { label: tr("control.extraTexts.field.x"), field: "x", type: "number", value: String(item.x), attrs: { step: "0.01", min: "0", max: "1" } },
+        { label: tr("control.extraTexts.field.y"), field: "y", type: "number", value: String(item.y), attrs: { step: "0.01", min: "0", max: "1" } },
+        { label: tr("control.extraTexts.field.size"), field: "size", type: "number", value: String(item.size ?? 20), attrs: { step: "1", min: "8", max: "96" } },
+        { label: tr("control.extraTexts.field.color"), field: "color", type: "text", value: item.color || "", attrs: {} },
       ];
       for (const def of fields) {
         const label = document.createElement("label");
@@ -1908,15 +1972,15 @@
       const alignLabel = document.createElement("label");
       alignLabel.className = "field";
       const alignSpan = document.createElement("span");
-      alignSpan.textContent = tr("control.extraTexts.field.align", {}, "Выравнивание");
+      alignSpan.textContent = tr("control.extraTexts.field.align");
       const alignSelect = document.createElement("select");
       alignSelect.dataset.action = "extra-field";
       alignSelect.dataset.field = "align";
       alignSelect.dataset.index = String(index);
       for (const optionDef of [
-        ["left", tr("control.align.left", {}, "Слева")],
-        ["center", tr("control.align.center", {}, "По центру")],
-        ["right", tr("control.align.right", {}, "Справа")],
+        ["left", tr("control.align.left")],
+        ["center", tr("control.align.center")],
+        ["right", tr("control.align.right")],
       ]) {
         const option = document.createElement("option");
         option.value = optionDef[0];
@@ -1937,7 +2001,7 @@
       visibleInput.dataset.field = "visible";
       visibleInput.dataset.index = String(index);
       visibleInput.checked = item.visible !== false;
-      visibleLabel.append(visibleInput, document.createTextNode(tr("control.playerEditor.showCategory", {}, "Показывать")));
+      visibleLabel.append(visibleInput, document.createTextNode(tr("control.playerEditor.showCategory")));
 
       const shadowLabel = document.createElement("label");
       const shadowInput = document.createElement("input");
@@ -1946,7 +2010,7 @@
       shadowInput.dataset.field = "shadow";
       shadowInput.dataset.index = String(index);
       shadowInput.checked = item.shadow !== false;
-      shadowLabel.append(shadowInput, document.createTextNode(tr("control.extraTexts.shadow", {}, "Тень текста")));
+      shadowLabel.append(shadowInput, document.createTextNode(tr("control.extraTexts.shadow")));
       checks.append(visibleLabel, shadowLabel);
       card.append(checks);
 
@@ -1973,7 +2037,7 @@
     const playersFallback = Array.isArray(presenter.players) ? presenter.players : [];
     return playersFallback.map((player) => ({
       playerId: String(player.playerId || ""),
-      name: String(player.name || player.playerId || tr("control.player.fallback", {}, "Игрок")),
+      name: String(player.name || player.playerId || tr("control.player.fallback")),
       status: String(player.status || "alive"),
       hand: [],
       specialConditions: [],
@@ -2067,20 +2131,20 @@
       ...hand.map((card) => ({
         area: "hand",
         instanceId: String(card.instanceId || ""),
-        label: `${String(card.deck || "-")} • ${String(card.labelShort || card.instanceId || tr("control.card.fallback", {}, "карта"))} ${
+        label: `${String(card.deck || "-")} • ${String(card.labelShort || card.instanceId || tr("control.card.fallback"))} ${
           card.revealed
-            ? tr("control.card.revealedShort", {}, "(открыта)")
-            : tr("control.card.hiddenShort", {}, "(скрыта)")
+            ? tr("control.card.revealedShort", {})
+            : tr("control.card.hiddenShort", {})
         }`,
         deck: String(card.deck || ""),
       })),
       ...specials.map((special) => ({
         area: "special",
         instanceId: String(special.instanceId || ""),
-        label: `${tr("control.special.prefix", {}, "Особое")} • ${String(
-          special.title || special.instanceId || tr("control.special.fallback", {}, "спецусловие")
-        )}${special.used ? ` ${tr("control.special.usedShort", {}, "(исп.)")}` : ""}`,
-        deck: tr("control.special.deckName", {}, "Особые условия"),
+        label: `${tr("control.special.prefix")} • ${String(
+          tr("control.special.fallback", {})
+        )}${special.used ? ` ${tr("control.special.usedShort")}` : ""}`,
+        deck: tr("control.special.deckName"),
       })),
     ].filter((entry) => entry.instanceId);
 
@@ -2126,8 +2190,8 @@
     replaceExecuteBtn.disabled = !commandsReady || !hasSelection;
     const modeText = isSpecific ? "конкретная карта" : "случайная карта";
     const modeLabel = isSpecific
-      ? tr("control.replace.mode.specific", {}, "конкретная карта")
-      : tr("control.replace.mode.random", {}, "случайная карта");
+      ? tr("control.replace.mode.specific", {})
+      : tr("control.replace.mode.random");
     replaceHint.textContent = hasSelection
       ? tr(
           "control.replace.hint.selected",
@@ -2135,8 +2199,8 @@
             player: fixMojibake(String(target?.name || targetPlayerId), "Игрок"),
             source:
               selectedArea === "special"
-                ? tr("control.replace.source.special", {}, "особое условие")
-                : tr("control.replace.source.card", { deck: String(selectedCard?.deck || "-") }, `карта (${String(selectedCard?.deck || "-")})`),
+                ? tr("control.replace.source.special", {})
+                : tr("control.replace.source.card", { deck: String(selectedCard?.deck || "-") }),
             mode: modeLabel,
           },
           `Игрок: ${fixMojibake(String(target?.name || targetPlayerId), "Игрок")} • Источник: ${
@@ -2145,7 +2209,7 @@
             : `карта (${String(selectedCard?.deck || "-")})`
         } • Режим: ${modeText}.`
         )
-      : tr("control.replace.hint.selectFirst", {}, "Сначала выбери карту игрока для замены.");
+      : tr("control.replace.hint.selectFirst");
   }
 
   function renderVotingBlock() {
@@ -2153,10 +2217,10 @@
     voteOutcomeRow.hidden = !state.postGameActive;
     voteOutcomeState.textContent =
       state.postGameOutcome === "survived"
-        ? tr("control.vote.outcome.survived", {}, "Исход: Выжил в бункере.")
+        ? tr("control.vote.outcome.survived", {})
         : state.postGameOutcome === "failed"
-          ? tr("control.vote.outcome.failed", {}, "Исход: Не выжил.")
-          : tr("control.vote.outcomeNone", {}, "Исход не выбран.");
+          ? tr("control.vote.outcome.failed", {})
+          : tr("control.vote.outcomeNone");
     voteStartGameBtn.disabled = !state.commandsReady || !state.canStartGame;
     voteNextStepBtn.disabled = !state.commandsReady || !state.canNextStep;
     voteSkipStepBtn.disabled = !state.commandsReady || !state.canSkipStep;
@@ -2191,9 +2255,9 @@
     hostTransferBtn.disabled = !commandsReady || !hasCandidates;
     hostTransferBtn.title = hasCandidates
       ? ""
-      : tr("control.transfer.noCandidates", {}, "Нет доступных подключенных игроков для передачи роли.");
+      : tr("control.transfer.noCandidates");
     hostTransferHint.textContent = hasCandidates
-      ? tr("control.transfer.currentHost", { host: hostName }, `Текущий ведущий: ${hostName}.`)
+      ? tr("control.transfer.currentHost", { host: hostName })
       : tr(
           "control.transfer.currentHostNoCandidates",
           { host: hostName },
@@ -2206,7 +2270,7 @@
     const kind = String(worldKindSelect.value || "threat");
     const list =
       kind === "disaster"
-        ? [{ index: 0, title: String(world?.disaster?.title || tr("control.world.disasterFallback", {}, "Катастрофа")), isRevealed: true, imageId: String(world?.disaster?.imageId || "") }]
+        ? [{ index: 0, title: String(world?.disaster?.title || tr("control.world.disasterFallback")), isRevealed: true, imageId: String(world?.disaster?.imageId || "") }]
         : Array.isArray(world?.[kind === "bunker" ? "bunker" : "threats"])
           ? world[kind === "bunker" ? "bunker" : "threats"]
           : [];
@@ -2214,7 +2278,7 @@
       worldIndexSelect,
       list.map((card) => ({
         value: String(card.index ?? 0),
-        label: `#${Number(card.index ?? 0) + 1} • ${String(card.title || tr("control.world.cardFallback", {}, "Карта"))}`,
+        label: `#${Number(card.index ?? 0) + 1} • ${String(card.title || tr("control.world.cardFallback"))}`,
       })),
       String(worldIndexSelect.value || "")
     );
@@ -2258,18 +2322,18 @@
     worldToggleRevealBtn.disabled = !commandsReady || !isRevealAvailable;
     worldToggleRevealBtn.textContent =
       selectedCard && selectedCard.isRevealed
-        ? tr("control.world.hideCard", {}, "Скрыть карту")
-        : tr("control.world.revealCard", {}, "Раскрыть карту");
+        ? tr("control.world.hideCard", {})
+        : tr("control.world.revealCard");
     worldReplaceBtn.disabled = !commandsReady || list.length === 0;
     worldSetCountBtn.disabled = !commandsReady || kind === "disaster";
     const revealStateText =
       selectedCard && kind !== "disaster"
         ? selectedCard.isRevealed
-          ? tr("control.world.currentRevealed", {}, "Карта сейчас раскрыта.")
-          : tr("control.world.currentHidden", {}, "Карта сейчас скрыта.")
-        : tr("control.world.selectCard", {}, "Выбери карту мира.");
+          ? tr("control.world.currentRevealed", {})
+          : tr("control.world.currentHidden", {})
+        : tr("control.world.selectCard");
     worldHint.textContent = deckName
-      ? tr("control.world.hint.deckKnown", { state: revealStateText, deck: deckName }, `${revealStateText} Колода мира: ${deckName}.`)
+      ? tr("control.world.hint.deckKnown", { state: revealStateText, deck: deckName })
       : tr(
           "control.world.hint.deckAuto",
           { state: revealStateText },
@@ -2293,7 +2357,7 @@
           value: instanceId,
           actorPlayerId: String(player.playerId || ""),
           title: String(special.title || instanceId),
-          text: text || tr("control.special.descriptionMissing", {}, "Описание отсутствует."),
+          text: text || tr("control.special.descriptionMissing"),
           scope,
           choiceKind: String(special.choiceKind || "").trim(),
           targetScope: String(special.targetScope || "").trim(),
@@ -2312,7 +2376,7 @@
       value: entry.id,
       actorPlayerId: "",
       title: entry.title,
-      text: entry.text || tr("control.special.descriptionMissing", {}, "Описание отсутствует."),
+      text: entry.text || tr("control.special.descriptionMissing"),
       scope: String(entry.targetScope || entry.choiceKind || "").trim(),
       choiceKind: String(entry.choiceKind || "").trim(),
       targetScope: String(entry.targetScope || "").trim(),
@@ -2324,12 +2388,12 @@
     }));
     catalog.push(...fromScenarioCatalog);
     if (fromScenarioCatalog.length === 0) {
-      const fallbackDeck = getDeckCards(tr("control.special.deckName", {}, "Особые условия")).map((card) => ({
+      const fallbackDeck = getDeckCards(tr("control.special.deckName")).map((card) => ({
         mode: "catalog",
         value: card.labelShort,
         actorPlayerId: "",
         title: card.labelShort,
-        text: String(card.text || "").trim() || tr("control.special.descriptionUnavailable", {}, "Описание карты недоступно для текущего сценария."),
+        text: String(card.text || "").trim() || tr("control.special.descriptionUnavailable"),
         scope: "",
         choiceKind: "",
         targetScope: "",
@@ -2468,10 +2532,10 @@
       specialTargetCardSelect,
       targetCards.map((card) => ({
         value: String(card.instanceId || ""),
-        label: `${String(card.labelShort || card.instanceId || tr("control.baggage.fallback", {}, "багаж"))} ${
+        label: `${String(card.labelShort || card.instanceId || tr("control.baggage.fallback"))} ${
           card.revealed
-            ? tr("control.card.revealedMascShort", {}, "(открыт)")
-            : tr("control.card.hiddenShort", {}, "(скрыт)")
+            ? tr("control.card.revealedMascShort", {})
+            : tr("control.card.hiddenShort", {})
         }`,
       })),
       String(specialTargetCardSelect.value || "")
@@ -2483,7 +2547,7 @@
       Array.isArray(world?.bunker)
         ? world.bunker.map((card) => ({
             value: String(card.index),
-            label: `#${Number(card.index) + 1} • ${String(card.title || tr("control.world.bunkerCardFallback", {}, "Карта бункера"))}`,
+            label: `#${Number(card.index) + 1} • ${String(card.title || tr("control.world.bunkerCardFallback"))}`,
           }))
         : [],
       String(specialThreatIndexSelect.value || "")
@@ -2500,7 +2564,7 @@
         value: String(entry.value),
         label:
           mode === "owned"
-            ? `${String(entry.title)}${entry.used ? ` ${tr("control.special.usedShort", {}, "(исп.)")}` : ""}`
+            ? `${String(entry.title)}${entry.used ? ` ${tr("control.special.usedShort")}` : ""}`
             : String(entry.title),
       })),
       String(specialPickerSelect.value || "")
@@ -2508,20 +2572,20 @@
     const picked = availableSpecials.find((entry) => String(entry.value) === String(specialPickerSelect.value || ""));
     const requirements = getSpecialFieldRequirements(picked);
     applySpecialFieldVisibility(requirements);
-    specialDescriptionText.value = String(picked?.text || tr("control.special.descriptionUnavailable", {}, "Описание карты недоступно."));
+    specialDescriptionText.value = String(picked?.text || tr("control.special.descriptionUnavailable"));
     const commandsReady = getCommandsReady();
     specialApplyBtn.disabled = !commandsReady || !picked;
     const sourceHint =
       mode === "owned"
-        ? tr("control.special.source.owned", {}, "карта выбранного игрока")
-        : tr("control.special.source.catalog", {}, "каталог (от лица ведущего)");
+        ? tr("control.special.source.owned", {})
+        : tr("control.special.source.catalog");
     const fieldsHint = [];
-    if (requirements.needTargetPlayer) fieldsHint.push(tr("control.special.field.target", {}, "цель"));
-    if (requirements.needBaggageCard) fieldsHint.push(tr("control.special.field.baggage", {}, "багаж цели"));
-    if (requirements.needBunkerIndex) fieldsHint.push(tr("control.special.field.bunkerIndex", {}, "индекс карты бункера"));
-    if (requirements.needCategory) fieldsHint.push(tr("control.special.field.category", {}, "категория"));
+    if (requirements.needTargetPlayer) fieldsHint.push(tr("control.special.field.target"));
+    if (requirements.needBaggageCard) fieldsHint.push(tr("control.special.field.baggage"));
+    if (requirements.needBunkerIndex) fieldsHint.push(tr("control.special.field.bunkerIndex"));
+    if (requirements.needCategory) fieldsHint.push(tr("control.special.field.category"));
     const scopePart = picked?.scope
-      ? tr("control.special.hint.scopePart", { scope: picked.scope }, ` • Цель: ${picked.scope}`)
+      ? tr("control.special.hint.scopePart", { scope: picked.scope })
       : "";
     const paramsPart = fieldsHint.length
       ? tr(
@@ -2540,7 +2604,7 @@
           },
           `Источник: ${sourceHint}${scopePart}${paramsPart}.`
         )
-      : tr("control.special.hint.select", {}, "Выбери спецусловие для применения.");
+      : tr("control.special.hint.select");
   }
 
   function renderDevBlock() {
@@ -2569,8 +2633,8 @@
     devSkipRoundBtn.disabled = !commandsReady;
     const selected = String(devTargetPlayerSelect.value || "").trim();
     devHint.textContent = selected
-      ? tr("control.dev.selectedPlayer", { player: selected }, `Выбранный игрок: ${selected}`)
-      : tr("control.dev.selectHint", {}, "Выбери игрока для dev-команд.");
+      ? tr("control.dev.selectedPlayer", { player: selected })
+      : tr("control.dev.selectHint");
   }
 
   function renderHostBlocks() {
@@ -2588,7 +2652,7 @@
     if (!entries || entries.length === 0) {
       const emptyOption = document.createElement("option");
       emptyOption.value = "";
-      emptyOption.textContent = tr("control.option.noneAvailable", {}, "Нет доступных вариантов");
+      emptyOption.textContent = tr("control.option.noneAvailable");
       select.append(emptyOption);
       select.selectedIndex = 0;
       return;
@@ -2705,7 +2769,7 @@
     if (!isVisible) return;
     const title = document.createElement("div");
     title.className = "control-pickers__title";
-    title.textContent = tr("control.quickPicker.card.title", {}, "Быстрый выбор карты");
+    title.textContent = tr("control.quickPicker.card.title");
     controlCardPicker.append(title);
     const grid = document.createElement("div");
     grid.className = "control-pickers__grid";
@@ -2714,11 +2778,11 @@
       const imageUrl = resolveAssetPreviewUrl(card.id);
       const btn = buildPickerCard(
         `${String(card.deck || "-")} • ${String(
-          card.labelShort || cardId || tr("control.world.cardFallback", {}, "Карта")
+          tr("control.world.cardFallback", {})
         )}`,
         card.revealed
-          ? tr("control.card.revealedShort", {}, "(открыта)")
-          : tr("control.card.hiddenShort", {}, "(скрыта)"),
+          ? tr("control.card.revealedShort", {})
+          : tr("control.card.hiddenShort"),
         imageUrl,
         cardId === selectedCardId
       );
@@ -2728,7 +2792,7 @@
     if (grid.children.length === 0) {
       const empty = document.createElement("div");
       empty.className = "hint";
-      empty.textContent = tr("control.quickPicker.card.empty", {}, "У выбранного игрока нет доступных карт.");
+      empty.textContent = tr("control.quickPicker.card.empty");
       controlCardPicker.append(empty);
       return;
     }
@@ -2741,7 +2805,7 @@
     if (!isVisible) return;
     const title = document.createElement("div");
     title.className = "control-pickers__title";
-    title.textContent = tr("control.quickPicker.special.title", {}, "Быстрый выбор спецусловия");
+    title.textContent = tr("control.quickPicker.special.title");
     controlSpecialPicker.append(title);
     const grid = document.createElement("div");
     grid.className = "control-pickers__grid";
@@ -2749,10 +2813,10 @@
       const specialId = String(special.instanceId || "");
       const imageUrl = resolveAssetPreviewUrl("", special.imgUrl);
       const metaText = special.used
-        ? tr("control.quickPicker.special.used", {}, "Уже использовано")
-        : tr("control.quickPicker.special.ready", {}, "Готово к применению");
+        ? tr("control.quickPicker.special.used", {})
+        : tr("control.quickPicker.special.ready");
       const btn = buildPickerCard(
-        String(special.title || specialId || tr("control.special.fallback", {}, "спецусловие")),
+        String(special.title || specialId || tr("control.special.fallback")),
         metaText,
         imageUrl,
         specialId === selectedSpecialId
@@ -2782,8 +2846,8 @@
     title.className = "control-pickers__title";
     title.textContent =
       actionType === "applySpecial"
-        ? tr("control.quickPicker.bunker.title", {}, "Быстрый выбор карты бункера (индекс)")
-        : tr("control.quickPicker.threat.title", {}, "Быстрый выбор угрозы");
+        ? tr("control.quickPicker.bunker.title", {})
+        : tr("control.quickPicker.threat.title");
     controlThreatPicker.append(title);
     const sourceCards =
       actionType === "applySpecial"
@@ -2796,11 +2860,11 @@
       const imageUrl = resolveAssetPreviewUrl(worldCard.imageId);
       const btn = buildPickerCard(
         `#${Number(worldCard.index) + 1} • ${String(
-          worldCard.title || tr("control.world.cardFallback", {}, "Карта")
+          tr("control.world.cardFallback", {})
         )}`,
         worldCard.isRevealed
-          ? tr("control.card.revealedShort", {}, "(открыта)")
-          : tr("control.card.hiddenShort", {}, "(скрыта)"),
+          ? tr("control.card.revealedShort", {})
+          : tr("control.card.hiddenShort"),
         imageUrl,
         indexText === selectedThreatIndex
       );
@@ -2861,11 +2925,11 @@
       actorCards.map((card) => ({
         value: String(card.instanceId || ""),
         label: `${String(card.deck || "-")} • ${String(
-          card.labelShort || card.instanceId || tr("control.card.fallback", {}, "карта")
+          tr("control.card.fallback", {})
         )} ${
           card.revealed
-            ? tr("control.card.revealedShort", {}, "(открыта)")
-            : tr("control.card.hiddenShort", {}, "(скрыта)")
+            ? tr("control.card.revealedShort", {})
+            : tr("control.card.hiddenShort", {})
         }`,
       })),
       String(controlCardSelect.value || "")
@@ -2875,8 +2939,8 @@
       actorSpecials.map((special) => ({
         value: String(special.instanceId || ""),
         label: `${String(
-          special.title || special.instanceId || tr("control.special.fallback", {}, "спецусловие")
-        )} ${special.used ? tr("control.special.usedShort", {}, "(исп.)") : ""}`,
+          tr("control.special.fallback", {})
+        )} ${special.used ? tr("control.special.usedShort") : ""}`,
       })),
       String(controlSpecialSelect.value || "")
     );
@@ -2886,11 +2950,11 @@
         ? world.threats.map((threat) => ({
             value: String(threat.index),
             label: `#${threat.index + 1} • ${String(
-              threat.title || tr("control.world.kind.threat", {}, "Угроза")
+              tr("control.world.kind.threat", {})
             )} ${
-              threat.isRevealed
-                ? tr("control.card.revealedShort", {}, "(открыта)")
-                : tr("control.card.hiddenShort", {}, "(скрыта)")
+          threat.isRevealed
+            ? tr("control.card.revealedShort", {})
+            : tr("control.card.hiddenShort", {})
             }`,
           }))
         : [],
@@ -2915,7 +2979,7 @@
     const actorName = actor ? fixMojibake(String(actor.name || actor.playerId || "Игрок"), "Игрок") : "-";
     const actorLabel =
       config.actorMode === "host"
-        ? tr("control.quick.actor.host", {}, "ведущий (host)")
+        ? tr("control.quick.actor.host", {})
         : actorName;
     const shortHint = meta?.hint ? ` ${meta.hint}` : "";
     controlActionHint.textContent = tr(
@@ -2923,12 +2987,12 @@
       { actor: actorLabel, hint: shortHint.trim() },
       `Действие будет отправлено как: ${actorLabel}.${shortHint}`
     );
-    controlGuide.textContent = meta?.guide || tr("control.quick.guideFallback", {}, "Выбери действие, затем параметры ниже.");
+    controlGuide.textContent = meta?.guide || tr("control.quick.guideFallback");
   }
 
   function buildScenarioControlRequest() {
     const actionType = String(controlScenarioAction.value || "").trim();
-    if (!actionType) throw new Error(tr("control.error.actionRequired", {}, "Выберите сценарное действие."));
+    if (!actionType) throw new Error(tr("control.error.actionRequired"));
     const config = getScenarioActionConfig(actionType);
     const presenter = isRecord(presenterState) ? presenterState : null;
     const hostId = String(presenter?.hostId || "");
@@ -2937,17 +3001,17 @@
         ? hostId
         : String(controlActorSelect.value || controlActorPlayerId || hostId || "");
     if (!actorPlayerId) {
-      throw new Error(tr("control.error.actorResolve", {}, "Не удалось определить игрока-исполнителя."));
+      throw new Error(tr("control.error.actorResolve"));
     }
 
     const payload = {};
     if (actionType === "revealCard") {
       const cardId = String(controlCardSelect.value || "").trim();
-      if (!cardId) throw new Error(tr("control.error.revealNeedCard", {}, "Выберите карту для раскрытия."));
+      if (!cardId) throw new Error(tr("control.error.revealNeedCard"));
       payload.cardId = cardId;
     } else if (actionType === "applySpecial") {
       const specialInstanceId = String(controlSpecialSelect.value || "").trim();
-      if (!specialInstanceId) throw new Error(tr("control.error.specialNeedCard", {}, "Выберите спецусловие."));
+      if (!specialInstanceId) throw new Error(tr("control.error.specialNeedCard"));
       payload.specialInstanceId = specialInstanceId;
       const specialPayload = {};
       const targetPlayerId = String(controlTargetSelect.value || "").trim();
@@ -2961,19 +3025,19 @@
       payload.payload = specialPayload;
     } else if (actionType === "vote") {
       const targetPlayerId = String(controlTargetSelect.value || "").trim();
-      if (!targetPlayerId) throw new Error(tr("control.error.voteNeedTarget", {}, "Выберите цель голосования."));
+      if (!targetPlayerId) throw new Error(tr("control.error.voteNeedTarget"));
       payload.targetPlayerId = targetPlayerId;
     } else if (actionType === "revealWorldThreat") {
       const index = Number(controlThreatIndex.value);
       if (!Number.isInteger(index) || index < 0) {
-        throw new Error(tr("control.error.worldNeedIndex", {}, "Выберите корректный индекс угрозы."));
+        throw new Error(tr("control.error.worldNeedIndex"));
       }
       payload.index = index;
     } else if (actionType === "setBunkerOutcome") {
       payload.outcome = String(controlOutcomeSelect.value || "survived");
     } else if (actionType === "markLeftBunker" || actionType === "devKickPlayer" || actionType === "devRemovePlayer") {
       const targetPlayerId = String(controlTargetSelect.value || "").trim();
-      if (!targetPlayerId) throw new Error(tr("control.error.targetRequired", {}, "Выберите целевого игрока."));
+      if (!targetPlayerId) throw new Error(tr("control.error.targetRequired"));
       payload.targetPlayerId = targetPlayerId;
     } else if (actionType === "devAddPlayer") {
       const name = String(controlDevNameInput.value || "").trim();
@@ -2986,10 +3050,10 @@
       try {
         parsed = JSON.parse(rawJson);
       } catch {
-        throw new Error(tr("control.error.payloadJsonInvalid", {}, "payload JSON: неверный формат."));
+        throw new Error(tr("control.error.payloadJsonInvalid"));
       }
       if (!isRecord(parsed)) {
-        throw new Error(tr("control.error.payloadJsonObject", {}, "payload JSON должен быть объектом."));
+        throw new Error(tr("control.error.payloadJsonObject"));
       }
       Object.assign(payload, parsed);
     }
@@ -3008,7 +3072,7 @@
     presenterModeState.textContent = tr(
       "control.presenter.stateLabel",
       {
-        mode: enabled ? tr("control.presenter.stateOn", {}, "on") : tr("control.presenter.stateOff", {}, "off"),
+        mode: enabled ? tr("control.presenter.stateOn") : tr("control.presenter.stateOff"),
         raw: modeRaw,
       },
       `Presenter mode: ${enabled ? "on" : "off"} (из state) = ${modeRaw}`
@@ -3029,11 +3093,11 @@
         postGameOutcome: "",
       };
       presenterKickPlayerBtn.disabled = true;
-      presenterKickPlayerBtn.title = tr("control.presenter.disabledShort", {}, "Режим «Ведущий» выключен.");
+      presenterKickPlayerBtn.title = tr("control.presenter.disabledShort");
       renderScenarioActionEditor();
       renderHostBlocks();
       controlExecuteBtn.disabled = true;
-      controlActionHint.textContent = tr("control.presenter.disabledShort", {}, "Режим «Ведущий» выключен.");
+      controlActionHint.textContent = tr("control.presenter.disabledShort");
       return;
     }
 
@@ -3073,10 +3137,10 @@
     presenterKickPlayerBtn.title = canKickSelected
       ? ""
       : !selectedPlayer
-        ? tr("control.presenter.kickNeedPlayer", {}, "Выберите игрока слева.")
+        ? tr("control.presenter.kickNeedPlayer", {})
         : selectedPlayer.playerId === presenter.controlId
-          ? tr("control.presenter.kickCreatorDenied", {}, "Нельзя выгнать создателя комнаты.")
-          : tr("control.presenter.kickDenied", {}, "Выбранного игрока сейчас нельзя выгнать.");
+          ? tr("control.presenter.kickCreatorDenied", {})
+          : tr("control.presenter.kickDenied");
     controlExecuteBtn.disabled = !commandsReady;
     for (const player of players) {
       const row = document.createElement("tr");
@@ -3088,14 +3152,14 @@
       const statusCell = document.createElement("td");
       const baseStatus = formatPlayerStatus(player.status);
       const connectedSuffix =
-        player.connected === false ? ` ${tr("control.playerMeta.offlineShort", {}, "(оффлайн)")}` : "";
+        player.connected === false ? ` ${tr("control.playerMeta.offlineShort")}` : "";
       statusCell.textContent = `${baseStatus}${connectedSuffix}`;
       row.append(statusCell);
 
       const votedCell = document.createElement("td");
       votedCell.textContent = player.voted
-        ? tr("control.bool.yes", {}, "Да")
-        : tr("control.bool.no", {}, "Нет");
+        ? tr("control.bool.yes", {})
+        : tr("control.bool.no");
       row.append(votedCell);
 
       const voteTargetCell = document.createElement("td");
@@ -3108,8 +3172,8 @@
 
       const revealedCell = document.createElement("td");
       revealedCell.textContent = player.revealedThisRound
-        ? tr("control.bool.yes", {}, "Да")
-        : tr("control.bool.no", {}, "Нет");
+        ? tr("control.bool.yes", {})
+        : tr("control.bool.no");
       row.append(revealedCell);
 
       presenterPlayersBody.append(row);
@@ -3144,7 +3208,7 @@
 
   function sendWsCommand(type, payload = {}) {
     if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
-      throw new Error(tr("control.error.wsNotConnected", {}, "Нет активного подключения к комнате."));
+      throw new Error(tr("control.error.wsNotConnected"));
     }
     wsSocket.send(JSON.stringify({ type, payload }));
   }
@@ -3155,7 +3219,7 @@
     console.log("[overlay-control] sendControlAction", { action, roomCode, hasToken, extraPayload });
     if (!(isRealtimeConnected && wsRoomReady && controlRole === "CONTROL")) {
       throw new Error(
-        tr("control.error.notControlConnected", {}, "Панель не подключена к комнате как CONTROL.")
+        tr("control.error.notControlConnected", {})
       );
     }
     const wsMapped = mapControlActionToWs(action);
@@ -3170,13 +3234,13 @@
     if (wsMapped) {
       sendWsCommand(wsMapped.type, wsMapped.payload);
       setStatus(
-        tr("control.status.commandSent", { command: actionLabel }, `Команда отправлена: ${actionLabel}.`)
+        tr("control.status.commandSent", { command: actionLabel })
       );
       return;
     }
 
     setStatus(
-      tr("control.status.commandRunning", { command: actionLabel }, `Выполняю: ${actionLabel}...`)
+      tr("control.status.commandRunning", { command: actionLabel })
     );
     const res = await fetch("/overlay-control/action", {
       method: "POST",
@@ -3187,7 +3251,7 @@
     console.log("[overlay-control] sendControlAction response", { action, status: res.status, ok: data?.ok === true, data });
     if (!res.ok || !data.ok) {
       if (res.status === 403) {
-        throw new Error(tr("control.error.controlDenied", {}, "Нет прав CONTROL для этой команды."));
+        throw new Error(tr("control.error.controlDenied"));
       }
       throw new Error(
         data.message ||
@@ -3210,7 +3274,7 @@
     }
     renderPresenter();
     setStatus(
-      tr("control.status.commandDone", { command: actionLabel }, `Команда выполнена: ${actionLabel}.`)
+      tr("control.status.commandDone", { command: actionLabel })
     );
   }
 
@@ -3218,7 +3282,7 @@
     const presenter = isRecord(presenterState) ? presenterState : null;
     const actorPlayerId = String(presenter?.hostId || "");
     if (!actorPlayerId) {
-      throw new Error(tr("control.error.hostResolve", {}, "Не удалось определить ведущего для действия."));
+      throw new Error(tr("control.error.hostResolve"));
     }
     await sendControlAction("SCENARIO_ACTION", {
       actorPlayerId,
@@ -3246,21 +3310,21 @@
     applyStaticLocale();
     const topTitle = document.querySelector(".topbar__meta h1");
     if (topTitle) {
-      topTitle.textContent = tr("control.title", {}, "Overlay Control");
+      topTitle.textContent = tr("control.title");
     }
     controlLocaleSelect.value = controlLang;
-    controlLocaleLabel.textContent = tr("control.locale.label", {}, "Язык");
-    saveBtn.textContent = tr("control.button.save", {}, "Сохранить");
-    reloadBtn.textContent = tr("control.button.reload", {}, "Обновить");
-    resetPlayerBtn.textContent = tr("control.button.resetPlayer", {}, "Сброс игрока");
-    gameControlTabBtn.textContent = tr("control.tab.game", {}, "Контроль игры");
-    obsControlTabBtn.textContent = tr("control.tab.obs", {}, "Контроль OBS");
+    controlLocaleLabel.textContent = tr("control.locale.label");
+    saveBtn.textContent = tr("control.button.save");
+    reloadBtn.textContent = tr("control.button.reload");
+    resetPlayerBtn.textContent = tr("control.button.resetPlayer");
+    gameControlTabBtn.textContent = tr("control.tab.game");
+    obsControlTabBtn.textContent = tr("control.tab.obs");
     
     // Update locale select options
     const localeOptions = controlLocaleSelect.querySelectorAll("option");
     localeOptions.forEach((opt) => {
-      if (opt.value === "ru") opt.textContent = tr("control.locale.ru", {}, "Русский");
-      else if (opt.value === "en") opt.textContent = tr("control.locale.en", {}, "English (Beta)");
+      if (opt.value === "ru") opt.textContent = tr("control.locale.ru");
+      else if (opt.value === "en") opt.textContent = tr("control.locale.en");
     });
     
     roomLabel.textContent = tr(
@@ -3506,7 +3570,7 @@
     }
     await Promise.all([loadBackgroundCatalog(), loadOverlayUrlPresets()]);
     renderAll();
-    setStatus(tr("control.status.stateLoaded", {}, "Состояние загружено."));
+    setStatus(tr("control.status.stateLoaded"));
   }
 
   function buildOverridesForSave() {
@@ -3520,7 +3584,7 @@
 
   async function saveState() {
     const overrides = buildOverridesForSave();
-    setStatus(tr("control.status.saving", {}, "Сохранение..."));
+    setStatus(tr("control.status.saving"));
     const res = await fetch("/overlay-control/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3536,14 +3600,14 @@
       setLatestOverlayState(latestOverlayState);
     }
     renderAll();
-    setStatus(tr("control.status.saved", {}, "Сохранено. Изменения отправлены в overlay output."));
+    setStatus(tr("control.status.saved"));
   }
 
   async function reloadStateWithConfirm() {
     if (isDirty()) {
       return new Promise((resolve) => {
         showConfirmModal(
-          tr("control.confirm.reloadDirty", {}, "Есть несохраненные изменения. Перезагрузить состояние с сервера?"),
+          tr("control.confirm.reloadDirty"),
           () => loadState().then(resolve).catch(resolve)
         );
       });
@@ -3600,7 +3664,7 @@
       wsRoomReady = false;
       renderConnectionStatus();
       renderPresenter();
-      setStatus(tr("control.status.connectingRoom", {}, "Подключение к комнате..."));
+      setStatus(tr("control.status.connectingRoom"));
       console.log("[overlay-control] ws open", { roomCode, tokenPresent: Boolean(token) });
       console.log("[overlay-control] send hello", {
         roomCode,
@@ -3641,7 +3705,7 @@
       }
       if (parsed.type === "roomState") {
         applyRoomStateSnapshot(parsed.payload);
-        setStatus(tr("control.status.connected", {}, "Подключено."));
+        setStatus(tr("control.status.connected"));
         return;
       }
       if (parsed.type === "statePatch") {
@@ -3659,7 +3723,7 @@
         return;
       }
       if (parsed.type === "error") {
-        const message = String(parsed.payload?.message || tr("control.status.errorFallback", {}, "Ошибка сервера"));
+        const message = String(parsed.payload?.message || tr("control.status.errorFallback"));
         setStatus(message, true);
         return;
       }
@@ -3671,7 +3735,7 @@
       wsSocket = null;
       renderConnectionStatus();
       renderPresenter();
-      setStatus(tr("control.status.connectionLost", {}, "Соединение потеряно. Переподключение..."), true);
+      setStatus(tr("control.status.connectionLost"), true);
       if (reconnectTimer) return;
       reconnectAttempt += 1;
       const delay = Math.min(500 * 2 ** (reconnectAttempt - 1), 10000);
@@ -3710,7 +3774,7 @@
     if (!nextPlayerId) return;
     if (nextPlayerId !== selectedPlayerId && isDirty()) {
       showConfirmModal(
-        tr("control.confirm.switchPlayerDirty", {}, "Есть несохраненные изменения. Переключить игрока без сохранения?"),
+        tr("control.confirm.switchPlayerDirty"),
         () => {
           selectedPlayerId = nextPlayerId;
           renderPlayerSelect();
@@ -3736,7 +3800,7 @@
     if (!nextPlayerId) return;
     if (nextPlayerId !== selectedPlayerId && isDirty()) {
       showConfirmModal(
-        tr("control.confirm.switchPlayerDirty", {}, "Есть несохраненные изменения. Переключить игрока без сохранения?"),
+        tr("control.confirm.switchPlayerDirty"),
         () => {
           selectedPlayerId = nextPlayerId;
           renderPlayerSelect();
@@ -3784,7 +3848,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.save", {}, "Ошибка сохранения"),
+          : tr("control.error.save"),
         true
       )
     );
@@ -3798,7 +3862,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.load", {}, "Ошибка загрузки"),
+          : tr("control.error.load"),
         true
       )
     );
@@ -3807,14 +3871,14 @@
   presenterKickPlayerBtn.addEventListener("click", () => {
     const player = getSelectedPlayer();
     if (!player) {
-      setStatus(tr("control.error.selectPlayerFirst", {}, "Сначала выберите игрока слева."), true);
+      setStatus(tr("control.error.selectPlayerFirst"), true);
       return;
     }
     sendControlAction("KICK_PLAYER", { targetPlayerId: player.playerId }).catch((error) =>
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.command", {}, "Ошибка команды управления."),
+          : tr("control.error.command"),
         true
       )
     );
@@ -3841,7 +3905,7 @@
     const replacementCardId = String(replaceSpecificCardSelect.value || "").trim();
     if (!targetPlayerId || !cardInstanceId) {
       setStatus(
-        tr("control.error.replaceNeedPlayerCard", {}, "Для замены нужно выбрать игрока и карту."),
+        tr("control.error.replaceNeedPlayerCard"),
         true
       );
       return;
@@ -3854,12 +3918,12 @@
       replacementCardId: replacementMode === "specific" ? replacementCardId || undefined : undefined,
     };
     sendScenarioActionAsHost("adminReplacePlayerCard", payload)
-      .then(() => setStatus(tr("control.success.playerCardReplaced", {}, "Карта игрока заменена.")))
+      tr("control.success.playerCardReplaced", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.replaceCard", {}, "Ошибка замены карты."),
+            : tr("control.error.replaceCard"),
           true
         )
       );
@@ -3867,49 +3931,49 @@
 
   voteStartGameBtn.addEventListener("click", () => {
     sendControlAction("START_GAME").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteNextStepBtn.addEventListener("click", () => {
     sendControlAction("NEXT_STEP").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteSkipStepBtn.addEventListener("click", () => {
     sendControlAction("SKIP_STEP").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteStartBtn.addEventListener("click", () => {
     sendControlAction("START_VOTE").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteEndBtn.addEventListener("click", () => {
     sendControlAction("END_VOTE").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteSkipRoundBtn.addEventListener("click", () => {
     sendControlAction("SKIP_ROUND").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteOutcomeSurvivedBtn.addEventListener("click", () => {
     sendControlAction("SET_OUTCOME_SURVIVED").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   voteOutcomeFailedBtn.addEventListener("click", () => {
     sendControlAction("SET_OUTCOME_FAILED").catch((error) =>
-      setStatus(error instanceof Error ? error.message : tr("control.error.command", {}, "Ошибка команды управления."), true)
+      tr("control.error.command", {})
     );
   });
   hostTransferBtn.addEventListener("click", () => {
     const targetPlayerId = String(hostTransferTargetSelect.value || "").trim();
     if (!targetPlayerId) {
       setStatus(
-        tr("control.error.transferNeedTarget", {}, "Выбери игрока для передачи роли ведущего."),
+        tr("control.error.transferNeedTarget"),
         true
       );
       return;
@@ -3918,7 +3982,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.transferHost", {}, "Ошибка передачи роли ведущего."),
+          : tr("control.error.transferHost"),
         true
       )
     );
@@ -3949,7 +4013,7 @@
     const index = Number(worldIndexSelect.value);
     if (!Number.isInteger(index) || index < 0) {
       setStatus(
-        tr("control.error.worldNeedIndex", {}, "Выбери корректный индекс карты мира."),
+        tr("control.error.worldNeedIndex"),
         true
       );
       return;
@@ -3959,12 +4023,12 @@
     const card = Array.isArray(list) ? list.find((entry) => Number(entry.index) === index) : null;
     const revealed = !Boolean(card?.isRevealed);
     sendScenarioActionAsHost("adminSetWorldCardReveal", { kind, index, revealed })
-      .then(() => setStatus(tr("control.success.worldStateUpdated", {}, "Состояние карты мира обновлено.")))
+      tr("control.success.worldStateUpdated", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.worldUpdate", {}, "Ошибка изменения карты мира."),
+            : tr("control.error.worldUpdate"),
           true
         )
       );
@@ -3972,7 +4036,7 @@
   worldReplaceBtn.addEventListener("click", () => {
     const kind = String(worldKindSelect.value || "").trim().toLowerCase();
     if (kind !== "bunker" && kind !== "threat" && kind !== "disaster") {
-      setStatus(tr("control.error.worldKind", {}, "Некорректный тип карты мира."), true);
+      setStatus(tr("control.error.worldKind"), true);
       return;
     }
     const replacementMode = String(worldReplaceModeSelect.value || "random").trim().toLowerCase() === "specific" ? "specific" : "random";
@@ -3983,12 +4047,12 @@
       replacementCardId: replacementMode === "specific" ? String(worldReplaceCardSelect.value || "").trim() || undefined : undefined,
     };
     sendScenarioActionAsHost("adminReplaceWorldCard", payload)
-      .then(() => setStatus(tr("control.success.worldReplaced", {}, "Карта мира заменена.")))
+      tr("control.success.worldReplaced", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.worldReplace", {}, "Ошибка замены карты мира."),
+            : tr("control.error.worldReplace"),
           true
         )
       );
@@ -4009,18 +4073,18 @@
     const count = Number(worldCountInput.value);
     if (!Number.isInteger(count) || count < 0) {
       setStatus(
-        tr("control.error.worldCountValue", {}, "Введите корректное целое количество карт."),
+        tr("control.error.worldCountValue"),
         true
       );
       return;
     }
     sendScenarioActionAsHost("adminSetWorldCount", { kind, count })
-      .then(() => setStatus(tr("control.success.worldCountUpdated", {}, "Количество карт мира обновлено.")))
+      tr("control.success.worldCountUpdated", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.worldCountUpdate", {}, "Ошибка изменения количества карт."),
+            : tr("control.error.worldCountUpdate"),
           true
         )
       );
@@ -4047,14 +4111,14 @@
         : String(specialActorPlayerSelect.value || "").trim();
     if (!actorPlayerId) {
       setStatus(
-        tr("control.error.specialNeedActor", {}, "Выбери игрока-источник для спецусловия."),
+        tr("control.error.specialNeedActor"),
         true
       );
       return;
     }
     const specialValue = String(specialPickerSelect.value || "").trim();
     if (!specialValue) {
-      setStatus(tr("control.error.specialNeedCard", {}, "Выбери спецусловие."), true);
+      setStatus(tr("control.error.specialNeedCard"), true);
       return;
     }
     const pickedEntry = specialCatalogCache.find(
@@ -4116,7 +4180,7 @@
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.specialApply", {}, "Ошибка применения спецусловия."),
+            : tr("control.error.specialApply"),
           true
         )
       );
@@ -4128,12 +4192,12 @@
   devAddBotBtn.addEventListener("click", () => {
     const name = String(devBotNameInput.value || "").trim();
     sendScenarioActionAsHost("devAddPlayer", name ? { name } : {})
-      .then(() => setStatus(tr("control.success.devBotAdded", {}, "Бот добавлен.")))
+      tr("control.success.devBotAdded", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.devBotAdd", {}, "Ошибка добавления бота."),
+            : tr("control.error.devBotAdd"),
           true
         )
       );
@@ -4141,16 +4205,16 @@
   devRemoveBotBtn.addEventListener("click", () => {
     const targetPlayerId = String(devTargetPlayerSelect.value || "").trim();
     if (!targetPlayerId) {
-      setStatus(tr("control.error.devNeedRemoveTarget", {}, "Выбери игрока для удаления."), true);
+      setStatus(tr("control.error.devNeedRemoveTarget"), true);
       return;
     }
     sendControlAction("KICK_PLAYER", { targetPlayerId })
-      .then(() => setStatus(tr("control.success.devRemoved", {}, "Игрок удалён (dev).")))
+      tr("control.success.devRemoved", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.devRemove", {}, "Ошибка удаления игрока."),
+            : tr("control.error.devRemove"),
           true
         )
       );
@@ -4159,18 +4223,18 @@
     const targetPlayerId = String(devTargetPlayerSelect.value || "").trim();
     if (!targetPlayerId) {
       setStatus(
-        tr("control.error.devNeedKickTarget", {}, "Выбери игрока для исключения."),
+        tr("control.error.devNeedKickTarget"),
         true
       );
       return;
     }
     sendControlAction("KICK_PLAYER", { targetPlayerId })
-      .then(() => setStatus(tr("control.success.devKicked", {}, "Игрок исключён (dev).")))
+      tr("control.success.devKicked", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.devKick", {}, "Ошибка исключения игрока."),
+            : tr("control.error.devKick"),
           true
         )
       );
@@ -4189,24 +4253,24 @@
       return;
     }
     sendScenarioActionAsHost("markLeftBunker", { targetPlayerId })
-      .then(() => setStatus(tr("control.success.devMarkedLeft", {}, "Игрок переведён во вне бункера.")))
+      tr("control.success.devMarkedLeft", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.devMarkLeft", {}, "Ошибка изменения статуса игрока."),
+            : tr("control.error.devMarkLeft"),
           true
         )
       );
   });
   devSkipRoundBtn.addEventListener("click", () => {
     sendScenarioActionAsHost("devSkipRound", {})
-      .then(() => setStatus(tr("control.success.devSkipRound", {}, "Раунд пропущен (dev).")))
+      tr("control.success.devSkipRound", {})
       .catch((error) =>
         setStatus(
           error instanceof Error
             ? error.message
-            : tr("control.error.devCommand", {}, "Ошибка dev-команды."),
+            : tr("control.error.devCommand"),
           true
         )
       );
@@ -4275,7 +4339,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.invalidParams", {}, "Неверные параметры действия."),
+          : tr("control.error.invalidParams"),
         true
       );
       return;
@@ -4284,7 +4348,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.scenarioAction", {}, "Ошибка сценарного действия."),
+          : tr("control.error.scenarioAction"),
         true
       )
     );
@@ -4295,13 +4359,13 @@
     if (!player) return;
     const playerName = player.name || player.nickname || player.playerId;
     showConfirmModal(
-      tr("control.confirm.resetPlayer", { player: playerName }, `Сбросить изменения игрока «${playerName}»?`),
+      tr("control.confirm.resetPlayer", { player: playerName }),
       () => {
         ensureDraftShape();
         delete draftOverrides.players[player.playerId];
         renderPlayerEditor();
         syncDirtyBadge();
-        setStatus(tr("control.success.playerResetLocal", {}, "Игрок сброшен локально. Нажмите Save."));
+        setStatus(tr("control.success.playerResetLocal"));
       }
     );
   });
@@ -4352,11 +4416,17 @@
   urlParamTheme.addEventListener("change", onUrlParamInputChanged);
   urlParamScale.addEventListener("change", onUrlParamInputChanged);
   urlParamTop.addEventListener("change", onUrlParamInputChanged);
+  urlParamTopBunkerAlign.addEventListener("change", onUrlParamInputChanged);
+  urlParamTopCatastropheAlign.addEventListener("change", onUrlParamInputChanged);
+  urlParamTopThreatsAlign.addEventListener("change", onUrlParamInputChanged);
+  urlParamTopBunkerScale.addEventListener("change", onUrlParamInputChanged);
+  urlParamTopCatastropheScale.addEventListener("change", onUrlParamInputChanged);
+  urlParamTopThreatsScale.addEventListener("change", onUrlParamInputChanged);
   urlParamDebug.addEventListener("change", onUrlParamInputChanged);
   overlayUrlPresetOpenBtn.addEventListener("click", () => {
     const url = String(overlayUrlPresetValue.value || "").trim();
     if (!url) {
-      setStatus(tr("control.error.selectUrlPresetFirst", {}, "Сначала выбери URL-пресет."), true);
+      setStatus(tr("control.error.selectUrlPresetFirst"), true);
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");
@@ -4364,12 +4434,12 @@
   overlayUrlPresetCopyBtn.addEventListener("click", async () => {
     const url = String(overlayUrlPresetValue.value || "").trim();
     if (!url) {
-      setStatus(tr("control.error.selectUrlPresetFirst", {}, "Сначала выбери URL-пресет."), true);
+      setStatus(tr("control.error.selectUrlPresetFirst"), true);
       return;
     }
     try {
       await navigator.clipboard.writeText(url);
-      setStatus(tr("control.status.copyUrlOk", {}, "URL пресета скопирован."));
+      setStatus(tr("control.status.copyUrlOk"));
     } catch {
       overlayUrlPresetValue.focus();
       overlayUrlPresetValue.select();
@@ -4450,7 +4520,7 @@
     const template = {};
     for (const category of categoryDefs) template[category.key] = "";
     playerCategoriesJson.value = JSON.stringify(template, null, 2);
-    setStatus(tr("control.success.categoriesTemplateInserted", {}, "Вставлен шаблон categories JSON."));
+    setStatus(tr("control.success.categoriesTemplateInserted"));
   });
 
   applyCategoriesJsonBtn.addEventListener("click", () => {
@@ -4463,7 +4533,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.categoriesJson", {}, "Ошибка categories JSON"),
+          : tr("control.error.categoriesJson"),
         true
       );
       return;
@@ -4488,7 +4558,7 @@
       );
       return;
     }
-    setStatus(tr("control.success.categoriesApplied", {}, "categories JSON применен."));
+    setStatus(tr("control.success.categoriesApplied"));
   });
 
   addExtraTextBtn.addEventListener("click", () => {
@@ -4551,7 +4621,7 @@
 
   syncExtraTextsJsonBtn.addEventListener("click", () => {
     syncExtraTextsJson(true);
-    setStatus(tr("control.success.extraTextsSynced", {}, "extraTexts JSON обновлён из формы."));
+    setStatus(tr("control.success.extraTextsSynced"));
   });
   applyExtraTextsJsonBtn.addEventListener("click", () => {
     let parsed;
@@ -4561,7 +4631,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.extraTextsJson", {}, "Ошибка extraTexts JSON"),
+          : tr("control.error.extraTextsJson"),
         true
       );
       return;
@@ -4569,7 +4639,7 @@
     setDraftExtraTexts(parsed);
     renderExtraTextsEditor();
     syncDirtyBadge();
-    setStatus(tr("control.success.extraTextsApplied", {}, "extraTexts JSON применен."));
+    setStatus(tr("control.success.extraTextsApplied"));
   });
   extraTextsJson.addEventListener("input", () => syncDirtyBadge());
 
@@ -4580,7 +4650,7 @@
   });
 
   applyControlLocale({ refreshUi: false });
-  setStatus(tr("control.status.connectingRoom", {}, "Подключение к комнате..."));
+  setStatus(tr("control.status.connectingRoom"));
   switchControlTab("game");
   loadState()
     .then(() => connectRealtime())
@@ -4588,7 +4658,7 @@
       setStatus(
         error instanceof Error
           ? error.message
-          : tr("control.error.load", {}, "Ошибка загрузки"),
+          : tr("control.error.load"),
         true
       );
       connectRealtime();

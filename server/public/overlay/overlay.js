@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   const localeApi = window.BUNKER_OVERLAY_LOCALE || null;
   const normalizeLang = (value) =>
     localeApi && typeof localeApi.normalizeLang === "function"
@@ -26,6 +26,25 @@
   const topParam = Number.parseFloat(topParamRaw || "200");
   const topFromUrl = Number.isFinite(topParam) ? Math.min(320, Math.max(160, topParam)) : 200;
   const hasTopFromUrl = topParamRaw !== null;
+  const topTextScaleParamRaw = params.get("topTextScale");
+  const topTextScaleParam = Number.parseFloat(topTextScaleParamRaw || "1");
+  const topTextScaleFromUrl = Number.isFinite(topTextScaleParam) ? Math.min(2, Math.max(0.7, topTextScaleParam)) : 1;
+  const topBunkerScaleParamRaw = params.get("topBunkerScale");
+  const topCatastropheScaleParamRaw = params.get("topCatastropheScale");
+  const topThreatsScaleParamRaw = params.get("topThreatsScale");
+  const topBunkerScaleParam = Number.parseFloat(topBunkerScaleParamRaw || "");
+  const topCatastropheScaleParam = Number.parseFloat(topCatastropheScaleParamRaw || "");
+  const topThreatsScaleParam = Number.parseFloat(topThreatsScaleParamRaw || "");
+  const topBunkerScaleFromUrl = Number.isFinite(topBunkerScaleParam) ? Math.min(2, Math.max(0.7, topBunkerScaleParam)) : topTextScaleFromUrl;
+  const topCatastropheScaleFromUrl = Number.isFinite(topCatastropheScaleParam) ? Math.min(2, Math.max(0.7, topCatastropheScaleParam)) : topTextScaleFromUrl;
+  const topThreatsScaleFromUrl = Number.isFinite(topThreatsScaleParam) ? Math.min(2, Math.max(0.7, topThreatsScaleParam)) : topTextScaleFromUrl;
+  const hasTopTextScaleFromUrl = topTextScaleParamRaw !== null;
+  const hasTopBunkerScaleFromUrl = topBunkerScaleParamRaw !== null;
+  const hasTopCatastropheScaleFromUrl = topCatastropheScaleParamRaw !== null;
+  const hasTopThreatsScaleFromUrl = topThreatsScaleParamRaw !== null;
+  const topBunkerAlignParamRaw = params.get("topBunkerAlign");
+  const topCatastropheAlignParamRaw = params.get("topCatastropheAlign");
+  const topThreatsAlignParamRaw = params.get("topThreatsAlign");
   const themeParamRaw = params.get("theme");
   const themeParam = (themeParamRaw || "mint").trim().toLowerCase();
   const themeFromUrl = ["mint", "warm", "dark"].includes(themeParam) ? themeParam : "mint";
@@ -63,12 +82,24 @@
   let debug = debugFromUrl;
   let currentScale = scaleFromUrl;
   let currentTop = topFromUrl;
+  let currentTopBunkerScale = topBunkerScaleFromUrl;
+  let currentTopCatastropheScale = topCatastropheScaleFromUrl;
+  let currentTopThreatsScale = topThreatsScaleFromUrl;
+  let currentTopBunkerAlign = "center";
+  let currentTopCatastropheAlign = "center";
+  let currentTopThreatsAlign = "center";
   let currentTheme = themeFromUrl;
   let requestedBgPresetFromState = "";
 
   function applyVisualSettings() {
     document.documentElement.style.setProperty("--scale", String(currentScale));
     document.documentElement.style.setProperty("--topbar-h", `${currentTop}px`);
+    document.documentElement.style.setProperty("--top-bunker-scale", String(currentTopBunkerScale));
+    document.documentElement.style.setProperty("--top-catastrophe-scale", String(currentTopCatastropheScale));
+    document.documentElement.style.setProperty("--top-threats-scale", String(currentTopThreatsScale));
+    document.documentElement.style.setProperty("--top-bunker-align", topAlignToCss(currentTopBunkerAlign));
+    document.documentElement.style.setProperty("--top-catastrophe-align", topAlignToCss(currentTopCatastropheAlign));
+    document.documentElement.style.setProperty("--top-threats-align", topAlignToCss(currentTopThreatsAlign));
     document.documentElement.setAttribute("lang", currentLang);
     document.documentElement.setAttribute("data-theme", currentTheme);
     topBunkerLabel.textContent = t(currentLang, "overlay.top.bunker");
@@ -102,7 +133,7 @@
 
   const CATEGORY_LAYOUT_KEYS = {
     left: ["phobia", "hobby", "health", "profession"],
-    right: ["baggage", "fact1", "fact2"],
+    right: ["baggage", "facts1", "facts2"],
   };
 
   const SLOT_COUNT = { l4: 4, l8: 8, l12: 12 };
@@ -131,7 +162,14 @@
     const buildColumn = (keys) =>
       keys.map((key) => ({
         key,
-        label: t(currentLang, `overlay.category.${key}`),
+        label: t(
+          currentLang,
+          key === "facts1"
+            ? "overlay.category.fact1"
+            : key === "facts2"
+              ? "overlay.category.fact2"
+              : `overlay.category.${key}`
+        ),
       }));
     return {
       left: buildColumn(CATEGORY_LAYOUT_KEYS.left),
@@ -155,6 +193,18 @@
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function normalizeTopVerticalAlign(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "top" || normalized === "bottom") return normalized;
+    return "center";
+  }
+
+  function topAlignToCss(value) {
+    if (value === "top") return "flex-start";
+    if (value === "bottom") return "flex-end";
+    return "center";
   }
 
   function selectLayout(playerCount) {
@@ -195,14 +245,18 @@
     const themeOverride = pickStringParamFromOverrides(overrides, "theme").toLowerCase();
     const scaleOverrideRaw = pickStringParamFromOverrides(overrides, "scale");
     const topOverrideRaw = pickStringParamFromOverrides(overrides, "top");
+    const topTextScaleOverrideRaw = pickStringParamFromOverrides(overrides, "topTextScale");
+    const topBunkerScaleOverrideRaw = pickStringParamFromOverrides(overrides, "topBunkerScale");
+    const topCatastropheScaleOverrideRaw = pickStringParamFromOverrides(overrides, "topCatastropheScale");
+    const topThreatsScaleOverrideRaw = pickStringParamFromOverrides(overrides, "topThreatsScale");
     const debugOverrideRaw = pickStringParamFromOverrides(overrides, "debug");
     const bgPresetOverrideRaw =
       pickStringParamFromOverrides(overrides, "bgPreset") || pickStringParamFromOverrides(overrides, "bg");
 
-    if (hasLangFromUrl) {
-      currentLang = langFromUrl;
-    } else if (hasLangOverride) {
+    if (hasLangOverride) {
       currentLang = langOverride;
+    } else if (hasLangFromUrl) {
+      currentLang = langFromUrl;
     } else {
       currentLang = stateLocale;
     }
@@ -232,6 +286,67 @@
     } else {
       currentTop = 200;
     }
+
+    const topTextScaleOverride = Number.parseFloat(topTextScaleOverrideRaw);
+    const topBunkerScaleOverride = Number.parseFloat(topBunkerScaleOverrideRaw);
+    const topCatastropheScaleOverride = Number.parseFloat(topCatastropheScaleOverrideRaw);
+    const topThreatsScaleOverride = Number.parseFloat(topThreatsScaleOverrideRaw);
+    if (hasTopBunkerScaleFromUrl) {
+      currentTopBunkerScale = topBunkerScaleFromUrl;
+    } else if (Number.isFinite(topBunkerScaleOverride)) {
+      currentTopBunkerScale = Math.min(2, Math.max(0.7, topBunkerScaleOverride));
+    } else if (hasTopTextScaleFromUrl) {
+      currentTopBunkerScale = topTextScaleFromUrl;
+    } else if (Number.isFinite(topTextScaleOverride)) {
+      currentTopBunkerScale = Math.min(2, Math.max(0.7, topTextScaleOverride));
+    } else {
+      currentTopBunkerScale = 1;
+    }
+
+    if (hasTopCatastropheScaleFromUrl) {
+      currentTopCatastropheScale = topCatastropheScaleFromUrl;
+    } else if (Number.isFinite(topCatastropheScaleOverride)) {
+      currentTopCatastropheScale = Math.min(2, Math.max(0.7, topCatastropheScaleOverride));
+    } else if (hasTopTextScaleFromUrl) {
+      currentTopCatastropheScale = topTextScaleFromUrl;
+    } else if (Number.isFinite(topTextScaleOverride)) {
+      currentTopCatastropheScale = Math.min(2, Math.max(0.7, topTextScaleOverride));
+    } else {
+      currentTopCatastropheScale = 1;
+    }
+
+    if (hasTopThreatsScaleFromUrl) {
+      currentTopThreatsScale = topThreatsScaleFromUrl;
+    } else if (Number.isFinite(topThreatsScaleOverride)) {
+      currentTopThreatsScale = Math.min(2, Math.max(0.7, topThreatsScaleOverride));
+    } else if (hasTopTextScaleFromUrl) {
+      currentTopThreatsScale = topTextScaleFromUrl;
+    } else if (Number.isFinite(topTextScaleOverride)) {
+      currentTopThreatsScale = Math.min(2, Math.max(0.7, topTextScaleOverride));
+    } else {
+      currentTopThreatsScale = 1;
+    }
+
+    const topBunkerAlignOverride = normalizeTopVerticalAlign(
+      pickStringParamFromOverrides(overrides, "topBunkerAlign")
+    );
+    currentTopBunkerAlign = topBunkerAlignParamRaw !== null
+      ? normalizeTopVerticalAlign(topBunkerAlignParamRaw)
+      : topBunkerAlignOverride;
+
+    const topCatastropheAlignOverride = normalizeTopVerticalAlign(
+      pickStringParamFromOverrides(overrides, "topCatastropheAlign")
+    );
+    currentTopCatastropheAlign = topCatastropheAlignParamRaw !== null
+      ? normalizeTopVerticalAlign(topCatastropheAlignParamRaw)
+      : topCatastropheAlignOverride;
+
+    const topThreatsAlignOverride = normalizeTopVerticalAlign(
+      pickStringParamFromOverrides(overrides, "topThreatsAlign")
+    );
+    currentTopThreatsAlign = topThreatsAlignParamRaw !== null
+      ? normalizeTopVerticalAlign(topThreatsAlignParamRaw)
+      : topThreatsAlignOverride;
 
     if (hasDebugFromUrl) {
       debug = debugFromUrl;
@@ -298,7 +413,7 @@
       .then((response) => response.json().catch(() => ({})).then((payload) => ({ response, payload })))
       .then(({ response, payload }) => {
         if (!response.ok || payload?.ok !== true) {
-          throw new Error(payload?.message || `HTTP ${response.status}`);
+          throw new Error(payload?.message || t(currentLang, "overlay.error.httpStatus", { status: response.status }));
         }
         bgCatalog = normalizeBgCatalog(payload);
         return bgCatalog;
@@ -373,8 +488,9 @@
   }
 
   function normalizeCategory(player, key, label) {
+    const aliases = [key, ...(CATEGORY_KEY_ALIASES[key] || [])];
     const source = Array.isArray(player.categories)
-      ? player.categories.find((item) => item && item.key === key)
+      ? player.categories.find((item) => item && aliases.includes(String(item.key || "")))
       : null;
 
     if (!source) {
@@ -411,54 +527,7 @@
     return baseEnabled && defaultCategoryEnabled(key);
   }
 
-  function parseTraitsFromLabel(label) {
-    const norm = String(label || "").trim().replace(/\s+/g, " ");
-    if (!norm) {
-      return { sex: "?", age: "?", orient: "?" };
-    }
-
-    const AGE_UNIT_TOKENS = new Set(["л", "г", "лет", "год", "года"]);
-    const normalizeAgeUnitToken = (token) =>
-      String(token || "")
-        .toLowerCase()
-        .replace(/\.+$/g, "")
-        .trim();
-
-    const tokens = norm.split(" ");
-    const sexValid = /^(М|Ж)$/i.test(tokens[0] || "");
-    const ageValid = /^\d{1,3}$/.test(tokens[1] || "");
-    const sex = sexValid ? (tokens[0] || "").toUpperCase() : "?";
-    const age = ageValid ? tokens[1] : "?";
-    const rest = tokens.slice(2);
-
-    if (rest[0] && AGE_UNIT_TOKENS.has(normalizeAgeUnitToken(rest[0]))) {
-      rest.shift();
-    }
-
-    const orientRaw = rest.join(" ").replace(/\s+/g, " ").trim();
-    if (!orientRaw) {
-      if (sexValid && ageValid) {
-        return { sex, age, orient: "-" };
-      }
-      return { sex, age, orient: "?" };
-    }
-
-    return {
-      sex,
-      age,
-      orient: orientRaw,
-    };
-  }
-
   function pickTraits(player) {
-    const biology = Array.isArray(player?.categories)
-      ? player.categories.find((item) => item && item.key === "biology")
-      : null;
-
-    if (biology && biology.revealed && biology.value && biology.value !== "?") {
-      return parseTraitsFromLabel(String(biology.value));
-    }
-
     const sexFallback =
       player?.tags?.sex?.revealed && player?.tags?.sex?.value ? String(player.tags.sex.value) : "?";
     const ageFallback =
@@ -475,25 +544,11 @@
     };
   }
 
-  function getRevealedBiologyName(player) {
-    const biology = Array.isArray(player?.categories)
-      ? player.categories.find(
-          (item) =>
-            item &&
-            (item.key === "biology" ||
-              (typeof item.label === "string" && item.label.toLowerCase().includes("биолог")))
-        )
-      : null;
-    if (!biology || !biology.revealed || !biology.value) return null;
-    const value = String(biology.value).trim();
-    return value.length > 0 ? value : null;
-  }
-
   function renderTrait(value, title) {
     const trait = document.createElement("span");
     trait.className = "traitBox";
     trait.title = title;
-    trait.textContent = value || "?";
+    trait.textContent = value || t(currentLang, "overlay.unknownShort");
     return trait;
   }
 
@@ -527,7 +582,7 @@
 
     const debugLabel = document.createElement("div");
     debugLabel.className = "playerSlot__debug";
-    debugLabel.textContent = `SLOT ${index + 1}`;
+    debugLabel.textContent = t(currentLang, "overlay.debug.slot", { index: index + 1 });
     slot.append(debugLabel);
 
     if (!player) {
@@ -567,18 +622,14 @@
     if (hideTraits) {
       traits.classList.add("is-hidden");
     }
-    const bioName = getRevealedBiologyName(player);
-    const bioNorm = bioName ? bioName.trim().toLowerCase() : "";
-    const isSpecialBio =
-      bioNorm === "андроид" ||
-      bioNorm === "котгендер" ||
-      bioNorm === "android" ||
-      bioNorm === "catgender";
-    if (!hideTraits && isSpecialBio && bioName) {
+    const bio = player?.biology && typeof player.biology === "object" ? player.biology : null;
+    const isSpecialBio = bio?.kind === "special";
+    const specialLabel = String(bio?.shortLabel || bio?.fullLabel || "").trim();
+    if (!hideTraits && isSpecialBio && specialLabel) {
       const merged = document.createElement("span");
       merged.className = "traitMerged";
-      merged.title = bioName;
-      merged.textContent = bioName.toUpperCase();
+      merged.title = String(bio?.fullLabel || specialLabel);
+      merged.textContent = specialLabel.toUpperCase();
       traits.append(merged);
     } else if (!hideTraits) {
       const parsedTraits = pickTraits(player);
@@ -660,26 +711,19 @@
       renderTopLines(target, fallbackLines, fallback);
       return;
     }
-    const isBunker = target.id === "top-bunker";
-    const compactMode = isBunker && normalizedItems.length >= 5;
+    const compactMode = normalizedItems.length >= 7;
     target.textContent = "";
     const list = document.createElement("div");
     list.className = compactMode ? "topList topList--compact" : "topList";
-    list.style.webkitLineClamp = compactMode ? "5" : "6";
-    list.style.lineClamp = compactMode ? "5" : "6";
     for (const entry of normalizedItems) {
-      const row = document.createElement("span");
-      row.className = compactMode ? "topItem topCardLine topItem--compact" : "topItem topCardLine";
-      row.textContent = compactMode
-        ? entry.title
-        : entry.subtitle
-          ? `${entry.title} — ${entry.subtitle}`
-          : entry.title;
-      list.append(row);
+      const line = document.createElement("span");
+      line.className = compactMode ? "topItem topCardLine topCardSummary topItem--compact" : "topItem topCardLine topCardSummary";
+      line.textContent = entry.subtitle ? `${entry.title} - ${entry.subtitle}` : entry.title;
+      list.append(line);
     }
     target.append(list);
     target.title = normalizedItems
-      .map((entry) => (entry.subtitle ? `${entry.title} — ${entry.subtitle}` : entry.title))
+      .map((entry) => (entry.subtitle ? `${entry.title} - ${entry.subtitle}` : entry.title))
       .join("\n");
   }
 
@@ -903,7 +947,7 @@
       const message =
         payload?.message ||
         (payload?.unauthorized
-          ? "Unauthorized"
+          ? t(currentLang, "overlay.status.unauthorized")
           : t(currentLang, "overlay.status.noData"));
       setStatus(message, true);
       grid.innerHTML = "";

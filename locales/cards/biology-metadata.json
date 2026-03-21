@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "description": "Biology card metadata keyed by card id. Visible text stays in locales/cards/<lang>.json via titleKey.",
+  "cards": {
+    "android": {
+      "titleKey": "biology.android",
+      "kind": "special",
+      "specialType": "android"
+    },
+    "kotgender": {
+      "titleKey": "biology.kotgender",
+      "kind": "special",
+      "specialType": "kotgender"
+    },
+    "m-101-god": {
+      "titleKey": "biology.m-101-god",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 101
+      }
+    },
+    "m-18-let": {
+      "titleKey": "biology.m-18-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 18
+      }
+    },
+    "m-23-goda-gomo": {
+      "titleKey": "biology.m-23-goda-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 23,
+        "orientation": "homo"
+      }
+    },
+    "m-24-goda-bi": {
+      "titleKey": "biology.m-24-goda-bi",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 24,
+        "orientation": "bi"
+      }
+    },
+    "m-26-let": {
+      "titleKey": "biology.m-26-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 26
+      }
+    },
+    "m-27-let-gomo": {
+      "titleKey": "biology.m-27-let-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 27,
+        "orientation": "homo"
+      }
+    },
+    "m-29-let": {
+      "titleKey": "biology.m-29-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 29
+      }
+    },
+    "m-30-let": {
+      "titleKey": "biology.m-30-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 30
+      }
+    },
+    "m-32-goda-gomo": {
+      "titleKey": "biology.m-32-goda-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 32,
+        "orientation": "homo"
+      }
+    },
+    "m-33-goda": {
+      "titleKey": "biology.m-33-goda",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 33
+      }
+    },
+    "m-35-let": {
+      "titleKey": "biology.m-35-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 35
+      }
+    },
+    "m-39-let": {
+      "titleKey": "biology.m-39-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 39
+      }
+    },
+    "m-42-goda-gomo": {
+      "titleKey": "biology.m-42-goda-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 42,
+        "orientation": "homo"
+      }
+    },
+    "m-75-let": {
+      "titleKey": "biology.m-75-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "m",
+        "age": 75
+      }
+    },
+    "zh-18-let": {
+      "titleKey": "biology.zh-18-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 18
+      }
+    },
+    "zh-19-let-gomo": {
+      "titleKey": "biology.zh-19-let-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 19,
+        "orientation": "homo"
+      }
+    },
+    "zh-21-god": {
+      "titleKey": "biology.zh-21-god",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 21
+      }
+    },
+    "zh-22-goda-bi": {
+      "titleKey": "biology.zh-22-goda-bi",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 22,
+        "orientation": "bi"
+      }
+    },
+    "zh-24-goda": {
+      "titleKey": "biology.zh-24-goda",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 24
+      }
+    },
+    "zh-25-let-gomo": {
+      "titleKey": "biology.zh-25-let-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 25,
+        "orientation": "homo"
+      }
+    },
+    "zh-27-let": {
+      "titleKey": "biology.zh-27-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 27
+      }
+    },
+    "zh-30-let": {
+      "titleKey": "biology.zh-30-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 30
+      }
+    },
+    "zh-31-god": {
+      "titleKey": "biology.zh-31-god",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 31
+      }
+    },
+    "zh-33-goda-gomo": {
+      "titleKey": "biology.zh-33-goda-gomo",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 33,
+        "orientation": "homo"
+      }
+    },
+    "zh-34-goda": {
+      "titleKey": "biology.zh-34-goda",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 34
+      }
+    },
+    "zh-36-let": {
+      "titleKey": "biology.zh-36-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 36
+      }
+    },
+    "zh-65-let": {
+      "titleKey": "biology.zh-65-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 65
+      }
+    },
+    "zh-99-let": {
+      "titleKey": "biology.zh-99-let",
+      "kind": "traits",
+      "traits": {
+        "sex": "f",
+        "age": 99
+      }
+    }
+  }
+}

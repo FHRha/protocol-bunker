@@ -3,7 +3,8 @@ param(
   [switch]$SkipBuild,
   [switch]$Fast,
   [switch]$ForceRepack,
-  [string]$PortableBaseDir
+  [string]$PortableBaseDir,
+  [string]$AssetVariant = "1x"
 )
 
 Set-StrictMode -Version Latest
@@ -18,6 +19,7 @@ $PayloadRoot = Join-Path $DistDir "Protocol-Bunker"
 $AppRoot = Join-Path $PayloadRoot "app"
 $SyncIconsScript = Join-Path $RootDir "win-exe\build\sync-icons.ps1"
 $IconsSourceDir = Join-Path $RootDir "win-exe\assets\icons"
+$AssetsSourceDir = Join-Path $RootDir "assets"
 
 $LauncherProject = Join-Path $RootDir "win-exe\src\ProtocolBunker.Launcher\ProtocolBunker.Launcher.csproj"
 $BootstrapperProject = Join-Path $RootDir "win-exe\src\ProtocolBunker.Bootstrapper\ProtocolBunker.Bootstrapper.csproj"
@@ -270,6 +272,30 @@ function Resolve-PortableAppRoot {
   throw "Portable app runtime not found under base directory: $fullBaseDir"
 }
 
+function Add-AssetVariantToApp {
+  param(
+    [Parameter(Mandatory = $true)][string]$AssetsRoot,
+    [Parameter(Mandatory = $true)][string]$AppAssetsRoot,
+    [Parameter(Mandatory = $true)][string]$Variant
+  )
+
+  $srcDecksVariant = Join-Path $AssetsRoot "decks\$Variant"
+  if (-not (Test-Path -LiteralPath $srcDecksVariant)) {
+    throw "Missing asset variant directory: $srcDecksVariant"
+  }
+
+  $dstDecksRoot = Join-Path $AppAssetsRoot "decks"
+  $dstDecksVariant = Join-Path $dstDecksRoot $Variant
+
+  if (Test-Path -LiteralPath $dstDecksRoot) {
+    Remove-Item -LiteralPath $dstDecksRoot -Recurse -Force
+  }
+
+  Ensure-Dir -PathValue $dstDecksRoot
+  Copy-Dir -Source $srcDecksVariant -Destination $dstDecksVariant
+  Write-TextFile -PathValue (Join-Path $AppAssetsRoot "ASSET_VARIANT") -Content "$Variant`n"
+}
+
 function Stop-WinExeFileLockProcesses {
   $roots = @(
     [System.IO.Path]::GetFullPath($PayloadRoot),
@@ -475,6 +501,7 @@ Measure-Step -Name "copy app runtime" -Action {
     throw "Missing portable app runtime: $PortableAppRoot"
   }
   Copy-Dir -Source $PortableAppRoot -Destination $AppRoot
+  Add-AssetVariantToApp -AssetsRoot $AssetsSourceDir -AppAssetsRoot (Join-Path $AppRoot "assets") -Variant $AssetVariant
   Ensure-Dir -PathValue (Join-Path $AppRoot "logs")
   Ensure-Dir -PathValue (Join-Path $AppRoot "data")
   Copy-Dir -Source $IconsSourceDir -Destination (Join-Path $PayloadRoot "icons")

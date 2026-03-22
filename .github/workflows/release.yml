@@ -170,9 +170,11 @@ jobs:
           - variant: 1x
             base_dir: artifacts/win/.Protocol-Bunker-base
             release_name: release-windows-1x
+            output_dir: artifacts/win/Protocol-Bunker
           - variant: 2x
             base_dir: artifacts/win/.Protocol-Bunker-base
             release_name: release-windows-2x
+            output_dir: artifacts/win/Protocol-Bunker-hq2x
 
     steps:
       - name: Checkout
@@ -210,6 +212,23 @@ jobs:
           $zip = Join-Path "artifacts/win" $zipName
           if (-not (Test-Path -LiteralPath $zip)) {
             throw "Missing expected artifact: $zip"
+          }
+
+          $required = @(
+            "${{ matrix.output_dir }}/app/assets/ASSET_VARIANT",
+            "${{ matrix.output_dir }}/app/assets/decks/${{ matrix.variant }}",
+            "${{ matrix.output_dir }}/app/client/dist/index.html",
+            "${{ matrix.output_dir }}/app/server/dist/index.js"
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path -LiteralPath $file)) {
+              throw "Missing expected runtime file: $file"
+            }
+          }
+
+          $assetVariant = (Get-Content -LiteralPath "${{ matrix.output_dir }}/app/assets/ASSET_VARIANT" -Raw).Trim()
+          if ($assetVariant -ne "${{ matrix.variant }}") {
+            throw "Unexpected asset variant marker: $assetVariant"
           }
 
       - name: Upload Windows portable release artifact
@@ -285,6 +304,7 @@ jobs:
           -SkipBuild
           -ForceRepack
           -PortableBaseDir artifacts/win/.Protocol-Bunker-base
+          -AssetVariant 1x
 
       - name: Validate Windows EXE artifacts
         if: steps.detect_win_exe.outputs.available == 'true'
@@ -301,6 +321,23 @@ jobs:
             if (-not (Test-Path -LiteralPath $file)) {
               throw "Missing expected artifact: $file"
             }
+          }
+
+          $runtimeRequired = @(
+            "artifacts/win-exe/Protocol-Bunker/app/assets/ASSET_VARIANT",
+            "artifacts/win-exe/Protocol-Bunker/app/assets/decks/1x",
+            "artifacts/win-exe/Protocol-Bunker/app/client/dist/index.html",
+            "artifacts/win-exe/Protocol-Bunker/app/server/dist/index.js"
+          )
+          foreach ($file in $runtimeRequired) {
+            if (-not (Test-Path -LiteralPath $file)) {
+              throw "Missing expected EXE runtime file: $file"
+            }
+          }
+
+          $assetVariant = (Get-Content -LiteralPath "artifacts/win-exe/Protocol-Bunker/app/assets/ASSET_VARIANT" -Raw).Trim()
+          if ($assetVariant -ne "1x") {
+            throw "Unexpected EXE asset variant marker: $assetVariant"
           }
 
       - name: Upload Windows EXE release assets
@@ -427,48 +464,56 @@ jobs:
             profile: public
             variant: 1x
             release_name: release-linux-x64-public-1x
+            output_dir: artifacts/linux/Protocol-Bunker
           - arch: x64
             base_artifact: linux-base-x64
             base_dir: artifacts/linux/.Protocol-Bunker-base
             profile: server
             variant: 1x
             release_name: release-linux-x64-server-1x
+            output_dir: artifacts/linux/Protocol-Bunker-server
           - arch: x64
             base_artifact: linux-base-x64
             base_dir: artifacts/linux/.Protocol-Bunker-base
             profile: public
             variant: 2x
             release_name: release-linux-x64-public-2x
+            output_dir: artifacts/linux/Protocol-Bunker-hq2x
           - arch: x64
             base_artifact: linux-base-x64
             base_dir: artifacts/linux/.Protocol-Bunker-base
             profile: server
             variant: 2x
             release_name: release-linux-x64-server-2x
+            output_dir: artifacts/linux/Protocol-Bunker-server-hq2x
           - arch: arm64
             base_artifact: linux-base-arm64
             base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
             profile: public
             variant: 1x
             release_name: release-linux-arm64-public-1x
+            output_dir: artifacts/linux/Protocol-Bunker-arm64
           - arch: arm64
             base_artifact: linux-base-arm64
             base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
             profile: server
             variant: 1x
             release_name: release-linux-arm64-server-1x
+            output_dir: artifacts/linux/Protocol-Bunker-arm64-server
           - arch: arm64
             base_artifact: linux-base-arm64
             base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
             profile: public
             variant: 2x
             release_name: release-linux-arm64-public-2x
+            output_dir: artifacts/linux/Protocol-Bunker-arm64-hq2x
           - arch: arm64
             base_artifact: linux-base-arm64
             base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
             profile: server
             variant: 2x
             release_name: release-linux-arm64-server-2x
+            output_dir: artifacts/linux/Protocol-Bunker-arm64-server-hq2x
 
     steps:
       - name: Checkout
@@ -502,6 +547,11 @@ jobs:
           set -euo pipefail
           ls -la artifacts/linux || true
           test "$(find artifacts/linux -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
+          test -f "${{ matrix.output_dir }}/app/assets/ASSET_VARIANT"
+          test -d "${{ matrix.output_dir }}/app/assets/decks/${{ matrix.variant }}"
+          test -f "${{ matrix.output_dir }}/app/client/dist/index.html"
+          test -f "${{ matrix.output_dir }}/app/server/dist/index.js"
+          test "$(tr -d '\r\n' < "${{ matrix.output_dir }}/app/assets/ASSET_VARIANT")" = "${{ matrix.variant }}"
 
       - name: Upload Linux release artifact
         uses: actions/upload-artifact@v6

@@ -4,6 +4,7 @@ param(
   [switch]$Fast,
   [switch]$ForceRepack,
   [string]$PortableBaseDir,
+  [string]$AssetVariant = "1x",
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$ExtraArgs
 )
@@ -22,4 +23,4 @@ if ($ExtraArgs) {
   if ($ExtraArgs -contains "--force-repack") { $ForceRepack = $true }
 }
 
-& $Script -Configuration $Configuration -SkipBuild:$SkipBuild -Fast:$Fast -ForceRepack:$ForceRepack -PortableBaseDir $PortableBaseDir
+& $Script -Configuration $Configuration -SkipBuild:$SkipBuild -Fast:$Fast -ForceRepack:$ForceRepack -PortableBaseDir $PortableBaseDir -AssetVariant $AssetVariant

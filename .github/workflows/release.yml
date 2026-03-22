@@ -6,6 +6,9 @@ on:
       - "v*"
       - "*.*.*"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   actions: read
   contents: read
@@ -26,10 +29,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -70,7 +73,7 @@ jobs:
 
     steps:
       - name: Check CI status for tagged commit
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -99,8 +102,8 @@ jobs:
 
             core.info(`Found successful CI run: ${successful.html_url}`);
 
-  build-windows:
-    name: Build Windows artifacts
+  build-windows-portable:
+    name: Build Windows portable artifacts
     runs-on: windows-latest
     timeout-minutes: 120
     needs:
@@ -109,7 +112,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -117,18 +120,88 @@ jobs:
           version: 9.12.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
       - name: Cache NuGet
-        uses: actions/cache@v4
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all JS packages
+        run: pnpm run build:all
+
+      - name: Pack Windows portable variants
+        run: pnpm run pack:win:all -- --skip-build --force-repack
+
+      - name: Validate Windows artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/win -ErrorAction SilentlyContinue | Format-Table -AutoSize
+
+          $v = "${{ needs.verify-version.outputs.version_tag }}"
+          $expected = @(
+            "artifacts/win/protocol-bunker-win-x64-portable-$v.zip",
+            "artifacts/win/protocol-bunker-win-x64-portable-hq2x-$v.zip"
+          )
+          foreach ($file in $expected) {
+            if (-not (Test-Path -LiteralPath $file)) {
+              throw "Missing expected artifact: $file"
+            }
+          }
+
+      - name: Upload Windows portable release asset
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: |
+            artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
+            artifacts/win/protocol-bunker-win-x64-portable-hq2x-${{ needs.verify-version.outputs.version_tag }}.zip
+
+  build-windows-exe:
+    name: Build Windows EXE artifacts
+    runs-on: windows-latest
+    timeout-minutes: 120
+    needs:
+      - verify-version
+      - verify-ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Cache NuGet
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
@@ -166,52 +239,31 @@ jobs:
             $missing | ForEach-Object { Write-Host " - $_" }
           }
 
-      - name: Pack Windows portable
-        run: pnpm run pack:win -- --skip-build --force-repack
-
-      - name: Pack Windows portable HQ (2x)
-        run: pnpm run pack:win:hq -- --skip-build --force-repack
-
       - name: Pack Windows EXE
         if: steps.detect_win_exe.outputs.available == 'true'
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1 -SkipBuild -ForceRepack
 
-      - name: Validate Windows artifacts
+      - name: Validate Windows EXE artifacts
+        if: steps.detect_win_exe.outputs.available == 'true'
         shell: pwsh
         run: |
-          Get-ChildItem artifacts/win -ErrorAction SilentlyContinue | Format-Table -AutoSize
           Get-ChildItem artifacts/win-exe -ErrorAction SilentlyContinue | Format-Table -AutoSize
 
           $v = "${{ needs.verify-version.outputs.version_tag }}"
           $expected = @(
-            "artifacts/win/protocol-bunker-win-x64-portable-$v.zip",
-            "artifacts/win/protocol-bunker-win-x64-portable-hq2x-$v.zip"
+            "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
+            "artifacts/win-exe/protocol-bunker-win-x64-exe-setup-$v.exe"
           )
-          if ("${{ steps.detect_win_exe.outputs.available }}" -eq "true") {
-            $expected += @(
-              "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
-              "artifacts/win-exe/protocol-bunker-win-x64-exe-setup-$v.exe"
-            )
-          }
           foreach ($file in $expected) {
             if (-not (Test-Path -LiteralPath $file)) {
               throw "Missing expected artifact: $file"
             }
           }
 
-      - name: Upload Windows portable release asset
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-windows
-          if-no-files-found: error
-          path: |
-            artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
-            artifacts/win/protocol-bunker-win-x64-portable-hq2x-${{ needs.verify-version.outputs.version_tag }}.zip
-
       - name: Upload Windows EXE release assets
         if: steps.detect_win_exe.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-windows-exe
           if-no-files-found: error
@@ -229,7 +281,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -237,7 +289,7 @@ jobs:
           version: 9.12.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -249,16 +301,16 @@ jobs:
         run: pnpm run build:all
 
       - name: Pack Linux x64
-        run: pnpm run pack:linux -- --skip-build --force-repack
+        run: pnpm run pack:linux -- --skip-build --force-repack --parallel-archive
 
       - name: Pack Linux x64 HQ (2x)
-        run: pnpm run pack:linux:hq -- --skip-build --force-repack
+        run: pnpm run pack:linux:hq -- --skip-build --force-repack --parallel-archive
 
       - name: Pack Linux arm64
-        run: pnpm run pack:linux:arm64 -- --skip-build --force-repack
+        run: pnpm run pack:linux:arm64 -- --skip-build --force-repack --parallel-archive
 
       - name: Pack Linux arm64 HQ (2x)
-        run: pnpm run pack:linux:arm64:hq -- --skip-build --force-repack
+        run: pnpm run pack:linux:arm64:hq -- --skip-build --force-repack --parallel-archive
 
       - name: Validate Linux artifacts
         shell: bash
@@ -276,7 +328,7 @@ jobs:
           test -f "artifacts/linux/protocol-bunker-linux-arm64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
 
       - name: Upload Linux release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-linux
           if-no-files-found: error
@@ -296,14 +348,15 @@ jobs:
     timeout-minutes: 20
     needs:
       - verify-version
-      - build-windows
+      - build-windows-portable
+      - build-windows-exe
       - build-linux
     permissions:
       contents: write
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: release-*
           merge-multiple: true

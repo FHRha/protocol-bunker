@@ -125,24 +125,11 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Cache NuGet
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
-
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Build all JS packages
-        run: pnpm run build:all
+      - name: Build release base outputs
+        run: pnpm run build:release-base
 
       - name: Prepare Windows portable base
         run: pnpm run pack:win:base -- --skip-build --force-repack
@@ -352,8 +339,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all JS packages
-        run: pnpm run build:all
+      - name: Build release base outputs
+        run: pnpm run build:release-base
 
       - name: Prepare Linux x64 base
         run: pnpm run pack:linux:base -- --skip-build --force-repack
@@ -400,8 +387,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all JS packages
-        run: pnpm run build:all
+      - name: Build release base outputs
+        run: pnpm run build:release-base
 
       - name: Prepare Linux arm64 base
         run: pnpm run pack:linux:base:arm64 -- --skip-build --force-repack

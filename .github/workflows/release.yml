@@ -316,6 +316,7 @@ jobs:
         with:
           name: linux-base-x64
           if-no-files-found: error
+          include-hidden-files: true
           path: artifacts/linux/.Protocol-Bunker-base
 
   prepare-linux-base-arm64:
@@ -363,6 +364,7 @@ jobs:
         with:
           name: linux-base-arm64
           if-no-files-found: error
+          include-hidden-files: true
           path: artifacts/linux/.Protocol-Bunker-arm64-base
 
   build-linux-variants:

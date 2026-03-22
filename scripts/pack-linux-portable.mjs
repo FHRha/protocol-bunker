@@ -54,11 +54,21 @@ const versionTag = `v${appVersion}`;
 const fastMode = process.argv.includes("--fast");
 const skipBuild = process.argv.includes("--skip-build");
 const forceRepack = process.argv.includes("--force-repack");
+const baseOnlyMode = process.argv.includes("--base-only");
+const fromBaseMode = process.argv.includes("--from-base");
 const parallelArchive =
   process.argv.includes("--parallel-archive") ||
   process.env.BUNKER_PACK_PARALLEL_ARCHIVE === "1";
 const targetArchInput = readArchArg(process.argv.slice(2));
 const assetVariant = normalizeAssetVariant(readOptionValue(process.argv.slice(2), "--asset-variant"));
+const targetProfile = (() => {
+  const raw = String(readOptionValue(process.argv.slice(2), "--profile") || "").trim().toLowerCase();
+  if (!raw) return "both";
+  if (raw === "public" || raw === "server" || raw === "both") return raw;
+  throw new Error(`[pack:linux] Unsupported --profile value: "${raw}". Supported: public, server, both`);
+})();
+const outRootArg = readOptionValue(process.argv.slice(2), "--out-root");
+const baseDirArg = readOptionValue(process.argv.slice(2), "--base-dir");
 const assetFlavorSuffix = assetVariant === "2x" ? "-hq2x" : "";
 const targetArch = normalizeArch(targetArchInput || "x64");
 if (!targetArch || !SUPPORTED_ARCHES[targetArch]) {
@@ -77,7 +87,9 @@ const gitHead = (() => {
   if (result.status !== 0) return "nogit";
   return String(result.stdout ?? "").trim() || "nogit";
 })();
-const artifactsLinuxDir = path.join(rootDir, "artifacts", "linux");
+const artifactsLinuxDir = outRootArg
+  ? path.resolve(rootDir, outRootArg)
+  : path.join(rootDir, "artifacts", "linux");
 const baseArtifactsDirName =
   targetArch === "x64"
     ? ".Protocol-Bunker-base"
@@ -160,6 +172,9 @@ function createPortablePaths(targetArtifactsDir) {
 const publicPaths = createPortablePaths(artifactsDir);
 const serverPaths = createPortablePaths(serverArtifactsDir);
 const basePaths = createPortablePaths(baseArtifactsDir);
+const sourceBasePaths = createPortablePaths(
+  baseDirArg ? path.resolve(rootDir, baseDirArg) : baseArtifactsDir
+);
 
 function quoteCmdArg(value) {
   if (value.length === 0) return '""';
@@ -651,8 +666,9 @@ async function createArchiveFromPortableDirAsync(sourcePortableDir, archiveTarPa
   }
 }
 
-function isPortableBaseReusable(paths = publicPaths) {
-  if (forceRepack) {
+function isPortableBaseReusable(paths = publicPaths, options = {}) {
+  const { ignoreForceRepack = false } = options;
+  if (forceRepack && !ignoreForceRepack) {
     return { ok: false, reason: "--force-repack set" };
   }
   const versionValue = readTextSafe(paths.appVersionFilePath);
@@ -1277,11 +1293,43 @@ function createPortableVariantFromBase(baseRuntimePaths, targetPaths, variant) {
   copyAssetsVariant(assetsSrc, targetPaths.assetsDst, variant);
 }
 
+function validatePortableProfile(paths, profile) {
+  ensureExists(paths.startShPath, `${profile}/start.sh`);
+  ensureExists(paths.portableEnvPath, `${profile}/portable.env`);
+  ensureExists(paths.readmePath, `${profile}/README_PORTABLE.txt`);
+  ensureExists(paths.appVersionFilePath, `${profile}/app VERSION`);
+  ensureExists(path.join(paths.serverAppDir, "dist", "index.js"), "server dist entry");
+  ensureExists(path.join(paths.appDir, "client", "dist", "index.html"), "client dist index");
+  ensureExists(path.join(paths.appDir, "locales", "ui", "app", "ru.json"), "locales/ui/app/ru.json");
+  ensureExists(path.join(paths.appDir, "locales", "ui", "app", "en.json"), "locales/ui/app/en.json");
+  ensureExists(paths.nodeBinDst, "node runtime");
+  ensureExists(
+    path.join(paths.serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "ru.json"),
+    "@bunker/locales/logic/targeting/ru.json"
+  );
+  ensureExists(
+    path.join(paths.serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "en.json"),
+    "@bunker/locales/logic/targeting/en.json"
+  );
+}
+
+function getProfileArchiveTargets(profile) {
+  return profile === "server"
+    ? { tarPath: serverTarGzPath, zipPath: serverZipPath, paths: serverPaths }
+    : { tarPath: publicTarGzPath, zipPath: publicZipPath, paths: publicPaths };
+}
+
 async function main() {
   const totalStartedAt = startTimer();
   console.log(`[pack:linux] Building version: ${versionTag}`);
   console.log(`[pack:linux] Target architecture: ${targetArch}`);
   console.log(`[pack:linux] Assets variant: ${assetVariant} (archive suffix: ${assetFlavorSuffix || "none"})`);
+  if (baseOnlyMode) {
+    console.log("[pack:linux] Mode: base-only");
+  } else if (fromBaseMode) {
+    console.log(`[pack:linux] Mode: from-base (${targetProfile})`);
+    console.log(`[pack:linux] Base dir: ${sourceBasePaths.artifactsDir}`);
+  }
   console.log("[pack:linux] Syncing icons...");
   syncRootIconsIntoClientSource();
   if (process.platform !== "linux") {
@@ -1292,7 +1340,9 @@ async function main() {
 
   if (skipBuild) {
     console.log("[pack:linux] Skipping package builds (--skip-build).");
-    ensureJsBuildOutputsOrThrow();
+    if (!fromBaseMode) {
+      ensureJsBuildOutputsOrThrow();
+    }
   } else if (fastMode) {
     const buildStartedAt = startTimer();
     const reuse = isJsBuildReusable();
@@ -1319,11 +1369,60 @@ async function main() {
   }
 
   const baseStartedAt = startTimer();
-  await preparePortableBase(basePaths);
+  if (fromBaseMode) {
+    const reuse = isPortableBaseReusable(sourceBasePaths, { ignoreForceRepack: true });
+    if (!reuse.ok) {
+      throw new Error(`[pack:linux] Provided base directory is not reusable: ${reuse.reason}`);
+    }
+  } else {
+    await preparePortableBase(basePaths);
+  }
   logDuration("Portable base stage", baseStartedAt);
 
+  if (baseOnlyMode) {
+    console.log("[pack:linux] Base-only mode complete.");
+    console.log(`[pack:linux] Base directory: ${basePaths.artifactsDir}`);
+    logDuration("Total pack time", totalStartedAt);
+    return;
+  }
+
+  const runtimeBasePaths = fromBaseMode ? sourceBasePaths : basePaths;
+
+  if (fromBaseMode && targetProfile !== "both") {
+    const variantStartedAt = startTimer();
+    const target = targetProfile === "server" ? serverPaths : publicPaths;
+    createPortableVariantFromBase(runtimeBasePaths, target, assetVariant);
+    console.log(`[pack:linux] Writing launch files (${targetProfile} profile)...`);
+    if (targetProfile === "public") {
+      syncRootIconsIntoPortableClientDist(target);
+    }
+    writeVariantLaunchFiles(target, targetProfile);
+    logDuration(`${targetProfile} variant stage`, variantStartedAt);
+
+    const validateStartedAt = startTimer();
+    validatePortableProfile(target, targetProfile);
+    logDuration(`Validation stage (${targetProfile})`, validateStartedAt);
+
+    console.log(`[pack:linux] Creating archive (${targetProfile})...`);
+    const archiveStartedAt = startTimer();
+    const archiveTargets = getProfileArchiveTargets(targetProfile);
+    createArchiveFromPortableDir(archiveTargets.paths.artifactsDir, archiveTargets.tarPath, archiveTargets.zipPath, targetProfile);
+    logDuration(`Archive stage (${targetProfile})`, archiveStartedAt);
+
+    console.log("[pack:linux] Created files:");
+    if (fs.existsSync(archiveTargets.tarPath)) {
+      console.log(` - ${archiveTargets.tarPath}`);
+    } else if (fs.existsSync(archiveTargets.zipPath)) {
+      console.log(` - ${archiveTargets.zipPath}`);
+    }
+    console.log(` - ${archiveTargets.paths.artifactsDir}`);
+    logDuration("Total pack time", totalStartedAt);
+    console.log(`[pack:linux] Portable build completed for ${versionTag}`);
+    return;
+  }
+
   const publicVariantStartedAt = startTimer();
-  createPortableVariantFromBase(basePaths, publicPaths, assetVariant);
+  createPortableVariantFromBase(runtimeBasePaths, publicPaths, assetVariant);
   console.log("[pack:linux] Writing launch files (public profile)...");
   syncRootIconsIntoPortableClientDist(publicPaths);
   writeVariantLaunchFiles(publicPaths, "public");
@@ -1337,27 +1436,8 @@ async function main() {
   logDuration("Server variant stage", serverVariantStartedAt);
 
   const validateStartedAt = startTimer();
-  ensureExists(publicPaths.startShPath, "public/start.sh");
-  ensureExists(publicPaths.portableEnvPath, "public/portable.env");
-  ensureExists(publicPaths.readmePath, "public/README_PORTABLE.txt");
-  ensureExists(publicPaths.appVersionFilePath, "public/app VERSION");
-  ensureExists(serverPaths.startShPath, "server/start.sh");
-  ensureExists(serverPaths.portableEnvPath, "server/portable.env");
-  ensureExists(serverPaths.readmePath, "server/README_PORTABLE.txt");
-  ensureExists(serverPaths.appVersionFilePath, "server/app VERSION");
-  ensureExists(path.join(publicPaths.serverAppDir, "dist", "index.js"), "server dist entry");
-  ensureExists(path.join(publicPaths.appDir, "client", "dist", "index.html"), "client dist index");
-  ensureExists(path.join(publicPaths.appDir, "locales", "ui", "app", "ru.json"), "locales/ui/app/ru.json");
-  ensureExists(path.join(publicPaths.appDir, "locales", "ui", "app", "en.json"), "locales/ui/app/en.json");
-  ensureExists(publicPaths.nodeBinDst, "node runtime");
-  ensureExists(
-  path.join(publicPaths.serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "ru.json"),
-  "@bunker/locales/logic/targeting/ru.json"
-  );
-  ensureExists(
-    path.join(publicPaths.serverAppDir, "node_modules", "@bunker", "locales", "logic", "targeting", "en.json"),
-    "@bunker/locales/logic/targeting/en.json"
-  );
+  validatePortableProfile(publicPaths, "public");
+  validatePortableProfile(serverPaths, "server");
   logDuration("Validation stage", validateStartedAt);
 
   console.log("[pack:linux] Creating archives (public + server)...");

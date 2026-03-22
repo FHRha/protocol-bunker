@@ -271,8 +271,8 @@ jobs:
             artifacts/win-exe/protocol-bunker-win-x64-exe-${{ needs.verify-version.outputs.version_tag }}.zip
             artifacts/win-exe/protocol-bunker-win-x64-exe-setup-${{ needs.verify-version.outputs.version_tag }}.exe
 
-  build-linux:
-    name: Build Linux artifacts
+  prepare-linux-base-x64:
+    name: Prepare Linux x64 base
     runs-on: ubuntu-latest
     timeout-minutes: 90
     needs:
@@ -300,47 +300,171 @@ jobs:
       - name: Build all JS packages
         run: pnpm run build:all
 
-      - name: Pack Linux x64
-        run: pnpm run pack:linux -- --skip-build --force-repack --parallel-archive
+      - name: Prepare Linux x64 base
+        run: pnpm run pack:linux:base -- --skip-build --force-repack
 
-      - name: Pack Linux x64 HQ (2x)
-        run: pnpm run pack:linux:hq -- --skip-build --force-repack --parallel-archive
+      - name: Validate Linux x64 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "artifacts/linux/.Protocol-Bunker-base/app/VERSION"
+          test -f "artifacts/linux/.Protocol-Bunker-base/app/BUILD_STAMP.json"
+          test -f "artifacts/linux/.Protocol-Bunker-base/app/server/dist/index.js"
 
-      - name: Pack Linux arm64
-        run: pnpm run pack:linux:arm64 -- --skip-build --force-repack --parallel-archive
+      - name: Upload Linux x64 base
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-base-x64
+          if-no-files-found: error
+          path: artifacts/linux/.Protocol-Bunker-base
 
-      - name: Pack Linux arm64 HQ (2x)
-        run: pnpm run pack:linux:arm64:hq -- --skip-build --force-repack --parallel-archive
+  prepare-linux-base-arm64:
+    name: Prepare Linux arm64 base
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs:
+      - verify-version
+      - verify-ci
 
-      - name: Validate Linux artifacts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all JS packages
+        run: pnpm run build:all
+
+      - name: Prepare Linux arm64 base
+        run: pnpm run pack:linux:base:arm64 -- --skip-build --force-repack
+
+      - name: Validate Linux arm64 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "artifacts/linux/.Protocol-Bunker-arm64-base/app/VERSION"
+          test -f "artifacts/linux/.Protocol-Bunker-arm64-base/app/BUILD_STAMP.json"
+          test -f "artifacts/linux/.Protocol-Bunker-arm64-base/app/server/dist/index.js"
+
+      - name: Upload Linux arm64 base
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-base-arm64
+          if-no-files-found: error
+          path: artifacts/linux/.Protocol-Bunker-arm64-base
+
+  build-linux-variants:
+    name: Build Linux ${{ matrix.arch }} ${{ matrix.profile }} ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+      - verify-version
+      - prepare-linux-base-x64
+      - prepare-linux-base-arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            base_artifact: linux-base-x64
+            base_dir: artifacts/linux/.Protocol-Bunker-base
+            profile: public
+            variant: 1x
+            release_name: release-linux-x64-public-1x
+          - arch: x64
+            base_artifact: linux-base-x64
+            base_dir: artifacts/linux/.Protocol-Bunker-base
+            profile: server
+            variant: 1x
+            release_name: release-linux-x64-server-1x
+          - arch: x64
+            base_artifact: linux-base-x64
+            base_dir: artifacts/linux/.Protocol-Bunker-base
+            profile: public
+            variant: 2x
+            release_name: release-linux-x64-public-2x
+          - arch: x64
+            base_artifact: linux-base-x64
+            base_dir: artifacts/linux/.Protocol-Bunker-base
+            profile: server
+            variant: 2x
+            release_name: release-linux-x64-server-2x
+          - arch: arm64
+            base_artifact: linux-base-arm64
+            base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
+            profile: public
+            variant: 1x
+            release_name: release-linux-arm64-public-1x
+          - arch: arm64
+            base_artifact: linux-base-arm64
+            base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
+            profile: server
+            variant: 1x
+            release_name: release-linux-arm64-server-1x
+          - arch: arm64
+            base_artifact: linux-base-arm64
+            base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
+            profile: public
+            variant: 2x
+            release_name: release-linux-arm64-public-2x
+          - arch: arm64
+            base_artifact: linux-base-arm64
+            base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
+            profile: server
+            variant: 2x
+            release_name: release-linux-arm64-server-2x
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Download Linux base
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.base_artifact }}
+          path: artifacts/linux
+
+      - name: Build Linux variant from base
+        run: >
+          node scripts/pack-linux-portable.mjs
+          --from-base
+          --skip-build
+          --force-repack
+          --arch ${{ matrix.arch }}
+          --profile ${{ matrix.profile }}
+          --asset-variant ${{ matrix.variant }}
+          --base-dir ${{ matrix.base_dir }}
+
+      - name: Validate Linux variant artifact
         shell: bash
         run: |
           set -euo pipefail
           ls -la artifacts/linux || true
+          test "$(find artifacts/linux -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
 
-          test -f "artifacts/linux/protocol-bunker-linux-x64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-x64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-x64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-x64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-arm64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-arm64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-arm64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-          test -f "artifacts/linux/protocol-bunker-linux-arm64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz"
-
-      - name: Upload Linux release assets
+      - name: Upload Linux release artifact
         uses: actions/upload-artifact@v6
         with:
-          name: release-linux
+          name: ${{ matrix.release_name }}
           if-no-files-found: error
-          path: |
-            artifacts/linux/protocol-bunker-linux-x64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-x64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-x64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-x64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-arm64-public-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-arm64-server-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-arm64-public-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
-            artifacts/linux/protocol-bunker-linux-arm64-server-hq2x-${{ needs.verify-version.outputs.version_tag }}.tar.gz
+          path: artifacts/linux/*.tar.gz
 
   publish-release:
     name: Publish GitHub Release assets
@@ -350,7 +474,7 @@ jobs:
       - verify-version
       - build-windows-portable
       - build-windows-exe
-      - build-linux
+      - build-linux-variants
     permissions:
       contents: write
 

@@ -26,6 +26,9 @@
     "pack:win:all": "node scripts/pack-win-portable.mjs --all-variants",
     "pack:win:hq": "node scripts/pack-win-portable.mjs --asset-variant 2x",
     "pack:linux": "node scripts/pack-linux-portable.mjs",
+    "pack:linux:base": "node scripts/pack-linux-portable.mjs --base-only",
+    "pack:linux:base:arm64": "node scripts/pack-linux-portable.mjs --arch arm64 --base-only",
+    "pack:linux:from-base": "node scripts/pack-linux-portable.mjs --from-base",
     "pack:linux:hq": "node scripts/pack-linux-portable.mjs --asset-variant 2x",
     "pack:linux:arm64": "node scripts/pack-linux-portable.mjs --arch arm64",
     "pack:linux:arm64:hq": "node scripts/pack-linux-portable.mjs --arch arm64 --asset-variant 2x",
@@ -40,5 +43,4 @@
     "typescript": "^5.4.5"
   }
 }
-
 

@@ -2,7 +2,8 @@ param(
   [string]$Configuration = "Release",
   [switch]$SkipBuild,
   [switch]$Fast,
-  [switch]$ForceRepack
+  [switch]$ForceRepack,
+  [string]$PortableBaseDir
 )
 
 Set-StrictMode -Version Latest
@@ -15,7 +16,6 @@ $WorkDir = Join-Path $DistDir "_work"
 $WinExePortableBaseRoot = Join-Path $DistDir "_b"
 $PayloadRoot = Join-Path $DistDir "Protocol-Bunker"
 $AppRoot = Join-Path $PayloadRoot "app"
-$PortableAppRoot = Join-Path $WinExePortableBaseRoot "Protocol-Bunker\app"
 $SyncIconsScript = Join-Path $RootDir "win-exe\build\sync-icons.ps1"
 $IconsSourceDir = Join-Path $RootDir "win-exe\assets\icons"
 
@@ -248,6 +248,28 @@ function Write-TextFile {
   [System.IO.File]::WriteAllText($PathValue, $Content, [System.Text.Encoding]::UTF8)
 }
 
+function Resolve-PortableAppRoot {
+  param([string]$BaseDir)
+
+  if ([string]::IsNullOrWhiteSpace($BaseDir)) {
+    throw "Portable base directory is empty."
+  }
+
+  $fullBaseDir = [System.IO.Path]::GetFullPath($BaseDir)
+  $candidates = @(
+    (Join-Path $fullBaseDir "app"),
+    (Join-Path $fullBaseDir "Protocol-Bunker\app")
+  )
+
+  foreach ($candidate in $candidates) {
+    if (Test-Path -LiteralPath (Join-Path $candidate "server\dist\index.js")) {
+      return $candidate
+    }
+  }
+
+  throw "Portable app runtime not found under base directory: $fullBaseDir"
+}
+
 function Stop-WinExeFileLockProcesses {
   $roots = @(
     [System.IO.Path]::GetFullPath($PayloadRoot),
@@ -299,6 +321,29 @@ function Stop-WinExeFileLockProcesses {
   }
 }
 
+function Find-7ZipExecutable {
+  $candidates = @(
+    "7z.exe",
+    "C:\Program Files\7-Zip\7z.exe",
+    "C:\Program Files (x86)\7-Zip\7z.exe"
+  )
+
+  foreach ($candidate in $candidates) {
+    try {
+      $cmd = Get-Command $candidate -ErrorAction Stop
+      if ($cmd -and $cmd.Source) {
+        return $cmd.Source
+      }
+    } catch {
+      if (Test-Path -LiteralPath $candidate) {
+        return $candidate
+      }
+    }
+  }
+
+  return $null
+}
+
 function Compress-ProtocolBunkerZip {
   param(
     [Parameter(Mandatory = $true)][string]$Destination
@@ -310,16 +355,28 @@ function Compress-ProtocolBunkerZip {
 
   $source = Join-Path $DistDir "Protocol-Bunker"
   $zipWatch = [System.Diagnostics.Stopwatch]::StartNew()
-  $compressArgs = @(
-    "-NoProfile",
-    "-NonInteractive",
-    "-ExecutionPolicy", "Bypass",
-    "-Command",
-    "`$ProgressPreference='SilentlyContinue'; Compress-Archive -Path '$source' -DestinationPath '$Destination' -Force"
-  )
-  $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $compressArgs -NoNewWindow -PassThru
-
-  Wait-ProcessWithHeartbeat -Process $proc -Label "Compress-Archive" -Stopwatch $zipWatch -HeartbeatSeconds 10
+  $sevenZip = Find-7ZipExecutable
+  if ($sevenZip) {
+    Write-Step "Using 7-Zip backend: $sevenZip"
+    $proc = Start-Process -FilePath $sevenZip -ArgumentList @(
+      "a",
+      "-tzip",
+      "-mx=1",
+      $Destination,
+      "Protocol-Bunker"
+    ) -WorkingDirectory $DistDir -NoNewWindow -PassThru
+    Wait-ProcessWithHeartbeat -Process $proc -Label "7-Zip" -Stopwatch $zipWatch -HeartbeatSeconds 10
+  } else {
+    $compressArgs = @(
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy", "Bypass",
+      "-Command",
+      "`$ProgressPreference='SilentlyContinue'; Compress-Archive -Path '$source' -DestinationPath '$Destination' -Force"
+    )
+    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $compressArgs -NoNewWindow -PassThru
+    Wait-ProcessWithHeartbeat -Process $proc -Label "Compress-Archive" -Stopwatch $zipWatch -HeartbeatSeconds 10
+  }
   $zipWatch.Stop()
 
   $zipExitCode = 0
@@ -332,11 +389,13 @@ function Compress-ProtocolBunkerZip {
     $zipExitCode = 0
   }
   if ($zipExitCode -ne 0) {
-    throw "Compress-Archive failed ($zipExitCode): $source -> $Destination"
+    $backend = if ($sevenZip) { "7-Zip" } else { "Compress-Archive" }
+    throw "$backend failed ($zipExitCode): $source -> $Destination"
   }
 
   if ($zipWatch.Elapsed.TotalSeconds -ge 20) {
-    Write-Step "Compress-Archive completed in $(Format-Elapsed -Elapsed $zipWatch.Elapsed)"
+    $backend = if ($sevenZip) { "7-Zip" } else { "Compress-Archive" }
+    Write-Step "$backend completed in $(Format-Elapsed -Elapsed $zipWatch.Elapsed)"
   }
 }
 
@@ -366,20 +425,32 @@ function Publish-DotnetSingleFile {
 
 Write-Step "Building version: $VersionTag"
 
-Measure-Step -Name "prepare win portable base" -Action {
-  $packWinArgs = @("scripts/pack-win-portable.mjs")
-  if ($SkipBuild) {
-    $packWinArgs += "--skip-build"
-  } elseif ($Fast) {
-    $packWinArgs += "--fast"
+$ResolvedPortableBaseDir = if ([string]::IsNullOrWhiteSpace($PortableBaseDir)) {
+  $WinExePortableBaseRoot
+} else {
+  [System.IO.Path]::GetFullPath($PortableBaseDir)
+}
+
+$PortableAppRoot = Resolve-PortableAppRoot -BaseDir $ResolvedPortableBaseDir
+
+if ([string]::IsNullOrWhiteSpace($PortableBaseDir)) {
+  Measure-Step -Name "prepare win portable base" -Action {
+    $packWinArgs = @("scripts/pack-win-portable.mjs")
+    if ($SkipBuild) {
+      $packWinArgs += "--skip-build"
+    } elseif ($Fast) {
+      $packWinArgs += "--fast"
+    }
+    if ($ForceRepack) {
+      $packWinArgs += "--force-repack"
+    }
+    $packWinArgs += "--out-root"
+    $packWinArgs += $WinExePortableBaseRoot
+    $packWinArgs += "--no-archive"
+    Invoke-External -File "node" -Args $packWinArgs -Label "pack:win portable base for win-exe"
   }
-  if ($ForceRepack) {
-    $packWinArgs += "--force-repack"
-  }
-  $packWinArgs += "--out-root"
-  $packWinArgs += $WinExePortableBaseRoot
-  $packWinArgs += "--no-archive"
-  Invoke-External -File "node" -Args $packWinArgs -Label "pack:win portable base for win-exe"
+} else {
+  Write-Step "Reusing external portable base: $ResolvedPortableBaseDir"
 }
 
 Measure-Step -Name "sync launcher icons" -Action {

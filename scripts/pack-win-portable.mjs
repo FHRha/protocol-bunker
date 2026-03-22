@@ -574,16 +574,66 @@ function logDuration(label, startedAt) {
   return elapsedMs;
 }
 
+function find7ZipExecutable() {
+  const candidates = [
+    "7z",
+    "C:\\Program Files\\7-Zip\\7z.exe",
+    "C:\\Program Files (x86)\\7-Zip\\7z.exe",
+  ];
+
+  for (const candidate of candidates) {
+    const result = spawnSync(candidate, ["-h"], {
+      cwd: rootDir,
+      stdio: "ignore",
+      windowsHide: true,
+      shell: false,
+    });
+    if (!result.error && typeof result.status === "number" && result.status <= 2) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function archivePortableVariant(paths, targetZipPath) {
-  const src = paths.artifactsDir.replace(/'/g, "''");
-  const dst = targetZipPath.replace(/'/g, "''");
-  const script = [
-    `$src = '${src}'`,
-    `$dst = '${dst}'`,
-    "if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force }",
-    "Compress-Archive -Path $src -DestinationPath $dst -Force",
-  ].join("; ");
-  runPowerShellCommand(script, "inherit");
+  if (fs.existsSync(targetZipPath)) {
+    fs.rmSync(targetZipPath, { force: true });
+  }
+
+  const sevenZip = find7ZipExecutable();
+  if (sevenZip) {
+    const sourceParent = path.dirname(paths.artifactsDir);
+    const sourceName = path.basename(paths.artifactsDir);
+    console.log(`[pack:win] Using 7-Zip backend: ${sevenZip}`);
+    const result = spawnSync(
+      sevenZip,
+      ["a", "-tzip", "-mx=1", targetZipPath, sourceName],
+      {
+        cwd: sourceParent,
+        stdio: "inherit",
+        windowsHide: true,
+      }
+    );
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      throw new Error(`7-Zip failed (${result.status}): ${paths.artifactsDir} -> ${targetZipPath}`);
+    }
+  } else {
+    console.log("[pack:win] 7-Zip not found, falling back to Compress-Archive.");
+    const src = paths.artifactsDir.replace(/'/g, "''");
+    const dst = targetZipPath.replace(/'/g, "''");
+    const script = [
+      `$src = '${src}'`,
+      `$dst = '${dst}'`,
+      "if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force }",
+      "Compress-Archive -Path $src -DestinationPath $dst -Force",
+    ].join("; ");
+    runPowerShellCommand(script, "inherit");
+  }
+
   ensureExists(targetZipPath, "portable zip");
   const stats = fs.statSync(targetZipPath);
   console.log(`[pack:win] ZIP created: ${targetZipPath}`);

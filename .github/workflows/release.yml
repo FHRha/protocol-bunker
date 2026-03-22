@@ -239,21 +239,11 @@ jobs:
     needs:
       - verify-version
       - verify-ci
+      - prepare-windows-portable-base
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.12.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          cache: pnpm
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -267,12 +257,6 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build all JS packages
-        run: pnpm run build:all
 
       - name: Detect win-exe sources
         id: detect_win_exe
@@ -299,10 +283,21 @@ jobs:
             $missing | ForEach-Object { Write-Host " - $_" }
           }
 
+      - name: Download Windows portable base
+        if: steps.detect_win_exe.outputs.available == 'true'
+        uses: actions/download-artifact@v5
+        with:
+          name: windows-portable-base
+          path: artifacts/win/.Protocol-Bunker-base
+
       - name: Pack Windows EXE
         if: steps.detect_win_exe.outputs.available == 'true'
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1 -SkipBuild -ForceRepack
+        run: >
+          powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1
+          -SkipBuild
+          -ForceRepack
+          -PortableBaseDir artifacts/win/.Protocol-Bunker-base
 
       - name: Validate Windows EXE artifacts
         if: steps.detect_win_exe.outputs.available == 'true'

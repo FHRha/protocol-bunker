@@ -30,10 +30,13 @@ const fastMode = process.argv.includes("--fast");
 const skipBuild = process.argv.includes("--skip-build");
 const forceRepack = process.argv.includes("--force-repack");
 const noArchive = process.argv.includes("--no-archive");
+const baseOnlyMode = process.argv.includes("--base-only");
+const fromBaseMode = process.argv.includes("--from-base");
 const allVariantsMode = process.argv.includes("--all-variants");
 const assetVariant = normalizeAssetVariant(getArgValue("--asset-variant"));
 const assetFlavorSuffix = assetVariant === "2x" ? "-hq2x" : "";
 const outRootArg = getArgValue("--out-root");
+const baseDirArg = getArgValue("--base-dir");
 const gitHead = (() => {
   const result = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: rootDir,
@@ -98,6 +101,9 @@ function createPortablePaths(targetArtifactsDir) {
 }
 
 const basePaths = createPortablePaths(baseArtifactsDir);
+const sourceBasePaths = createPortablePaths(
+  baseDirArg ? path.resolve(rootDir, baseDirArg) : baseArtifactsDir
+);
 
 function getVariantArchiveSuffix(variant) {
   return variant === "2x" ? "-hq2x" : "";
@@ -584,7 +590,11 @@ function archivePortableVariant(paths, targetZipPath) {
   console.log(`[pack:win] ZIP size: ${formatBytes(stats.size)}`);
 }
 
-function isPortableBaseReusable(paths = portablePaths) {
+function isPortableBaseReusable(paths = basePaths, options = {}) {
+  const { ignoreForceRepack = false } = options;
+  if (forceRepack && !ignoreForceRepack) {
+    return { ok: false, reason: "--force-repack set" };
+  }
   const versionValue = readTextSafe(paths.appVersionFilePath);
   if (versionValue !== versionTag) {
     return { ok: false, reason: `app/VERSION mismatch (${versionValue || "empty"} != ${versionTag})` };
@@ -1260,6 +1270,12 @@ function main() {
     VITE_DEV_NEW_PLAYER_PER_TAB: "false",
   };
   console.log(`[pack:win] Building version: ${versionTag}`);
+  if (baseOnlyMode) {
+    console.log("[pack:win] Mode: base-only");
+  } else if (fromBaseMode) {
+    console.log("[pack:win] Mode: from-base");
+    console.log(`[pack:win] Base dir: ${sourceBasePaths.artifactsDir}`);
+  }
   if (allVariantsMode) {
     console.log("[pack:win] Assets variant mode: all variants (1x + 2x)");
   } else {
@@ -1269,7 +1285,9 @@ function main() {
   syncRootIconsIntoClientSource();
   if (skipBuild) {
     console.log("[pack:win] Skipping package builds (--skip-build).");
-    ensureJsBuildOutputsOrThrow();
+    if (!fromBaseMode) {
+      ensureJsBuildOutputsOrThrow();
+    }
   } else if (fastMode) {
     const buildStartedAt = startTimer();
     const reuse = isJsBuildReusable();
@@ -1296,13 +1314,29 @@ function main() {
   }
 
   const baseStartedAt = startTimer();
-  preparePortableBase(basePaths);
+  if (fromBaseMode) {
+    const reuse = isPortableBaseReusable(sourceBasePaths, { ignoreForceRepack: true });
+    if (!reuse.ok) {
+      throw new Error(`[pack:win] Provided base directory is not reusable: ${reuse.reason}`);
+    }
+  } else {
+    preparePortableBase(basePaths);
+  }
   logDuration("Portable base stage", baseStartedAt);
+
+  if (baseOnlyMode) {
+    console.log("[pack:win] Base-only mode complete.");
+    console.log(` - ${basePaths.artifactsDir}`);
+    logDuration("Total pack time", totalStartedAt);
+    return;
+  }
+
+  const runtimeBasePaths = fromBaseMode ? sourceBasePaths : basePaths;
 
   console.log("[pack:win] Created files:");
   for (const target of variantBuildTargets) {
     const variantStartedAt = startTimer();
-    createPortableVariantFromBase(basePaths, target.paths, target.variant);
+    createPortableVariantFromBase(runtimeBasePaths, target.paths, target.variant);
     logDuration(`Variant materialization stage (${target.variant})`, variantStartedAt);
 
     console.log(`[pack:win] Removing Linux shell scripts for ${target.variant}...`);

@@ -102,8 +102,8 @@ jobs:
 
             core.info(`Found successful CI run: ${successful.html_url}`);
 
-  build-windows-portable:
-    name: Build Windows portable artifacts
+  prepare-windows-portable-base:
+    name: Prepare Windows portable base
     runs-on: windows-latest
     timeout-minutes: 120
     needs:
@@ -144,33 +144,93 @@ jobs:
       - name: Build all JS packages
         run: pnpm run build:all
 
-      - name: Pack Windows portable variants
-        run: pnpm run pack:win:all -- --skip-build --force-repack
+      - name: Prepare Windows portable base
+        run: pnpm run pack:win:base -- --skip-build --force-repack
 
-      - name: Validate Windows artifacts
+      - name: Validate Windows portable base
         shell: pwsh
         run: |
-          Get-ChildItem artifacts/win -ErrorAction SilentlyContinue | Format-Table -AutoSize
-
-          $v = "${{ needs.verify-version.outputs.version_tag }}"
-          $expected = @(
-            "artifacts/win/protocol-bunker-win-x64-portable-$v.zip",
-            "artifacts/win/protocol-bunker-win-x64-portable-hq2x-$v.zip"
+          $required = @(
+            "artifacts/win/.Protocol-Bunker-base/app/VERSION",
+            "artifacts/win/.Protocol-Bunker-base/app/BUILD_STAMP.json",
+            "artifacts/win/.Protocol-Bunker-base/app/server/dist/index.js"
           )
-          foreach ($file in $expected) {
+          foreach ($file in $required) {
             if (-not (Test-Path -LiteralPath $file)) {
-              throw "Missing expected artifact: $file"
+              throw "Missing expected base file: $file"
             }
           }
 
-      - name: Upload Windows portable release asset
+      - name: Upload Windows portable base
         uses: actions/upload-artifact@v6
         with:
-          name: release-windows
+          name: windows-portable-base
+          include-hidden-files: true
           if-no-files-found: error
-          path: |
-            artifacts/win/protocol-bunker-win-x64-portable-${{ needs.verify-version.outputs.version_tag }}.zip
-            artifacts/win/protocol-bunker-win-x64-portable-hq2x-${{ needs.verify-version.outputs.version_tag }}.zip
+          path: artifacts/win/.Protocol-Bunker-base
+
+  build-windows-portable:
+    name: Build Windows portable ${{ matrix.variant }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    needs:
+      - verify-version
+      - prepare-windows-portable-base
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: 1x
+            base_dir: artifacts/win/.Protocol-Bunker-base
+            release_name: release-windows-1x
+          - variant: 2x
+            base_dir: artifacts/win/.Protocol-Bunker-base
+            release_name: release-windows-2x
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Download Windows portable base
+        uses: actions/download-artifact@v5
+        with:
+          name: windows-portable-base
+          path: ${{ matrix.base_dir }}
+
+      - name: Build Windows portable variant from base
+        run: >
+          node scripts/pack-win-portable.mjs
+          --from-base
+          --skip-build
+          --force-repack
+          --base-dir ${{ matrix.base_dir }}
+          --asset-variant ${{ matrix.variant }}
+
+      - name: Validate Windows portable variant artifact
+        shell: pwsh
+        run: |
+          $v = "${{ needs.verify-version.outputs.version_tag }}"
+          $zipName = if ("${{ matrix.variant }}" -eq "2x") {
+            "protocol-bunker-win-x64-portable-hq2x-$v.zip"
+          } else {
+            "protocol-bunker-win-x64-portable-$v.zip"
+          }
+          $zip = Join-Path "artifacts/win" $zipName
+          if (-not (Test-Path -LiteralPath $zip)) {
+            throw "Missing expected artifact: $zip"
+          }
+
+      - name: Upload Windows portable release artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.release_name }}
+          if-no-files-found: error
+          path: artifacts/win/*.zip
 
   build-windows-exe:
     name: Build Windows EXE artifacts

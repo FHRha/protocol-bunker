@@ -23,6 +23,8 @@
     "build:client": "pnpm run sync:icons && pnpm -C client build",
     "build:server": "pnpm -C server build",
     "pack:win": "node scripts/pack-win-portable.mjs",
+    "pack:win:base": "node scripts/pack-win-portable.mjs --base-only",
+    "pack:win:from-base": "node scripts/pack-win-portable.mjs --from-base",
     "pack:win:all": "node scripts/pack-win-portable.mjs --all-variants",
     "pack:win:hq": "node scripts/pack-win-portable.mjs --asset-variant 2x",
     "pack:linux": "node scripts/pack-linux-portable.mjs",
@@ -43,4 +45,3 @@
     "typescript": "^5.4.5"
   }
 }
-

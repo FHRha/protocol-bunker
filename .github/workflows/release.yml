@@ -441,7 +441,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.base_artifact }}
-          path: artifacts/linux
+          path: ${{ matrix.base_dir }}
 
       - name: Build Linux variant from base
         run: >

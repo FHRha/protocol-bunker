@@ -1,6 +1,6 @@
 import "dotenv/config";
-import express from "express";
-import { createServer } from "node:http";
+import express, { type NextFunction, type Request, type Response } from "express";
+import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import path from "node:path";
 import fs from "node:fs";
@@ -50,10 +50,15 @@ import { localizeSpecialConditionField } from "./specialConditionLocale.js";
 import { buildDefaultOverlayBioTags, buildOverlayBiology } from "./biologyLocale.js";
 import { loadScenarios } from "@bunker/scenarios";
 
+type PlayerReconnectToken = string;
+type OverlayViewToken = string;
+type OverlayControlToken = string;
+type OverlayControlInviteToken = string;
+
 interface Player {
   playerId: string;
   name: string;
-  token: string;
+  token: PlayerReconnectToken;
   tabId?: string;
   sessionId?: string;
   ws?: WebSocket;
@@ -98,8 +103,12 @@ interface Room {
   sessionPlayerIds?: Set<string>;
   lastRoomState?: RoomState;
   lastGameViews?: Map<string, ReturnType<ScenarioSession["getGameView"]>>;
-  overlayToken: string;
-  overlayEditToken: string;
+  overlayToken: OverlayViewToken;
+  overlayEditToken: OverlayControlToken;
+  overlayTokenIssuedAt: number;
+  overlayEditTokenIssuedAt: number;
+  overlayControlInviteToken: OverlayControlInviteToken;
+  overlayControlInviteIssuedAt: number;
   overlayOverrides?: OverlayOverrides;
 }
 
@@ -166,6 +175,41 @@ const LINKS_VISIBILITY_MODE = (
 const HIDE_LOCAL_LINKS_IN_LOGS =
   LINKS_VISIBILITY_MODE === "public" || LINKS_VISIBILITY_MODE === "external";
 const SERVE_CLIENT = process.env.BUNKER_SERVE_CLIENT !== "false";
+const ALLOWED_ORIGINS_RAW = process.env.BUNKER_ALLOWED_ORIGINS ?? "";
+const ENFORCE_ORIGIN_CHECKS = (() => {
+  const explicit = process.env.BUNKER_ENFORCE_ORIGIN_CHECKS;
+  if (typeof explicit === "string" && explicit.trim().length > 0) {
+    return envFlag(explicit);
+  }
+  const hasNonWildcardAllowlist = ALLOWED_ORIGINS_RAW
+    .split(/[\s,;]+/)
+    .map((entry) => entry.trim())
+    .some((entry) => entry.length > 0 && entry !== "*");
+  return hasNonWildcardAllowlist;
+})();
+const OUTBOUND_SENSITIVE_PAYLOAD_GUARD = process.env.BUNKER_OUTBOUND_SENSITIVE_GUARD !== "0";
+const OUTBOUND_SENSITIVE_PAYLOAD_GUARD_STRICT = envFlag(process.env.BUNKER_OUTBOUND_SENSITIVE_GUARD_STRICT);
+const SENSITIVE_HTTP_RATE_LIMIT_ENABLED = process.env.BUNKER_SENSITIVE_HTTP_RATE_LIMIT !== "0";
+const SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS = (() => {
+  const raw = Number(process.env.BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS ?? 60_000);
+  if (!Number.isFinite(raw)) return 60_000;
+  return Math.max(1_000, Math.floor(raw));
+})();
+const SENSITIVE_HTTP_RATE_LIMIT_MAX = (() => {
+  const raw = Number(process.env.BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX ?? 120);
+  if (!Number.isFinite(raw)) return 120;
+  return Math.max(1, Math.floor(raw));
+})();
+const OVERLAY_TOKEN_TTL_MS = (() => {
+  const raw = Number(process.env.BUNKER_OVERLAY_TOKEN_TTL_MS ?? 0);
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.floor(raw));
+})();
+const OVERLAY_CONTROL_INVITE_TTL_MS = (() => {
+  const raw = Number(process.env.BUNKER_OVERLAY_CONTROL_INVITE_TTL_MS ?? 10 * 60 * 1000);
+  if (!Number.isFinite(raw)) return 10 * 60 * 1000;
+  return Math.max(0, Math.floor(raw));
+})();
 const OVERLAY_MAX_LINE_LEN = 120;
 const OVERLAY_MAX_CATA_LEN = 600;
 const OVERLAY_MAX_NAME_LEN = 24;
@@ -224,9 +268,12 @@ let wanLookupCacheIp: string | null = null;
 let wanLookupCacheExpiresAt = 0;
 let wanLookupInFlight: Promise<string | null> | null = null;
 let publicBaseLogSignature = "";
+const outboundSensitiveGuardSignatures = new Set<string>();
+const sensitiveHttpRateLimitSignatures = new Set<string>();
 let clientIndexCacheStamp = "";
 let clientIndexCacheHtml = "";
 let controlDeckCatalog: Record<string, Array<{ id: string; labelShort: string }>> = {};
+const sensitiveHttpRateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function renderClientIndexHtml(identityMode: IdentityMode): string {
   const indexPath = path.join(CLIENT_DIST, "index.html");
@@ -387,6 +434,132 @@ function hostFromOrigin(origin: string | undefined): string | null {
     return new URL(origin).hostname;
   } catch {
     return null;
+  }
+}
+
+function parseAllowedOrigins(raw: string): Set<string> {
+  const out = new Set<string>();
+  const parts = raw
+    .split(/[\s,;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of parts) {
+    if (entry === "*") {
+      out.add("*");
+      continue;
+    }
+    const normalized = normalizeOrigin(entry);
+    if (normalized) {
+      out.add(normalized);
+    }
+  }
+
+  return out;
+}
+
+const ALLOWED_ORIGINS = parseAllowedOrigins(ALLOWED_ORIGINS_RAW);
+const ALLOW_ALL_ORIGINS = ALLOWED_ORIGINS.has("*");
+
+function buildRequestOrigin(protocol: string | undefined, hostHeader: string | undefined): string | null {
+  const host = String(hostHeader ?? "").trim();
+  if (!host) return null;
+  const scheme = String(protocol ?? "http").trim().toLowerCase();
+  const normalizedScheme = scheme === "https" ? "https" : "http";
+  return normalizeOrigin(`${normalizedScheme}://${host}`);
+}
+
+function getUpgradeRequestProtocol(req: IncomingMessage): "http" | "https" {
+  if (TRUST_PROXY) {
+    const forwarded = req.headers["x-forwarded-proto"];
+    const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    const first = String(raw ?? "")
+      .split(",")
+      .map((part) => part.trim().toLowerCase())
+      .find(Boolean);
+    if (first === "https" || first === "http") {
+      return first;
+    }
+  }
+  const socketLike = req.socket as { encrypted?: boolean };
+  return socketLike.encrypted ? "https" : "http";
+}
+
+function getUpgradeRequestOrigin(req: IncomingMessage): string | null {
+  const hostHeader = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
+  return buildRequestOrigin(getUpgradeRequestProtocol(req), hostHeader);
+}
+
+function isOriginAllowed(
+  originHeader: string | undefined,
+  requestOrigin: string | null,
+  options?: { allowMissingOrigin?: boolean }
+): boolean {
+  const allowMissingOrigin = options?.allowMissingOrigin ?? true;
+  const normalizedOrigin = normalizeOrigin(originHeader);
+  if (!normalizedOrigin) {
+    return allowMissingOrigin;
+  }
+
+  if (ALLOW_ALL_ORIGINS) return true;
+  if (!ENFORCE_ORIGIN_CHECKS && ALLOWED_ORIGINS.size === 0) return true;
+  if (ALLOWED_ORIGINS.has(normalizedOrigin)) return true;
+  if (requestOrigin && normalizedOrigin === requestOrigin) return true;
+
+  const originHost = hostFromOrigin(normalizedOrigin);
+  if (IDENTITY_MODE === "dev_tab" && originHost && isLocalHostValue(originHost)) {
+    return true;
+  }
+
+  return false;
+}
+
+function applyCorsHeaders(req: Request, res: Response): boolean {
+  const originHeader = req.get("origin");
+  const requestOrigin = buildRequestOrigin(req.protocol, req.get("host"));
+  const allowed = isOriginAllowed(originHeader, requestOrigin, { allowMissingOrigin: true });
+  const permissiveMode = ALLOW_ALL_ORIGINS || (!ENFORCE_ORIGIN_CHECKS && ALLOWED_ORIGINS.size === 0);
+
+  if (permissiveMode) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (originHeader && allowed) {
+    const normalizedOrigin = normalizeOrigin(originHeader);
+    if (normalizedOrigin) {
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
+    }
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  return allowed;
+}
+
+function normalizeIpForRateLimit(req: Request): string {
+  const raw = String(req.ip || "").trim();
+  if (!raw) return "unknown";
+  return raw;
+}
+
+function touchSensitiveHttpRateLimitBucket(key: string, now: number): { count: number; resetAt: number } {
+  const existing = sensitiveHttpRateLimitBuckets.get(key);
+  if (!existing || now >= existing.resetAt) {
+    const next = { count: 1, resetAt: now + SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS };
+    sensitiveHttpRateLimitBuckets.set(key, next);
+    return next;
+  }
+
+  const next = { count: existing.count + 1, resetAt: existing.resetAt };
+  sensitiveHttpRateLimitBuckets.set(key, next);
+  return next;
+}
+
+function maybeCleanupSensitiveHttpRateBuckets(now: number): void {
+  if (sensitiveHttpRateLimitBuckets.size < 2048) return;
+  for (const [key, bucket] of sensitiveHttpRateLimitBuckets.entries()) {
+    if (now >= bucket.resetAt) {
+      sensitiveHttpRateLimitBuckets.delete(key);
+    }
   }
 }
 
@@ -576,15 +749,18 @@ function printOverlayInfo(
   roomCode: string,
   token: string,
   controlToken?: string,
+  controlInviteToken?: string,
   overlayQueryParams?: Record<string, string>
 ) {
   const { lanOrigin } = buildLinkOrigins();
+  const inviteTokenForLinks = controlInviteToken ?? "<CONTROL_INVITE_TOKEN>";
   const links = buildLinkSet({
     lanBase: lanOrigin,
     publicBase: undefined,
     roomCode,
     overlayViewToken: token,
     overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
+    overlayControlInviteToken: inviteTokenForLinks,
     overlayQueryParams,
   });
 
@@ -593,14 +769,14 @@ function printOverlayInfo(
   console.log(paint(line, "dim"));
   console.log(paint("OBS OVERLAY", "bold", "cyan"));
   console.log(`${paint("Room:", "yellow")}        ${paint(roomCode, "bold", "yellow")}`);
-  console.log(`${paint("Token:", "magenta")}       ${paint(token, "magenta")}`);
+  console.log(`${paint("Token:", "magenta")}       ${paint(fingerprintForLog(token), "magenta")}`);
   if (!HIDE_LOCAL_LINKS_IN_LOGS) {
-    console.log(`${paint("App LAN:", "blue")}     ${paint(links.appUrl.lan, "underline", "blue")}`);
-    console.log(`${paint("Spec LAN:", "green")}    ${paint(links.viewerUrl.lan, "underline", "green")}`);
-    console.log(`${paint("View LAN:", "cyan")}    ${paint(links.overlayViewUrl.lan, "underline", "cyan")}`);
-    console.log(`${paint("Dbg LAN:", "yellow")}     ${paint(links.overlayDebugUrl.lan, "underline", "yellow")}`);
-    console.log(`${paint("Ctrl LAN:", "magenta")}   ${paint(links.overlayControlUrl.lan, "underline", "magenta")}`);
-    console.log(`${paint("API LAN:", "blue")}     ${paint(links.overlayControlStateUrl.lan, "underline", "blue")}`);
+    console.log(`${paint("App LAN:", "blue")}     ${paint(redactUrlForLog(links.appUrl.lan), "underline", "blue")}`);
+    console.log(`${paint("Spec LAN:", "green")}    ${paint(redactUrlForLog(links.viewerUrl.lan), "underline", "green")}`);
+    console.log(`${paint("View LAN:", "cyan")}    ${paint(redactUrlForLog(links.overlayViewUrl.lan), "underline", "cyan")}`);
+    console.log(`${paint("Dbg LAN:", "yellow")}     ${paint(redactUrlForLog(links.overlayDebugUrl.lan), "underline", "yellow")}`);
+    console.log(`${paint("Ctrl LAN:", "magenta")}   ${paint(redactUrlForLog(links.overlayControlUrl.lan), "underline", "magenta")}`);
+    console.log(`${paint("API LAN:", "blue")}     ${paint(redactUrlForLog(links.overlayControlStateUrl.lan), "underline", "blue")}`);
   } else {
     console.log(paint("LAN links are hidden for this server profile.", "dim"));
   }
@@ -618,19 +794,36 @@ function printOverlayInfo(
         roomCode,
         overlayViewToken: token,
         overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
+        overlayControlInviteToken: inviteTokenForLinks,
         overlayQueryParams,
       });
-      console.log(`${paint("App Ext:", "blue")}     ${paint(publicLinks.appUrl.public ?? "", "underline", "blue")}`);
-      console.log(`${paint("Spec Ext:", "green")}    ${paint(publicLinks.viewerUrl.public ?? "", "underline", "green")}`);
-      console.log(`${paint("View Ext:", "cyan")}    ${paint(publicLinks.overlayViewUrl.public ?? "", "underline", "cyan")}`);
-      if (publicLinks.overlayDebugUrl.public) {
-        console.log(`${paint("Dbg Ext:", "yellow")}     ${paint(publicLinks.overlayDebugUrl.public, "underline", "yellow")}`);
-      }
       console.log(
-        `${paint("Ctrl Ext:", "magenta")}   ${paint(publicLinks.overlayControlUrl.public ?? "", "underline", "magenta")}`
+        `${paint("App Ext:", "blue")}     ${paint(redactUrlForLog(publicLinks.appUrl.public ?? ""), "underline", "blue")}`
       );
       console.log(
-        `${paint("API Ext:", "blue")}     ${paint(publicLinks.overlayControlStateUrl.public ?? "", "underline", "blue")}`
+        `${paint("Spec Ext:", "green")}    ${paint(redactUrlForLog(publicLinks.viewerUrl.public ?? ""), "underline", "green")}`
+      );
+      console.log(
+        `${paint("View Ext:", "cyan")}    ${paint(redactUrlForLog(publicLinks.overlayViewUrl.public ?? ""), "underline", "cyan")}`
+      );
+      if (publicLinks.overlayDebugUrl.public) {
+        console.log(
+          `${paint("Dbg Ext:", "yellow")}     ${paint(redactUrlForLog(publicLinks.overlayDebugUrl.public), "underline", "yellow")}`
+        );
+      }
+      console.log(
+        `${paint("Ctrl Ext:", "magenta")}   ${paint(
+          redactUrlForLog(publicLinks.overlayControlUrl.public ?? ""),
+          "underline",
+          "magenta"
+        )}`
+      );
+      console.log(
+        `${paint("API Ext:", "blue")}     ${paint(
+          redactUrlForLog(publicLinks.overlayControlStateUrl.public ?? ""),
+          "underline",
+          "blue"
+        )}`
       );
       console.log(paint(line, "dim"));
     })
@@ -645,10 +838,54 @@ function unrefTimer(timer: ReturnType<typeof setTimeout> | ReturnType<typeof set
   }
 }
 
+function fingerprintForLog(value: string): string {
+  if (!value) return "<empty>";
+  return `sha256:${crypto.createHash("sha256").update(value).digest("hex").slice(0, 12)}`;
+}
+
+function redactUrlForLog(rawUrl: string): string {
+  if (!rawUrl) return "<empty>";
+  try {
+    const url = new URL(rawUrl);
+    for (const key of Array.from(url.searchParams.keys())) {
+      url.searchParams.set(key, "<redacted>");
+    }
+    if (url.hash) {
+      url.hash = "<redacted>";
+    }
+    return url.toString();
+  } catch {
+    return rawUrl.replace(/([?&][^=]+=)([^&]+)/g, "$1<redacted>");
+  }
+}
+
+function formatLogValue(key: string, value: unknown): string {
+  if (value === null || value === undefined) return "<empty>";
+  if (typeof value === "string") {
+    if (/(token|secret|password|session|cookie|auth|bearer|key)$/i.test(key)) {
+      return fingerprintForLog(value);
+    }
+    if (/^https?:\/\//i.test(value)) {
+      return redactUrlForLog(value);
+    }
+    return value;
+  }
+  if (value instanceof URL) {
+    return redactUrlForLog(value.toString());
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (typeof value === "object") {
+    return Array.isArray(value) ? `[array:${value.length}]` : "[object]";
+  }
+  return String(value);
+}
+
 function logRoomLifecycle(event: string, roomCode: string, details: Record<string, unknown>) {
   const payload =
     Object.entries(details)
-      .map(([key, value]) => `${key}=${String(value)}`)
+      .map(([key, value]) => `${key}=${formatLogValue(key, value)}`)
       .join(" ") || "-";
   console.log(`[room] ${event} room:${roomCode} ${payload}`);
 }
@@ -2118,6 +2355,97 @@ async function getOverlayState(room: Room): Promise<OverlayState | null> {
   }
 }
 
+function generatePlayerReconnectToken(): PlayerReconnectToken {
+  return crypto.randomUUID();
+}
+
+function generateOverlayViewToken(): OverlayViewToken {
+  return crypto.randomBytes(20).toString("hex");
+}
+
+function generateOverlayControlToken(): OverlayControlToken {
+  return crypto.randomBytes(20).toString("hex");
+}
+
+function generateOverlayControlInviteToken(): OverlayControlInviteToken {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+function isOverlayTokenExpired(issuedAtMs: number, now = Date.now()): boolean {
+  if (OVERLAY_TOKEN_TTL_MS <= 0) return false;
+  if (!Number.isFinite(issuedAtMs) || issuedAtMs <= 0) return false;
+  return now - issuedAtMs >= OVERLAY_TOKEN_TTL_MS;
+}
+
+function rotateOverlayTokens(room: Room, reason: "initial" | "ttl_expired"): void {
+  const now = Date.now();
+  room.overlayToken = generateOverlayViewToken();
+  room.overlayEditToken = generateOverlayControlToken();
+  room.overlayTokenIssuedAt = now;
+  room.overlayEditTokenIssuedAt = now;
+
+  if (reason !== "initial") {
+    logRoomLifecycle("overlay_tokens_rotated", room.code, {
+      reason,
+      ttlMs: OVERLAY_TOKEN_TTL_MS,
+    });
+  }
+}
+
+function ensureOverlayTokensActive(room: Room): boolean {
+  if (OVERLAY_TOKEN_TTL_MS <= 0) return false;
+  const now = Date.now();
+  const viewExpired = isOverlayTokenExpired(room.overlayTokenIssuedAt, now);
+  const controlExpired = isOverlayTokenExpired(room.overlayEditTokenIssuedAt, now);
+  if (!viewExpired && !controlExpired) return false;
+  rotateOverlayTokens(room, "ttl_expired");
+  return true;
+}
+
+function ensureOverlayControlInviteActive(room: Room): boolean {
+  if (OVERLAY_CONTROL_INVITE_TTL_MS <= 0) return false;
+  if (!isOverlayControlInviteExpired(room.overlayControlInviteIssuedAt)) return false;
+  rotateOverlayControlInvite(room, "ttl_expired");
+  return true;
+}
+
+function isOverlayControlInviteExpired(issuedAtMs: number, now = Date.now()): boolean {
+  if (OVERLAY_CONTROL_INVITE_TTL_MS <= 0) return false;
+  if (!Number.isFinite(issuedAtMs) || issuedAtMs <= 0) return false;
+  return now - issuedAtMs >= OVERLAY_CONTROL_INVITE_TTL_MS;
+}
+
+function rotateOverlayControlInvite(
+  room: Room,
+  reason: "initial" | "host_create" | "host_revoke" | "exchange" | "ttl_expired"
+): void {
+  room.overlayControlInviteToken = generateOverlayControlInviteToken();
+  room.overlayControlInviteIssuedAt = Date.now();
+  if (reason !== "initial") {
+    logRoomLifecycle("overlay_invite_rotated", room.code, {
+      reason,
+      ttlMs: OVERLAY_CONTROL_INVITE_TTL_MS,
+    });
+  }
+}
+
+function rotateOverlayControlSessionToken(room: Room, reason: "invite_exchange"): OverlayControlToken {
+  room.overlayEditToken = generateOverlayControlToken();
+  room.overlayEditTokenIssuedAt = Date.now();
+  logRoomLifecycle("overlay_control_session_rotated", room.code, {
+    reason,
+    ttlMs: OVERLAY_TOKEN_TTL_MS,
+  });
+  return room.overlayEditToken;
+}
+
+function isOverlayControlInviteAuthorized(room: Room, inviteToken: string): boolean {
+  if (!inviteToken) return false;
+  if (inviteToken !== room.overlayControlInviteToken) return false;
+  if (isOverlayControlInviteExpired(room.overlayControlInviteIssuedAt)) return false;
+  return true;
+}
+
 function getRoleForPlayer(room: Room, playerId: string | undefined): Role {
   if (!playerId) return "VIEW";
   if (playerId === room.controlId) return "CONTROL";
@@ -2126,8 +2454,12 @@ function getRoleForPlayer(room: Room, playerId: string | undefined): Role {
 
 function getRoleForToken(room: Room, token: string): Role | null {
   if (!token) return null;
-  if (token === room.overlayToken) return "VIEW";
-  if (token === room.overlayEditToken) return "CONTROL";
+  if (token === room.overlayToken) {
+    return isOverlayTokenExpired(room.overlayTokenIssuedAt) ? null : "VIEW";
+  }
+  if (token === room.overlayEditToken) {
+    return isOverlayTokenExpired(room.overlayEditTokenIssuedAt) ? null : "CONTROL";
+  }
   const playerId = room.playersByToken.get(token);
   if (!playerId) return null;
   return getRoleForPlayer(room, playerId);
@@ -2528,8 +2860,66 @@ function diffTopLevel<T extends object>(prev: T | undefined, next: T): Partial<T
   return changed ? patch : null;
 }
 
+const OUTBOUND_GUARDED_MESSAGE_TYPES = new Set<ServerMessage["type"]>([
+  "roomState",
+  "statePatch",
+  "gameView",
+  "overlayState",
+]);
+
+const OUTBOUND_SENSITIVE_KEY_PATTERN = /(token|secret|sessionId|password|cookie|auth)/i;
+
+function collectSensitiveKeyPaths(value: unknown, basePath = "$"): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const out: string[] = [];
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      out.push(...collectSensitiveKeyPaths(value[index], `${basePath}[${index}]`));
+    }
+    return out;
+  }
+
+  for (const [key, entry] of Object.entries(value)) {
+    const nextPath = `${basePath}.${key}`;
+    if (OUTBOUND_SENSITIVE_KEY_PATTERN.test(key)) {
+      out.push(nextPath);
+    }
+    out.push(...collectSensitiveKeyPaths(entry, nextPath));
+  }
+
+  return out;
+}
+
+function checkOutboundPayloadForSensitiveKeys(message: ServerMessage): void {
+  if (!OUTBOUND_SENSITIVE_PAYLOAD_GUARD) return;
+  if (!OUTBOUND_GUARDED_MESSAGE_TYPES.has(message.type)) return;
+
+  const sensitivePaths = collectSensitiveKeyPaths(message.payload);
+  if (sensitivePaths.length === 0) return;
+
+  const keyPaths = sensitivePaths.slice(0, 12).join(",");
+  const signature = `${message.type}|${keyPaths}`;
+  if (outboundSensitiveGuardSignatures.has(signature)) {
+    if (OUTBOUND_SENSITIVE_PAYLOAD_GUARD_STRICT) {
+      throw new Error(`[security] blocked outbound ${message.type}: sensitive keys in payload (${keyPaths})`);
+    }
+    return;
+  }
+  outboundSensitiveGuardSignatures.add(signature);
+
+  const warning = `[security] outbound ${message.type} contains sensitive-key names at: ${keyPaths}`;
+  if (OUTBOUND_SENSITIVE_PAYLOAD_GUARD_STRICT) {
+    throw new Error(`${warning}; strict guard is enabled`);
+  }
+  console.warn(warning);
+}
+
 function send(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState !== WebSocket.OPEN) return;
+  checkOutboundPayloadForSensitiveKeys(message);
   ws.send(JSON.stringify(message));
 }
 
@@ -2934,7 +3324,7 @@ function addLobbyBotPlayer(room: Room, preferredName?: string): Player | null {
   const bot: Player = {
     playerId: crypto.randomUUID(),
     name: nextName,
-    token: crypto.randomUUID(),
+    token: generatePlayerReconnectToken(),
     connected: true,
     totalAbsentMs: 0,
     needsFullState: false,
@@ -3108,7 +3498,7 @@ function attachPlayer(room: Room, payload: ClientHelloPayload, ws: WebSocket, ex
   const player = existing ?? {
     playerId: crypto.randomUUID(),
     name: payload.name,
-    token: crypto.randomUUID(),
+    token: generatePlayerReconnectToken(),
     tabId: IDENTITY_MODE === "dev_tab" ? payload.tabId : undefined,
     sessionId: payload.sessionId,
     connected: true,
@@ -3216,16 +3606,80 @@ async function main() {
     app.set("trust proxy", true);
   }
   app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    const originAllowed = applyCorsHeaders(req, res);
     if (req.method === "OPTIONS") {
+      if (ENFORCE_ORIGIN_CHECKS && req.get("origin") && !originAllowed) {
+        res.status(403).end();
+        return;
+      }
       res.status(204).end();
       return;
     }
     next();
   });
   app.use(express.json({ limit: "256kb" }));
+
+  const enforceSensitiveOrigin = (req: Request, res: Response, next: NextFunction) => {
+    if (!ENFORCE_ORIGIN_CHECKS) {
+      next();
+      return;
+    }
+    const originHeader = req.get("origin");
+    const requestOrigin = buildRequestOrigin(req.protocol, req.get("host"));
+    const allowed = isOriginAllowed(originHeader, requestOrigin, { allowMissingOrigin: false });
+    if (!allowed) {
+      res.status(403).json({ ok: false, message: tServerForRoom(undefined, "error.forbidden") });
+      return;
+    }
+    next();
+  };
+
+  const enforceSensitiveHttpRateLimit = (req: Request, res: Response, next: NextFunction) => {
+    if (!SENSITIVE_HTTP_RATE_LIMIT_ENABLED) {
+      next();
+      return;
+    }
+
+    const now = Date.now();
+    maybeCleanupSensitiveHttpRateBuckets(now);
+    const clientIp = normalizeIpForRateLimit(req);
+    const routeKey = `${req.method.toUpperCase()} ${req.path}`;
+    const bucketKey = `${clientIp}|${routeKey}`;
+    const bucket = touchSensitiveHttpRateLimitBucket(bucketKey, now);
+
+    if (bucket.count > SENSITIVE_HTTP_RATE_LIMIT_MAX) {
+      const signature = `${clientIp}|${routeKey}`;
+      if (!sensitiveHttpRateLimitSignatures.has(signature)) {
+        sensitiveHttpRateLimitSignatures.add(signature);
+        console.warn(
+          `[security] sensitive http rate-limit exceeded ip=${clientIp} route=${routeKey} count=${bucket.count} windowMs=${SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS} max=${SENSITIVE_HTTP_RATE_LIMIT_MAX}`
+        );
+      }
+
+      res.status(429).json({
+        ok: false,
+        message: tServerForRoom(undefined, "error.tooManyRequests"),
+      });
+      return;
+    }
+
+    next();
+  };
+
+  const sensitiveOriginRoutes: string[] = [
+    LINK_PATHS.overlayControlState,
+    LINK_PATHS.overlayControlSave,
+    LINK_PATHS.overlayControlAction,
+    LINK_PATHS.overlayControlInviteCreate,
+    LINK_PATHS.overlayControlInviteExchange,
+    LINK_PATHS.overlayControlInviteRevoke,
+    LINK_PATHS.apiOverlayLinks,
+  ];
+
+  const sensitiveRateLimitRoutes: string[] = [...sensitiveOriginRoutes, LINK_PATHS.overlayControl];
+
+  app.use(sensitiveOriginRoutes, enforceSensitiveOrigin);
+  app.use(sensitiveRateLimitRoutes, enforceSensitiveHttpRateLimit);
 
   app.get("/assets/decks/:deckName/:fileName", (req, res, next) => {
     if (req.params.deckName !== BACK_DECK_DIR_NAME) {
@@ -3261,8 +3715,19 @@ async function main() {
       .trim()
       .toUpperCase();
     const token = String(req.query.token ?? "").trim();
+    const inviteToken = String(req.query.invite ?? req.query.inviteToken ?? "").trim();
     const room = rooms.get(roomCode);
-    if (!room || !isOverlayEditAuthorized(room, token)) {
+    if (!room) {
+      res.status(403).type("text/plain").send(tServerForRoom(room, "error.forbidden"));
+      return;
+    }
+
+    ensureOverlayTokensActive(room);
+    ensureOverlayControlInviteActive(room);
+
+    const tokenAllowed = token ? isOverlayEditAuthorized(room, token) : false;
+    const inviteAllowed = inviteToken ? isOverlayControlInviteAuthorized(room, inviteToken) : false;
+    if (!tokenAllowed && !inviteAllowed) {
       res.status(403).type("text/plain").send(tServerForRoom(room, "error.forbidden"));
       return;
     }
@@ -3354,6 +3819,111 @@ async function main() {
     });
   });
 
+  app.post(LINK_PATHS.overlayControlInviteCreate, async (req, res) => {
+    const payload = isRecord(req.body) ? req.body : {};
+    const roomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const token = String(payload.token ?? "").trim();
+    const room = rooms.get(roomCode);
+    if (!room) {
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+      return;
+    }
+    if (!isOverlayEditAuthorized(room, token)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
+      return;
+    }
+
+    rotateOverlayControlInvite(room, "host_create");
+
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    const invitePath = `${LINK_PATHS.overlayControl}?room=${encodeURIComponent(room.code)}&invite=${encodeURIComponent(
+      room.overlayControlInviteToken
+    )}`;
+    const lanInviteUrl = `${lanOrigin}${invitePath}`;
+    const publicInviteUrl = publicResolution.base ? `${publicResolution.base}${invitePath}` : null;
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      inviteTokenExpiresInMs: OVERLAY_CONTROL_INVITE_TTL_MS > 0 ? OVERLAY_CONTROL_INVITE_TTL_MS : null,
+      inviteUrlLan: lanInviteUrl,
+      inviteUrlExternal: publicInviteUrl,
+    });
+  });
+
+  app.post(LINK_PATHS.overlayControlInviteRevoke, (req, res) => {
+    const payload = isRecord(req.body) ? req.body : {};
+    const roomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const token = String(payload.token ?? "").trim();
+    const room = rooms.get(roomCode);
+    if (!room) {
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+      return;
+    }
+    if (!isOverlayEditAuthorized(room, token)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
+      return;
+    }
+
+    rotateOverlayControlInvite(room, "host_revoke");
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      inviteTokenExpiresInMs: OVERLAY_CONTROL_INVITE_TTL_MS > 0 ? OVERLAY_CONTROL_INVITE_TTL_MS : null,
+    });
+  });
+
+  app.post(LINK_PATHS.overlayControlInviteExchange, async (req, res) => {
+    const payload = isRecord(req.body) ? req.body : {};
+    const roomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const inviteToken = String(payload.inviteToken ?? payload.invite ?? "").trim();
+    const room = rooms.get(roomCode);
+    if (!room) {
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+      return;
+    }
+    if (!isOverlayControlInviteAuthorized(room, inviteToken)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
+      return;
+    }
+
+    ensureOverlayTokensActive(room);
+    const controlSessionToken = rotateOverlayControlSessionToken(room, "invite_exchange");
+    rotateOverlayControlInvite(room, "exchange");
+
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    const links = buildLinkSet({
+      lanBase: lanOrigin,
+      publicBase: publicResolution.base,
+      roomCode: room.code,
+      overlayViewToken: room.overlayToken,
+      overlayControlToken: controlSessionToken,
+      overlayControlInviteToken: room.overlayControlInviteToken,
+      overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
+    });
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      controlSessionToken,
+      controlSessionExpiresInMs: OVERLAY_TOKEN_TTL_MS > 0 ? OVERLAY_TOKEN_TTL_MS : null,
+      links,
+    });
+  });
+
   app.post(LINK_PATHS.apiOverlayLinks, async (req, res) => {
     const payload = isRecord(req.body) ? req.body : {};
     const roomCode = String(payload.roomCode ?? "")
@@ -3379,6 +3949,9 @@ async function main() {
       return;
     }
 
+    ensureOverlayTokensActive(room);
+    ensureOverlayControlInviteActive(room);
+
     const host = req.get("host");
     const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
     const { lanOrigin } = buildLinkOrigins(requestOrigin);
@@ -3390,19 +3963,15 @@ async function main() {
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
       overlayControlToken: room.overlayEditToken,
+      overlayControlInviteToken: room.overlayControlInviteToken,
       overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
     });
 
     res.json({
       ok: true,
-      lanBase: links.lanBase,
-      publicBase: links.publicBase ?? null,
       linkVisibility: HIDE_LOCAL_LINKS_IN_LOGS ? "public" : "all",
       buildProfile: BUILD_PROFILE || "public",
       roomCode: room.code,
-      overlayViewToken: room.overlayToken,
-      overlayControlToken: room.overlayEditToken,
-      overlayQueryParams: room.overlayOverrides?.overlayUrlParams ?? null,
       links,
     });
   });
@@ -4049,7 +4618,26 @@ async function main() {
   process.on("SIGBREAK", () => shutdown("SIGBREAK"));
   process.on("SIGHUP", () => shutdown("SIGHUP"));
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, request) => {
+    if (ENFORCE_ORIGIN_CHECKS) {
+      const originHeaderRaw = request.headers.origin;
+      const originHeader = Array.isArray(originHeaderRaw) ? originHeaderRaw[0] : originHeaderRaw;
+      const requestOrigin = getUpgradeRequestOrigin(request);
+      const allowed = isOriginAllowed(originHeader, requestOrigin, { allowMissingOrigin: false });
+      if (!allowed) {
+        const normalizedOrigin = normalizeOrigin(originHeader);
+        console.warn(
+          `[security] websocket origin rejected origin=${normalizedOrigin ?? "<missing>"} expected=${requestOrigin ?? "<unknown>"}`
+        );
+        try {
+          ws.close(1008, "Forbidden origin");
+        } catch {
+          ws.terminate();
+        }
+        return;
+      }
+    }
+
     ws.on("message", (data) => {
       let parsedJson: unknown;
       try {
@@ -4105,12 +4693,13 @@ async function main() {
               return;
             }
             const initialRuleset = buildAutoRuleset(MIN_CLASSIC_PLAYERS);
+            const roomCreatedAt = Date.now();
 
             const room: Room = {
               code: generateRoomCode(),
               hostId: "",
               controlId: "",
-              createdAt: Date.now(),
+              createdAt: roomCreatedAt,
               phase: "lobby",
               scenarioId: scenarioModule.meta.id,
               scenarioMeta: scenarioModule.meta,
@@ -4130,8 +4719,12 @@ async function main() {
               playersBySessionId: new Map(),
               joinOrder: [],
               lastGameViews: new Map(),
-              overlayToken: crypto.randomBytes(20).toString("hex"),
-              overlayEditToken: crypto.randomBytes(20).toString("hex"),
+              overlayToken: generateOverlayViewToken(),
+              overlayEditToken: generateOverlayControlToken(),
+              overlayTokenIssuedAt: roomCreatedAt,
+              overlayEditTokenIssuedAt: roomCreatedAt,
+              overlayControlInviteToken: generateOverlayControlInviteToken(),
+              overlayControlInviteIssuedAt: roomCreatedAt,
               overlayOverrides: {},
             };
             rooms.set(room.code, room);
@@ -4147,6 +4740,7 @@ async function main() {
               room.code,
               room.overlayToken,
               room.overlayEditToken,
+              room.overlayControlInviteToken,
               room.overlayOverrides?.overlayUrlParams
             );
             updateRulesetIfAuto(room);
@@ -5036,6 +5630,19 @@ async function main() {
     if (PUBLIC_ORIGIN) {
       console.log(`Public origin: ${PUBLIC_ORIGIN}`);
     }
+    const allowedOriginsList = Array.from(ALLOWED_ORIGINS).filter((origin) => origin !== "*");
+    const allowedOriginsText = ALLOW_ALL_ORIGINS
+      ? "*"
+      : allowedOriginsList.length > 0
+        ? allowedOriginsList.join(", ")
+        : ENFORCE_ORIGIN_CHECKS
+          ? "same-origin"
+          : "all (compat)";
+    console.log(`Origin checks: ${ENFORCE_ORIGIN_CHECKS ? "enforced" : "compat"} (allowed: ${allowedOriginsText})`);
+    console.log(
+      `Sensitive HTTP rate-limit: ${SENSITIVE_HTTP_RATE_LIMIT_ENABLED ? "enabled" : "disabled"} (max=${SENSITIVE_HTTP_RATE_LIMIT_MAX}, window=${SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS}ms)`
+    );
+    console.log(`Overlay token TTL: ${OVERLAY_TOKEN_TTL_MS > 0 ? `${OVERLAY_TOKEN_TTL_MS}ms` : "disabled"}`);
     console.log(`Assets root: ${ASSETS_ROOT} (decks: ${deckCount}, source: ${assetsResolved.source})`);
     if (SERVE_CLIENT) {
       console.log(`Client dist: ${CLIENT_DIST} (source: ${clientResolved.source})`);

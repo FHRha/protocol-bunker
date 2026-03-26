@@ -10,7 +10,7 @@ import type {
 } from "@bunker/shared";
 import { BunkerClient, type ConnectionStatus } from "./wsClient";
 import { API_BASE, DEV_TAB_IDENTITY, IDENTITY_MODE, WS_URL } from "./config";
-import { initTabIdentity, tokenKey } from "./storage";
+import { clearPlayerToken, initTabIdentity, readPlayerToken, writePlayerToken } from "./storage";
 import {
   getCurrentLocale,
   setCurrentLocale,
@@ -472,7 +472,7 @@ export default function App() {
     if (options?.clearLastRoom) {
       const lastRoom = localStorage.getItem("bunker.lastRoomCode");
       if (lastRoom) {
-        localStorage.removeItem(tokenKey(lastRoom));
+        clearPlayerToken(lastRoom);
       }
       localStorage.removeItem("bunker.lastRoomCode");
     }
@@ -1085,7 +1085,7 @@ export default function App() {
     if (!roomState) return;
     localStorage.setItem("bunker.lastRoomCode", roomState.roomCode);
     if (!playerToken || DEV_TAB_IDENTITY) return;
-    localStorage.setItem(tokenKey(roomState.roomCode), playerToken);
+    writePlayerToken(roomState.roomCode, playerToken);
   }, [roomState, playerToken]);
 
   useEffect(() => {
@@ -1102,7 +1102,7 @@ export default function App() {
     const name = localStorage.getItem("bunker.playerName") ?? "";
     if (!roomCode || !name) return;
 
-    const token = IDENTITY_MODE === "prod" ? localStorage.getItem(tokenKey(roomCode)) ?? undefined : undefined;
+    const token = IDENTITY_MODE === "prod" ? readPlayerToken(roomCode) : undefined;
     const effectiveTabId = IDENTITY_MODE === "dev_tab" ? tabId : undefined;
     if (IDENTITY_MODE === "dev_tab" && !effectiveTabId) return;
     const intent: SessionIntent = {
@@ -1194,7 +1194,7 @@ export default function App() {
         setTabId(effectiveTabId);
       }
     }
-    const token = DEV_TAB_IDENTITY ? undefined : localStorage.getItem(tokenKey(roomCode)) ?? undefined;
+    const token = DEV_TAB_IDENTITY ? undefined : readPlayerToken(roomCode);
     if (DEV_TAB_IDENTITY && !effectiveTabId) {
       setFatalErrorMessage(appLocale.errorReconnectNetwork);
       return;
@@ -1382,8 +1382,8 @@ export default function App() {
     navigate("/");
   };
 
-  const handleExitGame = () => {
-    if (confirmExitGame) {
+  const handleExitGame = (options?: { skipConfirm?: boolean }) => {
+    if (!options?.skipConfirm && confirmExitGame) {
       setExitConfirmModalOpen(true);
       return;
     }
@@ -1836,7 +1836,7 @@ export default function App() {
                 </button>
               ) : null}
               {roomState ? (
-                <button className="primary topbar-exit-button" onClick={handleExitGame}>
+                <button className="primary topbar-exit-button" onClick={() => handleExitGame()}>
                   {appLocale.exitButton}
                 </button>
               ) : null}

@@ -1,5 +1,69 @@
 ﻿export const tokenKey = (roomCode: string) => `bunker.playerToken.${roomCode}`;
 
+function normalizeStoredToken(value: string | null): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+export function readPlayerToken(roomCode: string): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const key = tokenKey(roomCode);
+
+  const fromSession = normalizeStoredToken(window.sessionStorage.getItem(key));
+  if (fromSession) {
+    return fromSession;
+  }
+
+  const fromLegacyLocal = normalizeStoredToken(window.localStorage.getItem(key));
+  if (!fromLegacyLocal) {
+    return undefined;
+  }
+
+  try {
+    window.sessionStorage.setItem(key, fromLegacyLocal);
+  } catch {
+    // ignore storage write errors
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore cleanup errors
+  }
+  return fromLegacyLocal;
+}
+
+export function writePlayerToken(roomCode: string, token: string): void {
+  if (typeof window === "undefined") return;
+  const normalizedToken = String(token ?? "").trim();
+  if (!normalizedToken) return;
+  const key = tokenKey(roomCode);
+  try {
+    window.sessionStorage.setItem(key, normalizedToken);
+  } catch {
+    // ignore storage write errors
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore cleanup errors
+  }
+}
+
+export function clearPlayerToken(roomCode: string): void {
+  if (typeof window === "undefined") return;
+  const key = tokenKey(roomCode);
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // ignore storage cleanup errors
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore storage cleanup errors
+  }
+}
+
 const TAB_ID_KEY = "bunker.dev_tab_id";
 const TAB_INSTANCE_KEY = "bunker.dev_tab_instance";
 const TAB_CHANNEL = "bunker-dev-tab";

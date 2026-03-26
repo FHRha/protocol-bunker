@@ -1,8 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import {
   LINK_PATHS,
-  buildLinkSet,
-  normalizeBase,
+  type BuiltLinkSet,
   type GameSettings,
   type ManualRulesConfig,
   type RoomState,
@@ -42,6 +41,14 @@ interface OverlayLinksPayload {
   overlayViewUrlExternal: string;
   overlayControlUrlLan: string;
   overlayControlUrlExternal: string;
+}
+
+interface OverlayLinksApiPayload {
+  ok: true;
+  roomCode: string;
+  linkVisibility: string;
+  buildProfile: string;
+  links: BuiltLinkSet;
 }
 
 type LobbyPlayer = RoomState["players"][number];
@@ -88,19 +95,6 @@ function normalizeVotesByRound(votes: number[]): number[] {
 
 function sumVotes(votes: number[]): number {
   return votes.reduce((acc, value) => acc + value, 0);
-}
-
-function normalizeOverlayQueryParams(raw: unknown): Record<string, string> | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  const out: Record<string, string> = {};
-  for (const [rawKey, rawValue] of Object.entries(raw)) {
-    const key = String(rawKey || "").trim();
-    if (!key || key === "room" || key === "roomCode" || key === "token") continue;
-    const value = String(rawValue ?? "").trim();
-    if (!value) continue;
-    out[key] = value;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function fitVotesByTotal(votes: number[], requiredVotes: number): number[] {
@@ -481,12 +475,8 @@ export default function LobbyPage({
           throw new Error(message);
         }
         if (cancelled) return;
-        const raw = payload as Record<string, unknown>;
-        const lanBase = normalizeBase(String(raw.lanBase ?? ""));
-        const publicBase = normalizeBase(raw.publicBase == null ? "" : String(raw.publicBase));
-        const overlayViewToken = String(raw.overlayViewToken ?? "");
-        const overlayControlToken = String(raw.overlayControlToken ?? "");
-        const overlayQueryParams = normalizeOverlayQueryParams(raw.overlayQueryParams);
+        const raw = payload as OverlayLinksApiPayload & Record<string, unknown>;
+        const links = raw.links;
         const apiRoomCode = String(raw.roomCode ?? roomCode).trim().toUpperCase();
         const linkVisibility = String(raw.linkVisibility ?? "all").trim().toLowerCase();
         const buildProfile = String(raw.buildProfile ?? "").trim().toLowerCase();
@@ -494,29 +484,21 @@ export default function LobbyPage({
         const showLanLinks =
           !forcePublicOnly && !(linkVisibility === "public" || linkVisibility === "external");
 
-        if (!lanBase || !overlayViewToken || !overlayControlToken || !apiRoomCode) {
+        if (!links?.viewerUrl?.lan || !links?.overlayViewUrl?.lan || !links?.overlayControlUrl?.lan || !apiRoomCode) {
           throw new Error(lobbyLocale.obsLinksUnavailable);
         }
 
-        const built = buildLinkSet({
-          lanBase,
-          publicBase,
-          roomCode: apiRoomCode,
-          overlayViewToken,
-          overlayControlToken,
-          overlayQueryParams,
-        });
-        const lanSpectator = showLanLinks ? built.viewerUrl.lan : "";
-        const lanOverlayView = showLanLinks ? built.overlayViewUrl.lan : "";
-        const lanOverlayControl = showLanLinks ? built.overlayControlUrl.lan : "";
+        const lanSpectator = showLanLinks ? links.viewerUrl.lan : "";
+        const lanOverlayView = showLanLinks ? links.overlayViewUrl.lan : "";
+        const lanOverlayControl = showLanLinks ? links.overlayControlUrl.lan : "";
         setOverlayLinks({
           showLanLinks,
           spectatorUrlLan: lanSpectator,
-          spectatorUrlExternal: built.viewerUrl.public ?? "",
+          spectatorUrlExternal: links.viewerUrl.public ?? "",
           overlayViewUrlLan: lanOverlayView,
-          overlayViewUrlExternal: built.overlayViewUrl.public ?? "",
+          overlayViewUrlExternal: links.overlayViewUrl.public ?? "",
           overlayControlUrlLan: lanOverlayControl,
-          overlayControlUrlExternal: built.overlayControlUrl.public ?? "",
+          overlayControlUrlExternal: links.overlayControlUrl.public ?? "",
         });
       } catch (error) {
         if (cancelled) return;

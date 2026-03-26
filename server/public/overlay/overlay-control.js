@@ -1,4 +1,4 @@
-(() => {
+ (async () => {
   function parseOverlayControlParams() {
     const search = new URLSearchParams(window.location.search || "");
     const hashRaw = window.location.hash?.startsWith("#") ? window.location.hash.slice(1) : "";
@@ -15,30 +15,79 @@
       return "";
     };
 
-    let roomCode = getFirst(["room", "roomCode", "roomId", "code", "r"]).toUpperCase();
-    let token = getFirst(["token", "control", "controlToken", "editToken", "t"]);
+    const roomCode = getFirst(["room", "roomCode"]).toUpperCase();
+    const token = getFirst(["token"]);
+    const inviteToken = getFirst(["invite", "inviteToken"]);
 
-    const path = window.location.pathname || "";
-    const pathParts = path.split("/").filter(Boolean);
-    const overlayIndex = pathParts.findIndex((part) => part.toLowerCase() === "overlay-control");
-    if (overlayIndex >= 0) {
-      if (!roomCode && pathParts[overlayIndex + 1]) {
-        roomCode = String(pathParts[overlayIndex + 1]).trim().toUpperCase();
-      }
-      if (!token && pathParts[overlayIndex + 2]) {
-        token = String(pathParts[overlayIndex + 2]).trim();
-      }
-    }
-
-    return { roomCode, token };
+    return { roomCode, token, inviteToken };
   }
 
   const parsedParams = parseOverlayControlParams();
   const roomCode = parsedParams.roomCode;
-  const token = parsedParams.token;
+  let token = parsedParams.token;
+  const inviteToken = parsedParams.inviteToken;
   const TAB_ID_KEY = "bunker.dev_tab_id";
   const SESSION_ID_KEY = "bunker.sessionId";
+  const CONTROL_SESSION_TOKEN_PREFIX = "bunker.overlayControl.sessionToken";
   const LOCALE_STORAGE_KEY = "bunker.locale";
+
+  const controlSessionStorageKey = roomCode ? `${CONTROL_SESSION_TOKEN_PREFIX}:${roomCode}` : CONTROL_SESSION_TOKEN_PREFIX;
+
+  function readControlSessionToken() {
+    if (!roomCode) return "";
+    try {
+      const value = sessionStorage.getItem(controlSessionStorageKey);
+      return value && String(value).trim() ? String(value).trim() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function writeControlSessionToken(nextToken) {
+    if (!roomCode || !nextToken) return;
+    try {
+      sessionStorage.setItem(controlSessionStorageKey, String(nextToken));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function clearControlSessionToken() {
+    if (!roomCode) return;
+    try {
+      sessionStorage.removeItem(controlSessionStorageKey);
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  async function exchangeInviteForControlSession() {
+    if (!roomCode || !inviteToken) return "";
+    try {
+      const response = await fetch("/overlay-control/invite/exchange", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ roomCode, inviteToken }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) return "";
+      const issuedToken = String(payload.controlSessionToken || "").trim();
+      if (!issuedToken) return "";
+      return issuedToken;
+    } catch {
+      return "";
+    }
+  }
+
+  if (!token) {
+    token = readControlSessionToken();
+  }
+  if (!token && roomCode && inviteToken) {
+    token = await exchangeInviteForControlSession();
+  }
+  if (token) {
+    writeControlSessionToken(token);
+  }
 
   const overlayLocaleApi = window.BUNKER_OVERLAY_LOCALE || null;
   const normalizeLocale =
@@ -326,11 +375,13 @@
   }
 
   if (!roomCode || !token) {
+    clearControlSessionToken();
     console.error("[overlay-control] missing room/token in URL", {
       roomCodeFromUrl: roomCode || null,
       tokenPresent: Boolean(token),
+      invitePresent: Boolean(inviteToken),
     });
-    urlParamsDebug.textContent = `roomCodeFromUrl: ${roomCode || "-"} • tokenPresent: ${token ? "yes" : "no"}`;
+    urlParamsDebug.textContent = `roomCodeFromUrl: ${roomCode || "-"} • tokenPresent: ${token ? "yes" : "no"} • invitePresent: ${inviteToken ? "yes" : "no"}`;
     controlConnection.textContent = tr(
       "control.connection.summary",
       {
@@ -344,11 +395,12 @@
     return;
   }
 
-  urlParamsDebug.textContent = `roomCodeFromUrl: ${roomCode} • tokenPresent: yes`;
+  urlParamsDebug.textContent = `roomCodeFromUrl: ${roomCode} • tokenPresent: yes • invitePresent: ${inviteToken ? "yes" : "no"}`;
   roomLabel.textContent = tr("control.room.label", { room: roomCode });
   console.log("[overlay-control] parsed URL params", {
     roomCodeFromUrl: roomCode,
     tokenPresent: Boolean(token),
+    invitePresent: Boolean(inviteToken),
   });
 
   const MAX_LINE_LEN = 120;

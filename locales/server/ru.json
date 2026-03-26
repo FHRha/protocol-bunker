@@ -55,6 +55,7 @@
   "error.overlayControlPageNotFound": "Страница управления оверлеем не найдена.",
   "error.overlayControlStateBuildFailed": "Не удалось собрать состояние управления оверлеем.",
   "error.overlayLinksRequireRoomAndToken": "Требуются код комнаты и токен.",
+  "error.tooManyRequests": "Слишком много запросов. Повторите позже.",
   "error.overlayOverridesInvalidPayload": "Некорректные данные переопределений.",
   "error.overlayPageNotFound": "Страница оверлея не найдена.",
   "error.overlaySubscribeRoomNotFound": "Комната не найдена.",

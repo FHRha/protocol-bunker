@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    "declarationMap": false,
     "rootDir": "src",
     "paths": {
       "@bunker/shared": ["../shared/dist/index.d.ts"]

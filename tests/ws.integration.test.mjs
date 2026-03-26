@@ -62,6 +62,17 @@ const parseServerMessage = (eventOrData) => {
   return JSON.parse(text);
 };
 
+const getQueryParam = (urlValue, key) => {
+  try {
+    return new URL(String(urlValue ?? "")).searchParams.get(key) ?? "";
+  } catch {
+    const text = String(urlValue ?? "");
+    const re = new RegExp(`[?&]${String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^&]+)`);
+    const match = text.match(re);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+};
+
 const getSocketMessageState = (ws) => {
   const existing = socketMessageState.get(ws);
   if (existing) return existing;
@@ -266,6 +277,24 @@ const getGameViewFromMessage = (msg) => {
   return undefined;
 };
 
+const SENSITIVE_KEY_PATTERN = /(token|secret|sessionId|password|cookie|auth)/i;
+
+const assertNoSensitiveKeys = (value, path = "$") => {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      assertNoSensitiveKeys(entry, `${path}[${index}]`);
+    });
+    return;
+  }
+
+  for (const [key, entry] of Object.entries(value)) {
+    const nextPath = `${path}.${key}`;
+    assert.ok(!SENSITIVE_KEY_PATTERN.test(key), `Unexpected sensitive key "${key}" at ${nextPath}`);
+    assertNoSensitiveKeys(entry, nextPath);
+  }
+};
+
 const getCurrentGameViewFromSocket = (ws) => {
   const state = getSocketMessageState(ws);
   return state.lastGameView ?? null;
@@ -418,6 +447,537 @@ test("ws integration: host transfer works and CONTROL companion socket does not 
       });
 
     await Promise.all([closeSocket(controlWs), closeSocket(secondWs), closeSocket(hostWs)]);
+
+    if (server.exitCode === null) {
+      server.kill("SIGTERM");
+      await new Promise((resolve) => {
+        server.once("exit", () => resolve());
+        setTimeout(resolve, 2_000);
+      });
+    }
+  }
+});
+
+test("security: outbound room and overlay payloads do not leak secret keys", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Security integration test is run in CI (linux); windows process tree teardown is flaky.");
+    return;
+  }
+
+  if (typeof fetch !== "function") {
+    t.skip("Global fetch is not available in this Node runtime.");
+    return;
+  }
+
+  const server = spawn("pnpm", ["-C", "server", "exec", "tsx", "src/index.ts"], {
+    env: {
+      ...process.env,
+      PORT: "0",
+      HOST: "127.0.0.1",
+      BUNKER_ENABLE_DEV_SCENARIOS: "0",
+      BUNKER_IDENTITY_MODE: "token",
+      BUNKER_DEV_LOGS: "0",
+      BUNKER_SERVE_CLIENT: "false",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  let hostWs;
+  const playerSockets = [];
+
+  try {
+    const port = await waitForPort(server);
+    const wsUrl = `ws://127.0.0.1:${port}`;
+    const base = `http://127.0.0.1:${port}`;
+
+    hostWs = await openSocket(wsUrl);
+    sendJson(hostWs, {
+      type: "hello",
+      payload: {
+        name: "Host",
+        create: true,
+        scenarioId: "classic",
+        tabId: makeTabId("host"),
+      },
+    });
+
+    const hostAck = await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
+    const hostRoomState = await nextMessage(hostWs, (msg) => msg?.type === "roomState");
+    const roomCode = String(hostRoomState.payload?.roomCode ?? "");
+    const controlToken = String(hostAck.payload?.playerToken ?? "");
+    assert.ok(roomCode, "roomCode must be set after create");
+    assert.ok(controlToken, "control token must be set after create");
+
+    assertNoSensitiveKeys(hostRoomState.payload);
+
+    const joinPlayer = async (name) => {
+      const ws = await openSocket(wsUrl);
+      playerSockets.push(ws);
+      sendJson(ws, {
+        type: "hello",
+        payload: {
+          name,
+          roomCode,
+        },
+      });
+      await nextMessage(ws, (msg) => msg?.type === "helloAck");
+      return ws;
+    };
+
+    await joinPlayer("Player2");
+    await joinPlayer("Player3");
+    const player4 = await joinPlayer("Player4");
+
+    await nextMessage(hostWs, matchRoomStatePlayersCount(4));
+    await nextMessage(player4, matchRoomStatePlayersCount(4));
+
+    sendJson(hostWs, { type: "startGame", payload: {} });
+    const hostGameView = await waitForGameView(hostWs, (view) => view?.phase === "reveal");
+    assertNoSensitiveKeys(hostGameView);
+
+    sendJson(hostWs, {
+      type: "overlaySubscribe",
+      payload: { roomCode, token: controlToken },
+    });
+    const overlayStateMessage = await nextMessage(hostWs, (msg) => msg?.type === "overlayState");
+    assertNoSensitiveKeys(overlayStateMessage.payload);
+
+    const controlStateResp = await fetch(`${base}/overlay-control/state?room=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(controlToken)}`);
+    assert.equal(controlStateResp.status, 200, "overlay-control state should be authorized with the host token");
+    const controlStateJson = await controlStateResp.json();
+    assert.equal(controlStateJson.ok, true);
+    assertNoSensitiveKeys(controlStateJson);
+
+    const overlayLinksResp = await fetch(`${base}/api/overlay-links`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomCode, token: controlToken }),
+    });
+    assert.equal(overlayLinksResp.status, 200, "overlay-links should be authorized with the host token");
+    const overlayLinksJson = await overlayLinksResp.json();
+    assert.equal(overlayLinksJson.ok, true);
+    assertNoSensitiveKeys(overlayLinksJson);
+    assert.ok(overlayLinksJson.links?.overlayViewUrl?.lan, "overlay links must include built overlay URLs");
+    assert.ok(overlayLinksJson.links?.overlayControlUrl?.lan, "overlay links must include built control URLs");
+    assert.ok(getQueryParam(overlayLinksJson.links?.overlayControlUrl?.lan, "invite"), "overlay control URL must contain invite token");
+    assert.equal(
+      getQueryParam(overlayLinksJson.links?.overlayControlUrl?.lan, "token"),
+      "",
+      "overlay control URL must not contain control session token"
+    );
+  } finally {
+    const closeSocket = (ws) =>
+      new Promise((resolve) => {
+        if (!ws || ws.readyState === WebSocketCtor.CLOSED) {
+          disposeSocketMessageState(ws);
+          resolve();
+          return;
+        }
+        addListener(
+          ws,
+          "close",
+          () => {
+            disposeSocketMessageState(ws);
+            resolve();
+          },
+          true
+        );
+        try {
+          ws.close();
+        } catch {
+          disposeSocketMessageState(ws);
+          resolve();
+        }
+      });
+
+    await Promise.all([closeSocket(hostWs), ...playerSockets.map((ws) => closeSocket(ws))]);
+
+    if (server.exitCode === null) {
+      server.kill("SIGTERM");
+      await new Promise((resolve) => {
+        server.once("exit", () => resolve());
+        setTimeout(resolve, 2_000);
+      });
+    }
+  }
+});
+
+test("security: overlay tokens expire and refresh via overlay-links", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Security integration test is run in CI (linux); windows process tree teardown is flaky.");
+    return;
+  }
+
+  if (typeof fetch !== "function") {
+    t.skip("Global fetch is not available in this Node runtime.");
+    return;
+  }
+
+  const server = spawn("pnpm", ["-C", "server", "exec", "tsx", "src/index.ts"], {
+    env: {
+      ...process.env,
+      PORT: "0",
+      HOST: "127.0.0.1",
+      BUNKER_ENABLE_DEV_SCENARIOS: "0",
+      BUNKER_IDENTITY_MODE: "token",
+      BUNKER_DEV_LOGS: "0",
+      BUNKER_SERVE_CLIENT: "false",
+      BUNKER_OVERLAY_TOKEN_TTL_MS: "120",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  let hostWs;
+  let overlayWs;
+
+  try {
+    const port = await waitForPort(server);
+    const base = `http://127.0.0.1:${port}`;
+    const wsUrl = `ws://127.0.0.1:${port}`;
+
+    hostWs = await openSocket(wsUrl);
+    sendJson(hostWs, {
+      type: "hello",
+      payload: {
+        name: "Host",
+        create: true,
+        scenarioId: "classic",
+        tabId: makeTabId("host"),
+      },
+    });
+
+    const hostAck = await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
+    const hostRoomState = await nextMessage(hostWs, (msg) => msg?.type === "roomState");
+    const roomCode = String(hostRoomState.payload?.roomCode ?? "");
+    const controlPlayerToken = String(hostAck.payload?.playerToken ?? "");
+    assert.ok(roomCode, "roomCode must be set after create");
+    assert.ok(controlPlayerToken, "control player token must be set after create");
+
+    const firstLinksResp = await fetch(`${base}/api/overlay-links`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomCode, token: controlPlayerToken }),
+    });
+    assert.equal(firstLinksResp.status, 200);
+    const firstLinks = await firstLinksResp.json();
+    assert.equal(firstLinks.ok, true);
+
+    const oldViewToken = getQueryParam(firstLinks?.links?.overlayViewUrl?.lan, "token");
+    const oldControlToken = getQueryParam(firstLinks?.links?.overlayControlStateUrl?.lan, "token");
+    const firstControlInviteToken = getQueryParam(firstLinks?.links?.overlayControlUrl?.lan, "invite");
+    const firstControlSessionTokenInControlUrl = getQueryParam(firstLinks?.links?.overlayControlUrl?.lan, "token");
+    assert.ok(oldViewToken, "first overlay view token must exist");
+    assert.ok(oldControlToken, "first overlay control token must exist");
+    assert.ok(firstControlInviteToken, "overlay control URL must use invite token");
+    assert.equal(firstControlSessionTokenInControlUrl, "", "overlay control URL must not expose session token");
+
+    await new Promise((resolve) => setTimeout(resolve, 170));
+
+    const secondLinksResp = await fetch(`${base}/api/overlay-links`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomCode, token: controlPlayerToken }),
+    });
+    assert.equal(secondLinksResp.status, 200);
+    const secondLinks = await secondLinksResp.json();
+    assert.equal(secondLinks.ok, true);
+
+    const newViewToken = getQueryParam(secondLinks?.links?.overlayViewUrl?.lan, "token");
+    const newControlToken = getQueryParam(secondLinks?.links?.overlayControlStateUrl?.lan, "token");
+    const secondControlInviteToken = getQueryParam(secondLinks?.links?.overlayControlUrl?.lan, "invite");
+    const secondControlSessionTokenInControlUrl = getQueryParam(secondLinks?.links?.overlayControlUrl?.lan, "token");
+    assert.ok(newViewToken, "refreshed overlay view token must exist");
+    assert.ok(newControlToken, "refreshed overlay control token must exist");
+    assert.ok(secondControlInviteToken, "overlay control URL must keep invite token");
+    assert.equal(secondControlSessionTokenInControlUrl, "", "overlay control URL must not expose session token");
+    assert.notEqual(newViewToken, oldViewToken, "overlay view token should rotate after TTL");
+    assert.notEqual(newControlToken, oldControlToken, "overlay control token should rotate after TTL");
+
+    overlayWs = await openSocket(wsUrl);
+    sendJson(overlayWs, {
+      type: "overlaySubscribe",
+      payload: {
+        roomCode,
+        token: oldViewToken,
+      },
+    });
+    const oldTokenState = await nextMessage(overlayWs, (msg) => msg?.type === "overlayState");
+    assert.equal(oldTokenState.payload?.ok, false, "expired token should be rejected");
+    assert.equal(oldTokenState.payload?.unauthorized, true, "expired token should be unauthorized");
+
+    sendJson(overlayWs, {
+      type: "overlaySubscribe",
+      payload: {
+        roomCode,
+        token: newViewToken,
+      },
+    });
+    const newTokenState = await nextMessage(
+      overlayWs,
+      (msg) => msg?.type === "overlayState" && msg?.payload?.ok === true
+    );
+    assert.equal(newTokenState.payload?.ok, true, "refreshed token should be accepted");
+  } finally {
+    const closeSocket = (ws) =>
+      new Promise((resolve) => {
+        if (!ws || ws.readyState === WebSocketCtor.CLOSED) {
+          disposeSocketMessageState(ws);
+          resolve();
+          return;
+        }
+        addListener(
+          ws,
+          "close",
+          () => {
+            disposeSocketMessageState(ws);
+            resolve();
+          },
+          true
+        );
+        try {
+          ws.close();
+        } catch {
+          disposeSocketMessageState(ws);
+          resolve();
+        }
+      });
+
+    await Promise.all([closeSocket(overlayWs), closeSocket(hostWs)]);
+
+    if (server.exitCode === null) {
+      server.kill("SIGTERM");
+      await new Promise((resolve) => {
+        server.once("exit", () => resolve());
+        setTimeout(resolve, 2_000);
+      });
+    }
+  }
+});
+
+test("security: overlay control invite exchange issues session token and invalidates invite", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Security integration test is run in CI (linux); windows process tree teardown is flaky.");
+    return;
+  }
+
+  if (typeof fetch !== "function") {
+    t.skip("Global fetch is not available in this Node runtime.");
+    return;
+  }
+
+  const server = spawn("pnpm", ["-C", "server", "exec", "tsx", "src/index.ts"], {
+    env: {
+      ...process.env,
+      PORT: "0",
+      HOST: "127.0.0.1",
+      BUNKER_ENABLE_DEV_SCENARIOS: "0",
+      BUNKER_IDENTITY_MODE: "token",
+      BUNKER_DEV_LOGS: "0",
+      BUNKER_SERVE_CLIENT: "false",
+      BUNKER_OVERLAY_CONTROL_INVITE_TTL_MS: "120000",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  let hostWs;
+
+  try {
+    const port = await waitForPort(server);
+    const base = `http://127.0.0.1:${port}`;
+    const wsUrl = `ws://127.0.0.1:${port}`;
+
+    hostWs = await openSocket(wsUrl);
+    sendJson(hostWs, {
+      type: "hello",
+      payload: {
+        name: "Host",
+        create: true,
+        scenarioId: "classic",
+      },
+    });
+
+    const hostAck = await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
+    const hostRoomState = await nextMessage(hostWs, (msg) => msg?.type === "roomState");
+    const roomCode = String(hostRoomState.payload?.roomCode ?? "");
+    const controlPlayerToken = String(hostAck.payload?.playerToken ?? "");
+    assert.ok(roomCode, "roomCode must be set after create");
+    assert.ok(controlPlayerToken, "control player token must be set after create");
+
+    const inviteResp = await fetch(`${base}/overlay-control/invite/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomCode, token: controlPlayerToken }),
+    });
+    assert.equal(inviteResp.status, 200, "invite create should succeed for control role");
+    const inviteJson = await inviteResp.json();
+    assert.equal(inviteJson.ok, true);
+
+    const inviteUrl = String(inviteJson.inviteUrlLan ?? "");
+    const inviteToken = getQueryParam(inviteUrl, "invite");
+    assert.ok(inviteToken, "invite token must be present in invite URL");
+
+    const invitePageResp = await fetch(inviteUrl);
+    assert.equal(invitePageResp.status, 200, "invite URL should open overlay-control page");
+
+    const exchangeResp = await fetch(`${base}/overlay-control/invite/exchange`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomCode, inviteToken }),
+    });
+    assert.equal(exchangeResp.status, 200, "invite exchange should succeed with fresh invite token");
+    const exchangeJson = await exchangeResp.json();
+    assert.equal(exchangeJson.ok, true);
+    const controlSessionToken = String(exchangeJson.controlSessionToken ?? "");
+    assert.ok(controlSessionToken, "invite exchange should issue control session token");
+
+    const reusedInviteResp = await fetch(`${base}/overlay-control/invite/exchange`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomCode, inviteToken }),
+    });
+    assert.equal(reusedInviteResp.status, 403, "invite token should be one-time after successful exchange");
+
+    const controlStateResp = await fetch(
+      `${base}/overlay-control/state?room=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(controlSessionToken)}`
+    );
+    assert.equal(controlStateResp.status, 200, "issued control session token should authorize control state");
+    const controlStateJson = await controlStateResp.json();
+    assert.equal(controlStateJson.ok, true);
+  } finally {
+    const closeSocket = (ws) =>
+      new Promise((resolve) => {
+        if (!ws || ws.readyState === WebSocketCtor.CLOSED) {
+          disposeSocketMessageState(ws);
+          resolve();
+          return;
+        }
+        addListener(
+          ws,
+          "close",
+          () => {
+            disposeSocketMessageState(ws);
+            resolve();
+          },
+          true
+        );
+        try {
+          ws.close();
+        } catch {
+          disposeSocketMessageState(ws);
+          resolve();
+        }
+      });
+
+    await Promise.all([closeSocket(hostWs)]);
+
+    if (server.exitCode === null) {
+      server.kill("SIGTERM");
+      await new Promise((resolve) => {
+        server.once("exit", () => resolve());
+        setTimeout(resolve, 2_000);
+      });
+    }
+  }
+});
+
+test("security: sensitive HTTP endpoints enforce rate-limit", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Security integration test is run in CI (linux); windows process tree teardown is flaky.");
+    return;
+  }
+
+  if (typeof fetch !== "function") {
+    t.skip("Global fetch is not available in this Node runtime.");
+    return;
+  }
+
+  const server = spawn("pnpm", ["-C", "server", "exec", "tsx", "src/index.ts"], {
+    env: {
+      ...process.env,
+      PORT: "0",
+      HOST: "127.0.0.1",
+      BUNKER_ENABLE_DEV_SCENARIOS: "0",
+      BUNKER_IDENTITY_MODE: "token",
+      BUNKER_DEV_LOGS: "0",
+      BUNKER_SERVE_CLIENT: "false",
+      BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS: "60000",
+      BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX: "2",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  let hostWs;
+
+  try {
+    const port = await waitForPort(server);
+    const base = `http://127.0.0.1:${port}`;
+    const wsUrl = `ws://127.0.0.1:${port}`;
+
+    hostWs = await openSocket(wsUrl);
+    sendJson(hostWs, {
+      type: "hello",
+      payload: {
+        name: "Host",
+        create: true,
+        scenarioId: "classic",
+      },
+    });
+
+    const hostAck = await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
+    const hostRoomState = await nextMessage(hostWs, (msg) => msg?.type === "roomState");
+    const roomCode = String(hostRoomState.payload?.roomCode ?? "");
+    const controlPlayerToken = String(hostAck.payload?.playerToken ?? "");
+    assert.ok(roomCode, "roomCode must be set after create");
+    assert.ok(controlPlayerToken, "control player token must be set after create");
+
+    const makeOverlayLinksRequest = async () =>
+      fetch(`${base}/api/overlay-links`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ roomCode, token: controlPlayerToken }),
+      });
+
+    const firstResp = await makeOverlayLinksRequest();
+    assert.equal(firstResp.status, 200, "first request should pass");
+
+    const secondResp = await makeOverlayLinksRequest();
+    assert.equal(secondResp.status, 200, "second request should pass");
+
+    const thirdResp = await makeOverlayLinksRequest();
+    assert.equal(thirdResp.status, 429, "third request should be rate-limited");
+    const thirdJson = await thirdResp.json();
+    assert.equal(thirdJson.ok, false);
+    assert.ok(String(thirdJson.message ?? "").trim().length > 0, "rate-limit response should include message");
+  } finally {
+    const closeSocket = (ws) =>
+      new Promise((resolve) => {
+        if (!ws || ws.readyState === WebSocketCtor.CLOSED) {
+          disposeSocketMessageState(ws);
+          resolve();
+          return;
+        }
+        addListener(
+          ws,
+          "close",
+          () => {
+            disposeSocketMessageState(ws);
+            resolve();
+          },
+          true
+        );
+        try {
+          ws.close();
+        } catch {
+          disposeSocketMessageState(ws);
+          resolve();
+        }
+      });
+
+    await Promise.all([closeSocket(hostWs)]);
 
     if (server.exitCode === null) {
       server.kill("SIGTERM");

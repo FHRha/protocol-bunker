@@ -55,6 +55,7 @@
   "error.overlayControlPageNotFound": "Overlay control page not found.",
   "error.overlayControlStateBuildFailed": "Failed to build overlay control state.",
   "error.overlayLinksRequireRoomAndToken": "roomCode and token are required.",
+  "error.tooManyRequests": "Too many requests. Try again later.",
   "error.overlayOverridesInvalidPayload": "Invalid overrides payload.",
   "error.overlayPageNotFound": "Overlay page not found.",
   "error.overlaySubscribeRoomNotFound": "Room not found.",

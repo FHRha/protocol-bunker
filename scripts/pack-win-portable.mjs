@@ -33,6 +33,7 @@ const noArchive = process.argv.includes("--no-archive");
 const baseOnlyMode = process.argv.includes("--base-only");
 const fromBaseMode = process.argv.includes("--from-base");
 const allVariantsMode = process.argv.includes("--all-variants");
+const PRUNE_RUNTIME_NOISE = process.env.BUNKER_PACK_PRUNE_RUNTIME_NOISE !== "0";
 const assetVariant = normalizeAssetVariant(getArgValue("--asset-variant"));
 const assetFlavorSuffix = assetVariant === "2x" ? "-hq2x" : "";
 const outRootArg = getArgValue("--out-root");
@@ -78,6 +79,7 @@ function createPortablePaths(targetArtifactsDir) {
     portableClientFaviconDir: path.join(targetClientDistDst, "favicon"),
     assetsDst: path.join(targetAppDir, "assets"),
     localesDst: path.join(targetAppDir, "locales"),
+    envPath: path.join(targetArtifactsDir, ".env"),
     bundledLocalesDst: path.join(
       targetServerAppDir,
       "node_modules",
@@ -516,6 +518,41 @@ function flattenNodeModules(rootDir) {
   }
 }
 
+function pruneRuntimeNoise(rootDir) {
+  if (!PRUNE_RUNTIME_NOISE) return;
+  const nodeModulesDir = path.join(rootDir, "node_modules");
+  if (!fs.existsSync(nodeModulesDir)) return;
+
+  const removableFileRe = /(?:\.d\.ts|\.d\.cts|\.d\.mts|\.ts|\.tsx|\.map)$/i;
+  const envFileRe = /^\.env(?:\..+)?$/i;
+  const keepFileRe = /(?:^|[/\\])esbuild[/\\].+\.js\.map$/i;
+  let removed = 0;
+  const stack = [nodeModulesDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (envFileRe.test(entry.name)) {
+        fs.rmSync(fullPath, { force: true });
+        removed += 1;
+        continue;
+      }
+      if (!removableFileRe.test(entry.name)) continue;
+      if (keepFileRe.test(fullPath)) continue;
+      fs.rmSync(fullPath, { force: true });
+      removed += 1;
+    }
+  }
+
+  console.log(`[pack:win] Pruned runtime-noise files from node_modules: ${removed}`);
+}
+
 function stopRunningPortableServer(nodeExePath) {
   if (!nodeExePath) return;
   const escapedExe = nodeExePath.replace(/'/g, "''");
@@ -704,6 +741,7 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $portableRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appRoot = Join-Path $portableRoot "app"
 $logsDir = Join-Path $portableRoot "logs"
+$envFile = Join-Path $portableRoot ".env"
 $portableEnvFile = Join-Path $portableRoot "portable.env"
 
 $nodeExe = Join-Path $appRoot "node\\node.exe"
@@ -746,7 +784,7 @@ function Read-PortableEnv {
   try {
     $lines = Get-Content -LiteralPath $PathValue -ErrorAction Stop
   } catch {
-    Write-Host "portable.env unreadable. Using defaults: PORT=0 DEV_MODE=0."
+    Write-Host ("Config file unreadable: {0}. Using defaults: PORT=0 DEV_MODE=0." -f $PathValue)
     return $result
   }
   foreach ($rawLine in $lines) {
@@ -762,6 +800,14 @@ function Read-PortableEnv {
     }
   }
   return $result
+}
+
+function Read-PortableConfig {
+  $portableConfig = Read-PortableEnv -PathValue $portableEnvFile
+  if ($portableConfig.Count -gt 0) {
+    return $portableConfig
+  }
+  return Read-PortableEnv -PathValue $envFile
 }
 
 function Get-ConfigPort {
@@ -1098,7 +1144,7 @@ foreach ($f in @($serverLogFile, $portFile, $urlsFile)) {
 Set-Content -LiteralPath $lastStartFile -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz") -Encoding UTF8
 New-Item -ItemType File -Path $serverLogFile -Force | Out-Null
 
-$portableConfig = Read-PortableEnv -PathValue $portableEnvFile
+  $portableConfig = Read-PortableConfig
 $script:selectedPort = Get-ConfigPort -Config $portableConfig
 $devMode = Get-ConfigDevMode -Config $portableConfig
 $script:mode = Resolve-Mode -Config $portableConfig
@@ -1205,6 +1251,10 @@ Port configuration:
 - DOMAIN=your.domain.com (used in domain mode)
 - Domain mode requires fixed PORT (PORT must be 1..65535)
 - DEV_MODE=1 enables dev_tab behavior (for testing), default DEV_MODE=0
+- BUNKER_ENFORCE_ORIGIN_CHECKS=1 enables strict origin validation
+- BUNKER_ALLOWED_ORIGINS=https://admin.example.com,https://overlay.example.com (extra allowed browser origins; same-origin is always allowed)
+- BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1 keeps sensitive HTTP routes rate-limited
+- BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX=120 and BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS=60000 tune the rate limit
 
 Disable auto browser open:
 - set BUNKER_PORTABLE_NO_BROWSER=1
@@ -1222,6 +1272,11 @@ DEV_MODE=0
 # MODE=local
 # MODE=domain
 # DOMAIN=bunker.example.com
+# BUNKER_ENFORCE_ORIGIN_CHECKS=1
+# BUNKER_ALLOWED_ORIGINS=https://admin.example.com,https://overlay.example.com
+# BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1
+# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX=120
+# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS=60000
 # PORT=56986
 # DEV_MODE=1
 `;
@@ -1245,7 +1300,7 @@ function preparePortableBase(paths) {
   console.log("[pack:win] Deploying server runtime...");
   runStepWithRetry(pnpmCmd, ["--filter", "@bunker/server", "deploy", "--prod", paths.serverAppDir]);
 
-  const serverPrune = ["src", "tsconfig.json", "tsconfig.build.json", ".env"];
+  const serverPrune = ["src", "tsconfig.json", "tsconfig.build.json", ".env", ".env.example"];
   for (const relPath of serverPrune) {
     cleanPath(path.join(paths.serverAppDir, relPath));
   }
@@ -1271,6 +1326,7 @@ function preparePortableBase(paths) {
   console.log("[pack:win] Copying scenario runtime data...");
   ensureExists(scenariosRuntimeSrc, "scenarios runtime source");
   copyDir(scenariosRuntimeSrc, paths.scenariosRuntimeDst);
+  pruneRuntimeNoise(paths.serverAppDir);
   writePortableRuntimeStamp(paths);
 }
 

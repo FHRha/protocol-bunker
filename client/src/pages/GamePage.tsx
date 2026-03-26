@@ -25,7 +25,7 @@ interface GamePageProps {
   onSetBunkerOutcome: (outcome: "survived" | "failed") => void;
   onDevAddPlayer: (name?: string) => void;
   onDevRemovePlayer: (targetPlayerId?: string) => void;
-  onExitGame: () => void;
+  onExitGame: (options?: { skipConfirm?: boolean }) => void;
   mobileDossierError?: string | null;
   onMarkDossierSpecialAction?: () => void;
   onClearMobileDossierError?: () => void;
@@ -2985,7 +2985,7 @@ export default function GamePage({
             <div className="postgame-text">
               {postGame.outcome === "survived" ? gameText.t("postGameSuccessText") : gameText.t("postGameFailedText")}
             </div>
-            <button className="primary postgame-exit" onClick={onExitGame}>
+            <button className="primary postgame-exit" onClick={() => onExitGame({ skipConfirm: true })}>
               {gameText.t("exitButton")}
             </button>
           </div>

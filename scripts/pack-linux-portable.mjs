@@ -59,6 +59,7 @@ const fromBaseMode = process.argv.includes("--from-base");
 const parallelArchive =
   process.argv.includes("--parallel-archive") ||
   process.env.BUNKER_PACK_PARALLEL_ARCHIVE === "1";
+const PRUNE_RUNTIME_NOISE = process.env.BUNKER_PACK_PRUNE_RUNTIME_NOISE !== "0";
 const targetArchInput = readArchArg(process.argv.slice(2));
 const assetVariant = normalizeAssetVariant(readOptionValue(process.argv.slice(2), "--asset-variant"));
 const targetProfile = (() => {
@@ -148,6 +149,7 @@ function createPortablePaths(targetArtifactsDir) {
     portableClientFaviconDir: path.join(targetClientDistDst, "favicon"),
     assetsDst: path.join(targetAppDir, "assets"),
     localesDst: path.join(targetAppDir, "locales"),
+    envPath: path.join(targetArtifactsDir, ".env"),
     bundledLocalesDst: path.join(
       targetServerAppDir,
       "node_modules",
@@ -477,6 +479,41 @@ function flattenNodeModules(rootPath) {
   }
 }
 
+function pruneRuntimeNoise(rootPath) {
+  if (!PRUNE_RUNTIME_NOISE) return;
+  const nodeModulesDir = path.join(rootPath, "node_modules");
+  if (!fs.existsSync(nodeModulesDir)) return;
+
+  const removableFileRe = /(?:\.d\.ts|\.d\.cts|\.d\.mts|\.ts|\.tsx|\.map)$/i;
+  const envFileRe = /^\.env(?:\..+)?$/i;
+  const keepFileRe = /(?:^|[/\\])esbuild[/\\].+\.js\.map$/i;
+  let removed = 0;
+  const stack = [nodeModulesDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (envFileRe.test(entry.name)) {
+        fs.rmSync(fullPath, { force: true });
+        removed += 1;
+        continue;
+      }
+      if (!removableFileRe.test(entry.name)) continue;
+      if (keepFileRe.test(fullPath)) continue;
+      fs.rmSync(fullPath, { force: true });
+      removed += 1;
+    }
+  }
+
+  console.log(`[pack:linux] Pruned runtime-noise files from node_modules: ${removed}`);
+}
+
 async function downloadFile(url, destinationPath) {
   console.log(`[pack:linux] Downloading: ${url}`);
   const response = await fetch(url);
@@ -723,6 +760,7 @@ function buildStartSh(profile) {
     'APP_ROOT="$PORTABLE_ROOT/app"',
     'LOGS_DIR="$PORTABLE_ROOT/logs"',
     'ENV_FILE="$PORTABLE_ROOT/portable.env"',
+    'LEGACY_ENV_FILE="$PORTABLE_ROOT/.env"',
     "",
     'NODE_BIN="$APP_ROOT/node/node"',
     'SERVER_ROOT="$APP_ROOT/server"',
@@ -793,28 +831,31 @@ function buildStartSh(profile) {
     "}",
     "",
     "parse_portable_env() {",
-    '  [[ -f "$ENV_FILE" ]] || return 0',
-    '  while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do',
-    "    local line",
-    '    line="$(trim "$raw_line")"',
-    '    [[ -z "$line" ]] && continue',
-    '    [[ "$line" == \\#* ]] && continue',
-    '    [[ "$line" == \\;* ]] && continue',
-    '    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then',
-    "      local key value",
-    '      key="$(printf "%s" "${BASH_REMATCH[1]}" | tr "[:lower:]" "[:upper:]")"',
-    '      value="$(trim "${BASH_REMATCH[2]}")"',
-    '      case "$key" in',
-    '        PORT) CONFIG_PORT="$value" ;;',
-    '        DEV_MODE) CONFIG_DEV_MODE="$value" ;;',
-    '        MODE) CONFIG_MODE="$value" ;;',
-    '        DOMAIN) CONFIG_DOMAIN="$value" ;;',
-    '        PUBLIC_HOST) CONFIG_PUBLIC_HOST="$value" ;;',
-    '        PUBLIC_ORIGIN) CONFIG_PUBLIC_ORIGIN="$value" ;;',
-    '        LOG_RETENTION_DAYS) CONFIG_LOG_RETENTION_DAYS="$value" ;;',
-    "      esac",
-    "    fi",
-    '  done < "$ENV_FILE"',
+    '  local env_file',
+    '  for env_file in "$ENV_FILE" "$LEGACY_ENV_FILE"; do',
+    '    [[ -f "$env_file" ]] || continue',
+    '    while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do',
+    "      local line",
+    '      line="$(trim "$raw_line")"',
+    '      [[ -z "$line" ]] && continue',
+    '      [[ "$line" == \#* ]] && continue',
+    '      [[ "$line" == \;* ]] && continue',
+    '      if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then',
+    "        local key value",
+    '        key="$(printf "%s" "${BASH_REMATCH[1]}" | tr "[:lower:]" "[:upper:]")"',
+    '        value="$(trim "${BASH_REMATCH[2]}")"',
+    '        case "$key" in',
+    '          PORT) CONFIG_PORT="$value" ;;',
+    '          DEV_MODE) CONFIG_DEV_MODE="$value" ;;',
+    '          MODE) CONFIG_MODE="$value" ;;',
+    '          DOMAIN) CONFIG_DOMAIN="$value" ;;',
+    '          PUBLIC_HOST) CONFIG_PUBLIC_HOST="$value" ;;',
+    '          PUBLIC_ORIGIN) CONFIG_PUBLIC_ORIGIN="$value" ;;',
+    '          LOG_RETENTION_DAYS) CONFIG_LOG_RETENTION_DAYS="$value" ;;',
+    "        esac",
+    "      fi",
+    '    done < "$env_file"',
+    "  done",
     "}",
     "",
     "normalize_port() {",
@@ -1180,6 +1221,11 @@ DEV_MODE=0
 # DOMAIN=bunker.example.com
 # PUBLIC_HOST=203.0.113.10
 # PUBLIC_ORIGIN=http://203.0.113.10:8080
+# BUNKER_ENFORCE_ORIGIN_CHECKS=1
+# BUNKER_ALLOWED_ORIGINS=https://admin.example.com,https://overlay.example.com
+# BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1
+# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX=120
+# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS=60000
 # LOG_RETENTION_DAYS=14
 # PORT=56986
 # DEV_MODE=1
@@ -1198,10 +1244,13 @@ Start:
 3. Wait for startup lines in terminal
 
 Modes:
-- MODE=local|domain in portable.env (if not set, launcher asks)
+- MODE=local|domain in portable.env
 - DOMAIN=your.domain.com for domain mode
 - Domain mode requires fixed PORT (PORT must be 1..65535)
 - For local mode, set PUBLIC_HOST or PUBLIC_ORIGIN in portable.env to skip WAN lookup
+- BUNKER_ENFORCE_ORIGIN_CHECKS=1 enables strict origin validation
+- BUNKER_ALLOWED_ORIGINS=... adds extra allowed browser origins; same-origin is always allowed
+- BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1 keeps sensitive HTTP routes rate-limited
 - If PUBLIC_HOST/PUBLIC_ORIGIN are not set, WAN is detected via ipify/ifconfig
 
 Port:
@@ -1259,7 +1308,7 @@ async function preparePortableBase(paths) {
   console.log("[pack:linux] Deploying server runtime...");
   runStep(pnpmCmd, ["--filter", "@bunker/server", "deploy", "--prod", paths.serverAppDir]);
 
-  const serverPrune = ["src", "tsconfig.json", "tsconfig.build.json", ".env"];
+  const serverPrune = ["src", "tsconfig.json", "tsconfig.build.json", ".env", ".env.example"];
   for (const relPath of serverPrune) {
     cleanPath(path.join(paths.serverAppDir, relPath));
   }
@@ -1283,6 +1332,7 @@ async function preparePortableBase(paths) {
 
   console.log("[pack:linux] Copying Linux Node runtime...");
   await ensureLinuxNodeRuntime(paths);
+  pruneRuntimeNoise(paths.serverAppDir);
   writePortableRuntimeStamp(paths);
 }
 

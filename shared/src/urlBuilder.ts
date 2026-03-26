@@ -12,6 +12,9 @@ export const LINK_PATHS = {
   overlayControlState: "/overlay-control/state",
   overlayControlSave: "/overlay-control/save",
   overlayControlAction: "/overlay-control/action",
+  overlayControlInviteCreate: "/overlay-control/invite/create",
+  overlayControlInviteExchange: "/overlay-control/invite/exchange",
+  overlayControlInviteRevoke: "/overlay-control/invite/revoke",
   apiOverlayLinks: "/api/overlay-links",
 } as const;
 
@@ -33,6 +36,7 @@ export interface BuildLinkSetInput {
   roomCode: string;
   overlayViewToken: string;
   overlayControlToken: string;
+  overlayControlInviteToken: string;
   overlayQueryParams?: Record<string, string | number | boolean | null | undefined>;
 }
 
@@ -109,6 +113,7 @@ export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
   const encodedRoom = encodeURIComponent(input.roomCode);
   const encodedViewToken = encodeURIComponent(input.overlayViewToken);
   const encodedControlToken = encodeURIComponent(input.overlayControlToken);
+  const encodedControlInviteToken = encodeURIComponent(input.overlayControlInviteToken);
 
   const overlayQuerySuffix = toOverlayQuerySuffix(input.overlayQueryParams);
   const overlayDebugQuerySuffix = toOverlayQuerySuffix({
@@ -121,7 +126,7 @@ export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
     `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}${overlayQuerySuffix}`;
   const overlayDebugPath =
     `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}${overlayDebugQuerySuffix}`;
-  const overlayControlPath = `${LINK_PATHS.overlayControl}?room=${encodedRoom}&token=${encodedControlToken}`;
+  const overlayControlPath = `${LINK_PATHS.overlayControl}?room=${encodedRoom}&invite=${encodedControlInviteToken}`;
   const overlayControlStatePath = `${LINK_PATHS.overlayControlState}?room=${encodedRoom}&token=${encodedControlToken}`;
 
   const appUrl = withPublic(join(lanBase, appPath), publicBase, appPath);

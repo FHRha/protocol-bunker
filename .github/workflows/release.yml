@@ -171,10 +171,6 @@ jobs:
             base_dir: artifacts/win/.Protocol-Bunker-base
             release_name: release-windows-1x
             output_dir: artifacts/win/Protocol-Bunker
-          - variant: 2x
-            base_dir: artifacts/win/.Protocol-Bunker-base
-            release_name: release-windows-2x
-            output_dir: artifacts/win/Protocol-Bunker-hq2x
 
     steps:
       - name: Checkout
@@ -204,11 +200,7 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ needs.verify-version.outputs.version_tag }}"
-          $zipName = if ("${{ matrix.variant }}" -eq "2x") {
-            "protocol-bunker-win-x64-portable-hq2x-$v.zip"
-          } else {
-            "protocol-bunker-win-x64-portable-$v.zip"
-          }
+          $zipName = "protocol-bunker-win-x64-portable-$v.zip"
           $zip = Join-Path "artifacts/win" $zipName
           if (-not (Test-Path -LiteralPath $zip)) {
             throw "Missing expected artifact: $zip"
@@ -472,20 +464,6 @@ jobs:
             variant: 1x
             release_name: release-linux-x64-server-1x
             output_dir: artifacts/linux/Protocol-Bunker-server
-          - arch: x64
-            base_artifact: linux-base-x64
-            base_dir: artifacts/linux/.Protocol-Bunker-base
-            profile: public
-            variant: 2x
-            release_name: release-linux-x64-public-2x
-            output_dir: artifacts/linux/Protocol-Bunker-hq2x
-          - arch: x64
-            base_artifact: linux-base-x64
-            base_dir: artifacts/linux/.Protocol-Bunker-base
-            profile: server
-            variant: 2x
-            release_name: release-linux-x64-server-2x
-            output_dir: artifacts/linux/Protocol-Bunker-server-hq2x
           - arch: arm64
             base_artifact: linux-base-arm64
             base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
@@ -500,20 +478,6 @@ jobs:
             variant: 1x
             release_name: release-linux-arm64-server-1x
             output_dir: artifacts/linux/Protocol-Bunker-arm64-server
-          - arch: arm64
-            base_artifact: linux-base-arm64
-            base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
-            profile: public
-            variant: 2x
-            release_name: release-linux-arm64-public-2x
-            output_dir: artifacts/linux/Protocol-Bunker-arm64-hq2x
-          - arch: arm64
-            base_artifact: linux-base-arm64
-            base_dir: artifacts/linux/.Protocol-Bunker-arm64-base
-            profile: server
-            variant: 2x
-            release_name: release-linux-arm64-server-2x
-            output_dir: artifacts/linux/Protocol-Bunker-arm64-server-hq2x
 
     steps:
       - name: Checkout

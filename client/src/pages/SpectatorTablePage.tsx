@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import type { OverlayPlayerView, PublicCategorySlot, PublicPlayerView, WorldState30 } from "@bunker/shared";
+import { LINK_PATHS, type OverlayPlayerView, type PublicCategorySlot, type PublicPlayerView, type WorldState30 } from "@bunker/shared";
 import { Link } from "react-router-dom";
 import TableLayout from "../components/TableLayout";
 import Modal from "../components/Modal";
@@ -7,6 +7,7 @@ import { getCardBackUrl, getCardFaceUrl } from "../cards";
 import { shouldShowCardFront } from "../game/cardFacePolicy";
 import { useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import { useViewState } from "../hooks/useViewState";
+import { API_BASE } from "../config";
 
 type SpectatorCategoryKey =
   | "profession"
@@ -45,6 +46,30 @@ type ReadOnlyCard = {
   imgUrl?: string;
 };
 
+interface SpectatorInviteExchangePayload {
+  ok: true;
+  roomCode: string;
+  viewUrlLan: string;
+  viewUrlExternal: string | null;
+}
+
+interface SpectatorViewCandidates {
+  primary: string;
+  fallback?: string;
+}
+
+function encodeBase64UrlUtf8(value: string): string {
+  try {
+    const utf8 = encodeURIComponent(value).replace(
+      /%([0-9A-F]{2})/g,
+      (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))
+    );
+    return btoa(utf8).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  } catch {
+    return "";
+  }
+}
+
 function decodeBase64UrlUtf8(value: string): string | null {
   if (!value) return null;
   try {
@@ -65,6 +90,46 @@ function parseViewSrcFromHash(hash: string): string | null {
   const params = new URLSearchParams(clean);
   const encoded = params.get("v") ?? "";
   return decodeBase64UrlUtf8(encoded);
+}
+
+function parseSpectatorInviteFromSearch(search: string): { roomCode: string; inviteToken: string } | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const roomCode = String(params.get("room") ?? params.get("roomCode") ?? "")
+    .trim()
+    .toUpperCase();
+  const inviteToken = String(params.get("invite") ?? "").trim();
+  if (!roomCode || !inviteToken) return null;
+  return { roomCode, inviteToken };
+}
+
+function sameOrigin(urlValue: string, originValue: string): boolean {
+  try {
+    return new URL(urlValue).origin === new URL(originValue).origin;
+  } catch {
+    return false;
+  }
+}
+
+function resolveSpectatorViewCandidates(
+  payload: SpectatorInviteExchangePayload,
+  runtimeOrigin: string
+): SpectatorViewCandidates | null {
+  const lan = String(payload.viewUrlLan ?? "").trim();
+  const external = String(payload.viewUrlExternal ?? "").trim();
+
+  if (!lan && !external) return null;
+  if (lan && !external) return { primary: lan };
+  if (!lan && external) return { primary: external };
+
+  if (sameOrigin(lan, runtimeOrigin)) {
+    return { primary: lan, fallback: external };
+  }
+  if (sameOrigin(external, runtimeOrigin)) {
+    return { primary: external, fallback: lan };
+  }
+
+  // In ambiguous cases prefer LAN first to avoid external-only reconnect loops.
+  return { primary: lan, fallback: external };
 }
 
 function normalizeCategoryKey(value: string): SpectatorCategoryKey | null {
@@ -332,6 +397,9 @@ export default function SpectatorTablePage() {
   const [viewSrc, setViewSrc] = useState<string | null>(() =>
     typeof window === "undefined" ? null : parseViewSrcFromHash(window.location.hash)
   );
+  const [inviteResolveError, setInviteResolveError] = useState<string | null>(null);
+  const [inviteFallbackViewSrc, setInviteFallbackViewSrc] = useState<string | null>(null);
+  const [inviteFallbackAttempted, setInviteFallbackAttempted] = useState(false);
   const { state, status, error } = useViewState(viewSrc);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [worldModalOpen, setWorldModalOpen] = useState(false);
@@ -344,10 +412,87 @@ export default function SpectatorTablePage() {
   const cardLocale = state?.locale ?? "ru";
 
   useEffect(() => {
-    const onHashChange = () => setViewSrc(parseViewSrcFromHash(window.location.hash));
+    const onHashChange = () => {
+      setViewSrc(parseViewSrcFromHash(window.location.hash));
+      setInviteResolveError(null);
+      setInviteFallbackViewSrc(null);
+      setInviteFallbackAttempted(false);
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (viewSrc) return;
+
+    const invite = parseSpectatorInviteFromSearch(window.location.search);
+    if (!invite) return;
+
+    let disposed = false;
+    const resolveInvite = async () => {
+      try {
+        const response = await fetch(`${API_BASE}${LINK_PATHS.spectatorInviteExchange}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ roomCode: invite.roomCode, inviteToken: invite.inviteToken }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+          const message =
+            payload && typeof payload.message === "string"
+              ? payload.message
+              : spectatorText.t("spectatorInvalidUrl");
+          throw new Error(message);
+        }
+
+        const raw = payload as SpectatorInviteExchangePayload;
+        const candidates = resolveSpectatorViewCandidates(raw, window.location.origin);
+        if (!candidates?.primary) {
+          throw new Error(spectatorText.t("spectatorInvalidUrl"));
+        }
+
+        const encoded = encodeBase64UrlUtf8(candidates.primary);
+        if (encoded) {
+          window.history.replaceState(null, "", `${window.location.pathname}#v=${encoded}`);
+        }
+
+        if (disposed) return;
+        setInviteResolveError(null);
+        setInviteFallbackViewSrc(candidates.fallback ?? null);
+        setInviteFallbackAttempted(false);
+        setViewSrc(candidates.primary);
+      } catch (error) {
+        if (disposed) return;
+        setInviteResolveError(error instanceof Error ? error.message : spectatorText.t("spectatorInvalidUrl"));
+      }
+    };
+
+    void resolveInvite();
+    return () => {
+      disposed = true;
+    };
+  }, [viewSrc, spectatorText.locale]);
+
+  useEffect(() => {
+    if (!inviteFallbackViewSrc || inviteFallbackAttempted) return;
+    if (status === "connected") {
+      setInviteFallbackViewSrc(null);
+      return;
+    }
+    if (status !== "reconnecting" && status !== "error") return;
+
+    const timer = window.setTimeout(() => {
+      setInviteFallbackAttempted(true);
+      const encoded = encodeBase64UrlUtf8(inviteFallbackViewSrc);
+      if (encoded) {
+        window.history.replaceState(null, "", `${window.location.pathname}#v=${encoded}`);
+      }
+      setViewSrc(inviteFallbackViewSrc);
+    }, 2000);
+
+    return () => window.clearTimeout(timer);
+  }, [inviteFallbackViewSrc, inviteFallbackAttempted, status]);
 
   const spectatorLocale = useMemo(() => ({
     playerFallback: (index: number) => spectatorText.t("playerFallback", { index }),
@@ -434,15 +579,18 @@ export default function SpectatorTablePage() {
           : spectatorLocale.statusOffline;
 
   if (!viewSrc) {
+    const deniedMessage = inviteResolveError || spectatorLocale.spectatorInvalidUrl;
     return (
       <div className="spectateTablePage">
-        <section className="panel game-loading">
-          <h3>{spectatorLocale.spectatorLinkTitle}</h3>
-          <div className="muted">{spectatorLocale.spectatorInvalidUrl}</div>
-          <div className="spectatorMissingActions">
-            <Link to="/" className="ghost button-small">
-              {spectatorLocale.exitButton}
-            </Link>
+        <section className="panel game-loading forbiddenStatePanel">
+          <div className="forbiddenStateCard">
+            <div className="forbiddenStateEyebrow">{spectatorLocale.spectatorLinkTitle}</div>
+            <h3 className="forbiddenStateTitle">{deniedMessage}</h3>
+            <div className="forbiddenStateActions">
+              <Link to="/" className="forbiddenStateButton">
+                {spectatorLocale.exitButton}
+              </Link>
+            </div>
           </div>
         </section>
       </div>

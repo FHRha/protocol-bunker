@@ -54,6 +54,14 @@ type PlayerReconnectToken = string;
 type OverlayViewToken = string;
 type OverlayControlToken = string;
 type OverlayControlInviteToken = string;
+type SpectatorToken = string;
+
+interface SpectatorInvite {
+  maxUses: number;
+  remainingUses: number;
+  issuedAt: number;
+  expiresAt: number;
+}
 
 interface Player {
   playerId: string;
@@ -104,11 +112,13 @@ interface Room {
   lastRoomState?: RoomState;
   lastGameViews?: Map<string, ReturnType<ScenarioSession["getGameView"]>>;
   overlayToken: OverlayViewToken;
+  spectatorToken: SpectatorToken;
   overlayEditToken: OverlayControlToken;
   overlayTokenIssuedAt: number;
   overlayEditTokenIssuedAt: number;
   overlayControlInviteToken: OverlayControlInviteToken;
   overlayControlInviteIssuedAt: number;
+  spectatorInvites: Map<string, SpectatorInvite>;
   overlayOverrides?: OverlayOverrides;
 }
 
@@ -209,6 +219,11 @@ const OVERLAY_CONTROL_INVITE_TTL_MS = (() => {
   const raw = Number(process.env.BUNKER_OVERLAY_CONTROL_INVITE_TTL_MS ?? 10 * 60 * 1000);
   if (!Number.isFinite(raw)) return 10 * 60 * 1000;
   return Math.max(0, Math.floor(raw));
+})();
+const SPECTATOR_INVITE_TTL_MS = (() => {
+  const raw = Number(process.env.BUNKER_SPECTATOR_INVITE_TTL_MS ?? 10 * 60 * 1000);
+  if (!Number.isFinite(raw)) return 10 * 60 * 1000;
+  return Math.max(1_000, Math.floor(raw));
 })();
 const OVERLAY_MAX_LINE_LEN = 120;
 const OVERLAY_MAX_CATA_LEN = 600;
@@ -467,6 +482,135 @@ function buildRequestOrigin(protocol: string | undefined, hostHeader: string | u
   const scheme = String(protocol ?? "http").trim().toLowerCase();
   const normalizedScheme = scheme === "https" ? "https" : "http";
   return normalizeOrigin(`${normalizedScheme}://${host}`);
+}
+
+function escapeHtml(value: string): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function hasCyrillic(value: string): boolean {
+  return /[\u0400-\u04FF]/.test(String(value ?? ""));
+}
+
+function renderAccessDeniedHtml(options: { title: string; message: string; homeHref: string; buttonLabel: string }): string {
+  const title = escapeHtml(options.title);
+  const message = escapeHtml(options.message);
+  const shouldShowMessage = message.length > 0 && message !== title;
+  const homeHref = escapeHtml(options.homeHref || "/");
+  const buttonLabel = escapeHtml(options.buttonLabel);
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1210;
+        --panel: #161b19;
+        --border: #2b332e;
+        --text: #f4f1ea;
+        --muted: #b8b2a6;
+        --accent: #8fd3b6;
+        --accent-strong: #6cb79b;
+        --on-accent: #0c1110;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+        background:
+          radial-gradient(120% 90% at 20% 0%, rgba(143, 211, 182, 0.14), transparent 58%),
+          linear-gradient(180deg, #111612, var(--bg));
+        color: var(--text);
+        padding: 20px;
+      }
+      .card {
+        width: min(560px, 100%);
+        border: 1px solid color-mix(in oklab, var(--border) 84%, var(--accent) 16%);
+        border-radius: 18px;
+        background:
+          radial-gradient(140% 90% at 50% 0%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 62%),
+          linear-gradient(180deg, color-mix(in oklab, var(--panel) 88%, #0e1412 12%), var(--panel));
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        padding: clamp(20px, 4vw, 32px);
+        text-align: center;
+      }
+      .title {
+        margin: 0 0 10px;
+        font-size: clamp(24px, 3.3vw, 32px);
+        line-height: 1.12;
+      }
+      .message {
+        margin: 0;
+        color: var(--muted);
+      }
+      .actions {
+        margin-top: 18px;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 10px 16px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in oklab, var(--accent-strong) 54%, var(--border) 46%);
+        text-decoration: none;
+        color: var(--on-accent);
+        background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+        font-weight: 600;
+      }
+      .button:hover {
+        border-color: color-mix(in oklab, var(--accent) 72%, var(--border) 28%);
+        filter: brightness(1.05);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main" aria-live="polite">
+      <h1 class="title">${title}</h1>
+      ${shouldShowMessage ? `<p class="message">${message}</p>` : ""}
+      <div class="actions">
+        <a class="button" href="${homeHref}">${buttonLabel}</a>
+      </div>
+    </main>
+  </body>
+</html>`;
+}
+
+function sendAccessDeniedPage(
+  res: Response,
+  options: { roomCode?: string; title: string; message: string; status?: number }
+): void {
+  const roomCode = String(options.roomCode ?? "")
+    .trim()
+    .toUpperCase();
+  const homeHref = roomCode ? `/?room=${encodeURIComponent(roomCode)}` : "/";
+  const buttonLabel = hasCyrillic(options.title) || hasCyrillic(options.message)
+    ? "В главное меню игры"
+    : "Back to main menu";
+  res
+    .status(options.status ?? 403)
+    .type("text/html; charset=utf-8")
+    .send(
+      renderAccessDeniedHtml({
+        title: options.title,
+        message: options.message,
+        homeHref,
+        buttonLabel,
+      })
+    );
 }
 
 function getUpgradeRequestProtocol(req: IncomingMessage): "http" | "https" {
@@ -729,12 +873,10 @@ function buildLinkOrigins(requestOrigin?: string): {
   lanIp: string;
 } {
   const allowLocalhost = IDENTITY_MODE === "dev_tab";
-  let lanIp = selectLanIp();
+  const requestHost = hostFromOrigin(normalizeOrigin(requestOrigin) ?? undefined);
+  let lanIp = requestHost || selectLanIp();
   if (!allowLocalhost && isLocalHostValue(lanIp)) {
-    const requestHost = hostFromOrigin(normalizeOrigin(requestOrigin) ?? undefined);
-    if (requestHost) {
-      lanIp = requestHost;
-    } else if (HOST && HOST !== "0.0.0.0") {
+    if (HOST && HOST !== "0.0.0.0") {
       lanIp = HOST;
     } else {
       // 0.0.0.0 is a bind address and is not fetchable as a client URL.
@@ -751,7 +893,8 @@ function printOverlayInfo(
   token: string,
   controlToken?: string,
   controlInviteToken?: string,
-  overlayQueryParams?: Record<string, string>
+  overlayQueryParams?: Record<string, string>,
+  spectatorToken?: string
 ) {
   const { lanOrigin } = buildLinkOrigins();
   const inviteTokenForLinks = controlInviteToken ?? "<CONTROL_INVITE_TOKEN>";
@@ -760,6 +903,7 @@ function printOverlayInfo(
     publicBase: undefined,
     roomCode,
     overlayViewToken: token,
+    spectatorViewToken: spectatorToken ?? token,
     overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
     overlayControlInviteToken: inviteTokenForLinks,
     overlayQueryParams,
@@ -794,6 +938,7 @@ function printOverlayInfo(
         publicBase: resolution.base,
         roomCode,
         overlayViewToken: token,
+        spectatorViewToken: spectatorToken ?? token,
         overlayControlToken: controlToken ?? "<CONTROL_OR_EDIT_TOKEN>",
         overlayControlInviteToken: inviteTokenForLinks,
         overlayQueryParams,
@@ -2372,6 +2517,14 @@ function generateOverlayControlInviteToken(): OverlayControlInviteToken {
   return crypto.randomBytes(24).toString("hex");
 }
 
+function generateSpectatorToken(): SpectatorToken {
+  return crypto.randomBytes(20).toString("hex");
+}
+
+function generateSpectatorInviteToken(): string {
+  return crypto.randomBytes(24).toString("hex");
+}
+
 function isOverlayTokenExpired(issuedAtMs: number, now = Date.now()): boolean {
   if (OVERLAY_TOKEN_TTL_MS <= 0) return false;
   if (!Number.isFinite(issuedAtMs) || issuedAtMs <= 0) return false;
@@ -2416,6 +2569,59 @@ function isOverlayControlInviteExpired(issuedAtMs: number, now = Date.now()): bo
   return now - issuedAtMs >= OVERLAY_CONTROL_INVITE_TTL_MS;
 }
 
+function normalizeSpectatorInviteMaxUses(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(100, Math.floor(parsed)));
+}
+
+function pruneExpiredSpectatorInvites(room: Room, now = Date.now()): void {
+  if (room.spectatorInvites.size === 0) return;
+  for (const [token, invite] of room.spectatorInvites.entries()) {
+    if (invite.remainingUses <= 0 || now >= invite.expiresAt) {
+      room.spectatorInvites.delete(token);
+    }
+  }
+}
+
+function issueSpectatorInvite(room: Room, maxUses: number): { token: string; expiresAt: number; maxUses: number } {
+  const normalizedMaxUses = normalizeSpectatorInviteMaxUses(maxUses);
+  const now = Date.now();
+  pruneExpiredSpectatorInvites(room, now);
+  const token = generateSpectatorInviteToken();
+  room.spectatorInvites.set(token, {
+    maxUses: normalizedMaxUses,
+    remainingUses: normalizedMaxUses,
+    issuedAt: now,
+    expiresAt: now + SPECTATOR_INVITE_TTL_MS,
+  });
+  return {
+    token,
+    expiresAt: now + SPECTATOR_INVITE_TTL_MS,
+    maxUses: normalizedMaxUses,
+  };
+}
+
+function consumeSpectatorInvite(room: Room, inviteToken: string): boolean {
+  const token = String(inviteToken ?? "").trim();
+  if (!token) return false;
+  const now = Date.now();
+  pruneExpiredSpectatorInvites(room, now);
+  const invite = room.spectatorInvites.get(token);
+  if (!invite) return false;
+  if (invite.remainingUses <= 0 || now >= invite.expiresAt) {
+    room.spectatorInvites.delete(token);
+    return false;
+  }
+  invite.remainingUses -= 1;
+  if (invite.remainingUses <= 0) {
+    room.spectatorInvites.delete(token);
+  } else {
+    room.spectatorInvites.set(token, invite);
+  }
+  return true;
+}
+
 function rotateOverlayControlInvite(
   room: Room,
   reason: "initial" | "host_create" | "host_revoke" | "exchange" | "ttl_expired"
@@ -2455,6 +2661,9 @@ function getRoleForPlayer(room: Room, playerId: string | undefined): Role {
 
 function getRoleForToken(room: Room, token: string): Role | null {
   if (!token) return null;
+  if (token === room.spectatorToken) {
+    return "VIEW";
+  }
   if (token === room.overlayToken) {
     return isOverlayTokenExpired(room.overlayTokenIssuedAt) ? null : "VIEW";
   }
@@ -3674,6 +3883,8 @@ async function main() {
     LINK_PATHS.overlayControlInviteCreate,
     LINK_PATHS.overlayControlInviteExchange,
     LINK_PATHS.overlayControlInviteRevoke,
+    LINK_PATHS.spectatorInviteCreate,
+    LINK_PATHS.spectatorInviteExchange,
     LINK_PATHS.apiOverlayLinks,
   ];
 
@@ -3719,7 +3930,13 @@ async function main() {
     const inviteToken = String(req.query.invite ?? req.query.inviteToken ?? "").trim();
     const room = rooms.get(roomCode);
     if (!room) {
-      res.status(403).type("text/plain").send(tServerForRoom(room, "error.forbidden"));
+      const message = tServerForRoom(room, "error.forbidden");
+      sendAccessDeniedPage(res, {
+        roomCode,
+        title: message,
+        message,
+        status: 403,
+      });
       return;
     }
 
@@ -3729,7 +3946,13 @@ async function main() {
     const tokenAllowed = token ? isOverlayEditAuthorized(room, token) : false;
     const inviteAllowed = inviteToken ? isOverlayControlInviteAuthorized(room, inviteToken) : false;
     if (!tokenAllowed && !inviteAllowed) {
-      res.status(403).type("text/plain").send(tServerForRoom(room, "error.forbidden"));
+      const message = tServerForRoom(room, "error.forbidden");
+      sendAccessDeniedPage(res, {
+        roomCode: room.code,
+        title: message,
+        message,
+        status: 403,
+      });
       return;
     }
     const controlHtml = path.join(OVERLAY_PUBLIC_ROOT, "overlay-control.html");
@@ -3911,6 +4134,7 @@ async function main() {
       publicBase: publicResolution.base,
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
+      spectatorViewToken: room.spectatorToken,
       overlayControlToken: controlSessionToken,
       overlayControlInviteToken: room.overlayControlInviteToken,
       overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
@@ -3922,6 +4146,72 @@ async function main() {
       controlSessionToken,
       controlSessionExpiresInMs: OVERLAY_TOKEN_TTL_MS > 0 ? OVERLAY_TOKEN_TTL_MS : null,
       links,
+    });
+  });
+
+  app.post(LINK_PATHS.spectatorInviteCreate, async (req, res) => {
+    const payload = isRecord(req.body) ? req.body : {};
+    const roomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const token = String(payload.token ?? "").trim();
+    const maxUses = normalizeSpectatorInviteMaxUses(payload.maxUses);
+    const room = rooms.get(roomCode);
+    if (!room) {
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+      return;
+    }
+    if (!isOverlayEditAuthorized(room, token)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
+      return;
+    }
+
+    const invite = issueSpectatorInvite(room, maxUses);
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    const invitePath = `${LINK_PATHS.spectator}?room=${encodeURIComponent(room.code)}&invite=${encodeURIComponent(invite.token)}`;
+    const inviteUrlLan = `${lanOrigin}${invitePath}`;
+    const inviteUrlExternal = publicResolution.base ? `${publicResolution.base}${invitePath}` : null;
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      maxUses: invite.maxUses,
+      inviteTokenExpiresInMs: Math.max(0, invite.expiresAt - Date.now()),
+      inviteUrlLan,
+      inviteUrlExternal,
+    });
+  });
+
+  app.post(LINK_PATHS.spectatorInviteExchange, async (req, res) => {
+    const payload = isRecord(req.body) ? req.body : {};
+    const roomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const inviteToken = String(payload.inviteToken ?? payload.invite ?? "").trim();
+    const room = rooms.get(roomCode);
+    if (!room) {
+      res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+      return;
+    }
+    if (!consumeSpectatorInvite(room, inviteToken)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(room, "error.forbidden") });
+      return;
+    }
+
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    const viewPath = `${LINK_PATHS.overlayView}?room=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.spectatorToken)}`;
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      viewUrlLan: `${lanOrigin}${viewPath}`,
+      viewUrlExternal: publicResolution.base ? `${publicResolution.base}${viewPath}` : null,
     });
   });
 
@@ -3963,6 +4253,7 @@ async function main() {
       publicBase: publicResolution.base,
       roomCode: room.code,
       overlayViewToken: room.overlayToken,
+      spectatorViewToken: room.spectatorToken,
       overlayControlToken: room.overlayEditToken,
       overlayControlInviteToken: room.overlayControlInviteToken,
       overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
@@ -4721,11 +5012,13 @@ async function main() {
               joinOrder: [],
               lastGameViews: new Map(),
               overlayToken: generateOverlayViewToken(),
+              spectatorToken: generateSpectatorToken(),
               overlayEditToken: generateOverlayControlToken(),
               overlayTokenIssuedAt: roomCreatedAt,
               overlayEditTokenIssuedAt: roomCreatedAt,
               overlayControlInviteToken: generateOverlayControlInviteToken(),
               overlayControlInviteIssuedAt: roomCreatedAt,
+              spectatorInvites: new Map(),
               overlayOverrides: {},
             };
             rooms.set(room.code, room);
@@ -4742,7 +5035,8 @@ async function main() {
               room.overlayToken,
               room.overlayEditToken,
               room.overlayControlInviteToken,
-              room.overlayOverrides?.overlayUrlParams
+              room.overlayOverrides?.overlayUrlParams,
+              room.spectatorToken
             );
             updateRulesetIfAuto(room);
             logRoomLifecycle("joined", room.code, {

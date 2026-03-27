@@ -51,6 +51,23 @@ interface OverlayLinksApiPayload {
   links: BuiltLinkSet;
 }
 
+interface OverlayControlInviteCreatePayload {
+  ok: true;
+  roomCode: string;
+  inviteTokenExpiresInMs: number | null;
+  inviteUrlLan: string;
+  inviteUrlExternal: string | null;
+}
+
+interface SpectatorInviteCreatePayload {
+  ok: true;
+  roomCode: string;
+  maxUses: number;
+  inviteTokenExpiresInMs: number | null;
+  inviteUrlLan: string;
+  inviteUrlExternal: string | null;
+}
+
 type LobbyPlayer = RoomState["players"][number];
 
 const GITHUB_URL = "https://github.com/FHRha";
@@ -383,6 +400,9 @@ export default function LobbyPage({
   const [manualTemplatePlayers, setManualTemplatePlayers] = useState(4);
   const [manualVotesInput, setManualVotesInput] = useState("0");
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [spectatorAccessMode, setSpectatorAccessMode] = useState<"permanent" | "1" | "2" | "5" | "10">(
+    "permanent"
+  );
 
   const canControl = Boolean(isControl);
   const roomCode = roomState?.roomCode ?? "";
@@ -546,6 +566,98 @@ export default function LobbyPage({
       return;
     }
     setCopiedKey(key);
+  };
+
+  const copyFreshOverlayControlInvite = async (variant: "lan" | "external") => {
+    if (!roomCode || !playerToken || !canControl) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}${LINK_PATHS.overlayControlInviteCreate}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ roomCode, token: playerToken }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        const message =
+          payload && typeof payload.message === "string" ? payload.message : lobbyLocale.obsLinksUnavailable;
+        throw new Error(message);
+      }
+
+      const raw = payload as OverlayControlInviteCreatePayload;
+      const nextLan = String(raw.inviteUrlLan ?? "").trim();
+      const nextExternal = String(raw.inviteUrlExternal ?? "").trim();
+      if (!nextLan) {
+        throw new Error(lobbyLocale.obsLinksUnavailable);
+      }
+
+      setOverlayLinksError(null);
+      setOverlayLinks((prev) =>
+        prev
+          ? {
+              ...prev,
+              overlayControlUrlLan: nextLan,
+              overlayControlUrlExternal: nextExternal,
+            }
+          : prev
+      );
+
+      const valueToCopy = variant === "external" ? nextExternal || nextLan : nextLan;
+      await copyText(valueToCopy, variant === "external" ? "overlayControlExternal" : "overlayControlLan");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : lobbyLocale.obsLinksUnavailable;
+      setOverlayLinksError(message);
+      window.alert(message);
+    }
+  };
+
+  const copySpectatorLink = async (variant: "lan" | "external") => {
+    const fallbackValue = variant === "external" ? spectatorUrlExternal || spectatorUrlLan : spectatorUrlLan;
+    if (!fallbackValue) return;
+
+    if (spectatorAccessMode === "permanent") {
+      await copyText(fallbackValue, variant === "external" ? "spectatorExternal" : "spectatorLan");
+      return;
+    }
+
+    if (!roomCode || !playerToken || !canControl) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}${LINK_PATHS.spectatorInviteCreate}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roomCode,
+          token: playerToken,
+          maxUses: Number(spectatorAccessMode),
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        const message =
+          payload && typeof payload.message === "string" ? payload.message : lobbyLocale.obsLinksUnavailable;
+        throw new Error(message);
+      }
+
+      const raw = payload as SpectatorInviteCreatePayload;
+      const inviteUrlLan = String(raw.inviteUrlLan ?? "").trim();
+      const inviteUrlExternal = String(raw.inviteUrlExternal ?? "").trim();
+      const valueToCopy = variant === "external" ? inviteUrlExternal || inviteUrlLan : inviteUrlLan;
+      if (!valueToCopy) {
+        throw new Error(lobbyLocale.obsLinksUnavailable);
+      }
+
+      setOverlayLinksError(null);
+      await copyText(valueToCopy, variant === "external" ? "spectatorExternal" : "spectatorLan");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : lobbyLocale.obsLinksUnavailable;
+      setOverlayLinksError(message);
+      window.alert(message);
+    }
   };
 
   if (!roomState) {
@@ -1293,6 +1405,23 @@ export default function LobbyPage({
                   {showSpectatorLinks ? (
                     <section className="linksSection">
                       <h4 className="linksSectionTitle">{lobbyLocale.spectatorLinkTitle}</h4>
+                      <div className="formRow" style={{ marginBottom: 8 }}>
+                        <span>Доступ по зрительской ссылке</span>
+                        <div className="formControlRow">
+                          <select
+                            value={spectatorAccessMode}
+                            onChange={(event) =>
+                              setSpectatorAccessMode(event.target.value as "permanent" | "1" | "2" | "5" | "10")
+                            }
+                          >
+                            <option value="permanent">Постоянная</option>
+                            <option value="1">Лимит: 1 зритель</option>
+                            <option value="2">Лимит: 2 зрителя</option>
+                            <option value="5">Лимит: 5 зрителей</option>
+                            <option value="10">Лимит: 10 зрителей</option>
+                          </select>
+                        </div>
+                      </div>
                       <div className="obs-links-list">
                         {showLanLinks ? (
                           <div className="obs-link-row">
@@ -1329,7 +1458,9 @@ export default function LobbyPage({
                                 type="button"
                                 className="ghost button-small"
                                 disabled={!spectatorUrlLan}
-                                onClick={() => copyText(spectatorUrlLan, "spectatorLan")}
+                                onClick={() => {
+                                  void copySpectatorLink("lan");
+                                }}
                               >
                                 {copyLabel("spectatorLan")}
                               </button>
@@ -1369,7 +1500,9 @@ export default function LobbyPage({
                               <button
                                 type="button"
                                 className="ghost button-small"
-                                onClick={() => copyText(spectatorUrlExternal, "spectatorExternal")}
+                                onClick={() => {
+                                  void copySpectatorLink("external");
+                                }}
                               >
                                 {copyLabel("spectatorExternal")}
                               </button>
@@ -1511,7 +1644,9 @@ export default function LobbyPage({
                               type="button"
                               className="ghost button-small"
                               disabled={!overlayControlUrlLan}
-                              onClick={() => copyText(overlayControlUrlLan, "overlayControlLan")}
+                                onClick={() => {
+                                  void copyFreshOverlayControlInvite("lan");
+                                }}
                             >
                               {copyLabel("overlayControlLan")}
                             </button>
@@ -1552,7 +1687,9 @@ export default function LobbyPage({
                             <button
                               type="button"
                               className="ghost button-small"
-                              onClick={() => copyText(overlayControlUrlExternal, "overlayControlExternal")}
+                              onClick={() => {
+                                void copyFreshOverlayControlInvite("external");
+                              }}
                             >
                               {copyLabel("overlayControlExternal")}
                             </button>

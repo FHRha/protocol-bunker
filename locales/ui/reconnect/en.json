@@ -16,6 +16,9 @@
   "errorScreenTitle": "Connection problem",
   "errorScreenExitToMenu": "Exit to menu",
   "errorScreenReconnecting": "Trying to reconnect...",
+  "routeIssueTitle": "Something went wrong",
+  "routeIssueRoomMessage": "Failed to open this room link. Return to menu and join the lobby again.",
+  "routeIssueNotFoundMessage": "This page does not exist.",
   "fatalErrorTitle": "Unexpected error",
   "fatalErrorUnknown": "Unknown error",
   "fatalErrorReload": "Reload"

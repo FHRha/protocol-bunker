@@ -6,6 +6,8 @@ export interface UrlPair {
 export const LINK_PATHS = {
   app: "/",
   spectator: "/spectate",
+  spectatorInviteCreate: "/spectator/invite/create",
+  spectatorInviteExchange: "/spectator/invite/exchange",
   overlayView: "/overlay",
   overlayAssets: "/overlay-assets",
   overlayControl: "/overlay-control",
@@ -35,6 +37,7 @@ export interface BuildLinkSetInput {
   publicBase?: string | null;
   roomCode: string;
   overlayViewToken: string;
+  spectatorViewToken?: string;
   overlayControlToken: string;
   overlayControlInviteToken: string;
   overlayQueryParams?: Record<string, string | number | boolean | null | undefined>;
@@ -112,6 +115,7 @@ export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
 
   const encodedRoom = encodeURIComponent(input.roomCode);
   const encodedViewToken = encodeURIComponent(input.overlayViewToken);
+  const encodedSpectatorToken = encodeURIComponent(input.spectatorViewToken ?? input.overlayViewToken);
   const encodedControlToken = encodeURIComponent(input.overlayControlToken);
   const encodedControlInviteToken = encodeURIComponent(input.overlayControlInviteToken);
 
@@ -124,6 +128,7 @@ export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
   const appPath = `${LINK_PATHS.app}?room=${encodedRoom}`;
   const overlayViewPath =
     `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}${overlayQuerySuffix}`;
+  const spectatorOverlayViewPath = `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedSpectatorToken}${overlayQuerySuffix}`;
   const overlayDebugPath =
     `${LINK_PATHS.overlayView}?room=${encodedRoom}&token=${encodedViewToken}${overlayDebugQuerySuffix}`;
   const overlayControlPath = `${LINK_PATHS.overlayControl}?room=${encodedRoom}&invite=${encodedControlInviteToken}`;
@@ -143,11 +148,17 @@ export function buildLinkSet(input: BuildLinkSetInput): BuiltLinkSet {
     overlayControlStatePath
   );
 
+  const spectatorOverlayViewUrl = withPublic(
+    join(lanBase, spectatorOverlayViewPath),
+    publicBase,
+    spectatorOverlayViewPath
+  );
+
   const viewerUrl: UrlPair = {
-    lan: buildViewerUrlFromOverlay(overlayViewUrl.lan),
+    lan: buildViewerUrlFromOverlay(spectatorOverlayViewUrl.lan),
   };
-  if (overlayViewUrl.public) {
-    viewerUrl.public = buildViewerUrlFromOverlay(overlayViewUrl.public);
+  if (spectatorOverlayViewUrl.public) {
+    viewerUrl.public = buildViewerUrlFromOverlay(spectatorOverlayViewUrl.public);
   }
 
   return {

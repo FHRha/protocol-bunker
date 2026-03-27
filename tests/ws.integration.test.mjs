@@ -817,11 +817,13 @@ test("security: overlay control invite exchange issues session token and invalid
 
     const inviteUrl = String(inviteJson.inviteUrlLan ?? "");
     const inviteToken = getQueryParam(inviteUrl, "invite");
+    const inviteParsed = new URL(inviteUrl);
     assert.equal(
       inviteUrl.includes("://0.0.0.0:"),
       false,
       "invite URL must not use 0.0.0.0 bind address"
     );
+    assert.equal(inviteParsed.hostname, "127.0.0.1", "invite URL should target current request host in tests");
     assert.ok(inviteToken, "invite token must be present in invite URL");
 
     const invitePageResp = await fetch(inviteUrl);

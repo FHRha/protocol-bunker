@@ -4684,6 +4684,79 @@ body.viewport-compact .selected-panel {
   margin-top: 10px;
 }
 
+.forbiddenStatePanel {
+  min-height: clamp(280px, 58vh, 620px);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.forbiddenStateCard {
+  width: min(560px, 100%);
+  border: 1px solid color-mix(in oklab, var(--border) 84%, var(--accent) 16%);
+  border-radius: 18px;
+  background:
+    radial-gradient(140% 90% at 50% 0%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 62%),
+    linear-gradient(180deg, color-mix(in oklab, var(--panel) 88%, var(--bg-soft) 12%), var(--panel));
+  box-shadow: var(--shadow);
+  padding: clamp(20px, 4vw, 32px);
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+}
+
+.forbiddenStateEyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.forbiddenStateTitle {
+  margin: 0;
+  font-size: clamp(24px, 3.4vw, 32px);
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.forbiddenStateMessage {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.forbiddenStateActions {
+  margin-top: 6px;
+}
+
+.forbiddenStateButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--accent-strong) 54%, var(--border) 46%);
+  text-decoration: none;
+  color: var(--on-accent);
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  font-weight: 600;
+  transition: transform 120ms ease, border-color 120ms ease, filter 120ms ease;
+}
+
+.forbiddenStateButton:hover {
+  border-color: color-mix(in oklab, var(--accent) 72%, var(--border) 28%);
+  filter: brightness(1.05);
+}
+
+.forbiddenStateButton:active {
+  transform: translateY(1px);
+}
+
 @media (max-width: 900px) {
   .spectateTablePage {
     overflow: auto;

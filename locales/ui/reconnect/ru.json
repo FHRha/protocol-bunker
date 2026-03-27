@@ -16,6 +16,9 @@
   "errorScreenTitle": "Проблема с подключением",
   "errorScreenExitToMenu": "Выйти в меню",
   "errorScreenReconnecting": "Пробуем переподключиться…",
+  "routeIssueTitle": "Что-то пошло не так",
+  "routeIssueRoomMessage": "Не удалось открыть комнату по этой ссылке. Вернитесь в меню и войдите в лобби заново.",
+  "routeIssueNotFoundMessage": "Такой страницы не существует.",
   "fatalErrorTitle": "Непредвиденная ошибка",
   "fatalErrorUnknown": "Неизвестная ошибка",
   "fatalErrorReload": "Перезагрузить"

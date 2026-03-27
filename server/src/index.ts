@@ -732,12 +732,13 @@ function buildLinkOrigins(requestOrigin?: string): {
   let lanIp = selectLanIp();
   if (!allowLocalhost && isLocalHostValue(lanIp)) {
     const requestHost = hostFromOrigin(normalizeOrigin(requestOrigin) ?? undefined);
-    if (requestHost && !isLocalHostValue(requestHost)) {
+    if (requestHost) {
       lanIp = requestHost;
-    } else if (HOST && HOST !== "0.0.0.0" && !isLocalHostValue(HOST)) {
+    } else if (HOST && HOST !== "0.0.0.0") {
       lanIp = HOST;
     } else {
-      lanIp = "0.0.0.0";
+      // 0.0.0.0 is a bind address and is not fetchable as a client URL.
+      lanIp = "127.0.0.1";
     }
   }
 

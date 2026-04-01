@@ -1,0 +1,175 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ProtocolBunker.Desktop.Application.ViewModels"
+             x:Class="ProtocolBunker.Desktop.App.Views.AccessSectionView"
+             x:DataType="vm:AccessSectionViewModel"
+             mc:Ignorable="d">
+  <Grid RowDefinitions="Auto,20,*">
+    <Border Background="{StaticResource BunkerPanelRaised}"
+            CornerRadius="24"
+            Padding="26"
+            BorderBrush="{StaticResource BunkerStroke}"
+            BorderThickness="1">
+      <Grid RowDefinitions="Auto,16,Auto,12,Auto">
+        <StackPanel Spacing="10">
+          <Border Background="{StaticResource BunkerAccentSoft}"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1"
+                  CornerRadius="999"
+                  HorizontalAlignment="Left"
+                  Padding="10,4">
+            <TextBlock Text="{Binding T.AccessBadge}"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource BunkerAccent}" />
+          </Border>
+          <TextBlock Text="{Binding T.AccessHeroTitle}"
+                     FontSize="22"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid Grid.Row="2"
+              ColumnDefinitions="120,*,Auto,Auto"
+              ColumnSpacing="12">
+          <TextBlock Text="{Binding T.AccessRoomCode}"
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource BunkerSubtle}" />
+          <TextBox Grid.Column="1"
+                   Text="{Binding EditableRoomCode}"
+                   Watermark="{Binding T.AccessRoomCodeWatermark}" />
+          <Button Grid.Column="2"
+                  Content="{Binding T.CommonRefresh}"
+                  Command="{Binding RefreshLinksCommand}" />
+          <Button Grid.Column="3"
+                  Content="{Binding T.AccessCreateInvite}"
+                  Command="{Binding CreateControlInviteCommand}" />
+        </Grid>
+
+        <TextBlock Grid.Row="4"
+                   Text="{Binding AccessStatus}"
+                   Foreground="{StaticResource BunkerMuted}"
+                   TextWrapping="Wrap" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="20" RowDefinitions="Auto,20,Auto">
+      <Border Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="20"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding T.AccessBaseEndpoints}"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,12,Auto">
+            <TextBlock Text="{Binding T.CommonInternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding InternalBaseUrl}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding InternalBaseUrl}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenInternalBaseCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyInternalBaseCommand}" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="{Binding T.CommonExternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding ExternalBaseUrl}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding ExternalBaseUrl}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenExternalBaseCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyExternalBaseCommand}" />
+            </Grid>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Column="1"
+              Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="20"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding T.AccessOverlayView}"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,12,Auto">
+            <TextBlock Text="{Binding T.CommonInternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding OverlayUrlInternal}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding OverlayUrlInternal}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenOverlayInternalCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyOverlayInternalCommand}" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="{Binding T.CommonExternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding OverlayUrlExternal}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding OverlayUrlExternal}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenOverlayExternalCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyOverlayExternalCommand}" />
+            </Grid>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="2"
+              Grid.ColumnSpan="2"
+              Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="20"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding T.AccessControlInvite}"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <TextBlock Text="{Binding T.AccessControlBody}"
+                     Foreground="{StaticResource BunkerMuted}"
+                     TextWrapping="Wrap" />
+          <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,12,Auto">
+            <TextBlock Text="{Binding T.CommonInternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding ControlInviteUrlInternal}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding ControlInviteUrlInternal}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenControlInternalCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyControlInternalCommand}" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="{Binding T.CommonExternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding ControlInviteUrlExternal}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding ControlInviteUrlExternal}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenControlExternalCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyControlExternalCommand}" />
+            </Grid>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

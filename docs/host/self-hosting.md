@@ -115,11 +115,11 @@
 
 #### Конкретная версия, public-профиль
 
-`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.7`
+`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.8`
 
 #### Конкретная версия, server-профиль
 
-`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.7`
+`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.8`
 
 ### Что означают параметры
 
@@ -324,7 +324,7 @@ Service unit:
 
 Если нужен EXE-вариант:
 
-`pnpm pack:win-exe`
+`pnpm pack:desktop`
 
 #### Linux x64
 
@@ -349,7 +349,7 @@ Service unit:
 
 Потом уже:
 - `pnpm pack:win`
-- `pnpm pack:win-exe`
+- `pnpm pack:desktop`
 - `pnpm pack:linux`
 - `pnpm pack:linux:arm64`
 

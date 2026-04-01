@@ -6,7 +6,9 @@ const rootIconsDir = path.join(rootDir, "icons");
 const fallbackIconsDir = path.join(rootDir, "client", "public", "favicon");
 const targets = [
   path.join(rootDir, "client", "public", "favicon"),
-  path.join(rootDir, "win-exe", "assets", "icons"),
+  path.join(rootDir, "win-desktop", "src", "ProtocolBunker.Desktop.App", "Assets"),
+  path.join(rootDir, "win-desktop", "src", "ProtocolBunker.Desktop.Setup", "Assets"),
+  path.join(rootDir, "win-desktop", "src", "ProtocolBunker.Desktop.UpdateHelper", "Assets"),
 ];
 
 function ensureExists(targetPath, label) {

@@ -1,0 +1,112 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ProtocolBunker.Desktop.Setup.MainWindow"
+        Width="980"
+        Height="560"
+        MinWidth="920"
+        MinHeight="540"
+        Background="{StaticResource BunkerBg}"
+        Icon="/Assets/app.ico"
+        Title="ProtocolBunker Setup">
+  <Border Margin="18"
+          Padding="24"
+          Classes="card"
+          Background="#E62A221B"
+          BorderBrush="{StaticResource BunkerStroke}"
+          BorderThickness="1"
+          CornerRadius="26"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <Viewbox Grid.RowSpan="3"
+               Stretch="UniformToFill"
+               HorizontalAlignment="Stretch"
+               VerticalAlignment="Stretch"
+               Margin="-140,-90,-140,-90"
+               IsHitTestVisible="False">
+        <TextBlock Text="{Binding AsciiFrame}"
+                   FontFamily="Cascadia Mono,Consolas,Monospace"
+                   FontSize="14"
+                   Foreground="{StaticResource BunkerAccent}"
+                   Opacity="0.22"
+                   TextAlignment="Center" />
+      </Viewbox>
+
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Spacing="14">
+          <Border Background="#6E4C17" CornerRadius="12" Padding="12,6" HorizontalAlignment="Left">
+            <TextBlock Text="{Binding Badge}" FontWeight="Bold" Foreground="#FFD592" FontSize="12" />
+          </Border>
+          <TextBlock Text="{Binding Title}"
+                     Width="560"
+                     TextWrapping="Wrap"
+                     FontSize="18"
+                     FontWeight="SemiBold" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Spacing="12" HorizontalAlignment="Right">
+          <Image Width="42" Height="42" HorizontalAlignment="Right" Source="/Assets/app-128x128.png" />
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Classes.selected="{Binding IsRussian}"
+                    Background="{Binding RussianBackground}"
+                    BorderBrush="{Binding RussianBorder}"
+                    Click="RussianLanguageClick">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Grid Width="20" Height="14" ClipToBounds="True">
+                  <Border Background="#FFFFFF" />
+                  <Border Background="#1958B9" Margin="0,4,0,5" />
+                  <Border Background="#C12334" Margin="0,9,0,0" />
+                </Grid>
+                <TextBlock Text="RU" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes.selected="{Binding IsEnglish}"
+                    Background="{Binding EnglishBackground}"
+                    BorderBrush="{Binding EnglishBorder}"
+                    Click="EnglishLanguageClick">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Grid Width="20" Height="14" ClipToBounds="True">
+                  <Border Background="#09266B" />
+                  <Border Background="#FFFFFF" Width="4" HorizontalAlignment="Center" />
+                  <Border Background="#FFFFFF" Height="4" VerticalAlignment="Center" />
+                  <Border Background="#C81225" Width="2" HorizontalAlignment="Center" />
+                  <Border Background="#C81225" Height="2" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock Text="EN" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+
+      <Grid Grid.Row="1" Margin="0,22,0,18">
+        <Border Classes="card" Padding="28" Background="#D931271E" VerticalAlignment="Stretch">
+          <Grid ColumnDefinitions="*,220" RowDefinitions="Auto,Auto,*,Auto">
+            <TextBlock Text="{Binding StatusTitle}" FontWeight="SemiBold" FontSize="16" />
+            <TextBlock Grid.Row="1" Margin="0,24,0,0" Text="{Binding CurrentStepLabel}" Foreground="{StaticResource BunkerMuted}" />
+            <TextBlock Grid.Row="1" Margin="0,52,0,0" Text="{Binding StatusDisplayText}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource BunkerAccent}" />
+            <StackPanel Grid.Row="2" Margin="0,24,0,0" Spacing="10">
+              <TextBlock Text="{Binding DetailsLabel}" Foreground="{StaticResource BunkerMuted}" />
+              <TextBlock Text="{Binding DetailsDisplayText}" Width="520" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Grid.RowSpan="3" VerticalAlignment="Center" Spacing="12">
+              <Button Content="{Binding StartText}" IsEnabled="{Binding CanStart}" Click="StartClick" />
+              <Button Content="{Binding StopText}" IsEnabled="{Binding CanStop}" Click="StopClick" />
+              <Button Content="{Binding FinishText}" IsEnabled="{Binding CanClose}" Click="CloseClick" />
+            </StackPanel>
+            <ProgressBar Grid.Row="3" Grid.ColumnSpan="2"
+                         Margin="0,18,0,0"
+                         IsIndeterminate="{Binding IsProgressAnimated}"
+                         Value="{Binding ProgressValue}"
+                         Minimum="0"
+                         Maximum="100" />
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

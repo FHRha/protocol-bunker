@@ -30,9 +30,9 @@
 
 `pnpm pack:win`
 
-Сборка Windows EXE-варианта:
+Сборка Windows desktop-варианта:
 
-`pnpm pack:win-exe`
+`pnpm pack:desktop`
 
 Сборка релизов под Linux x64:
 
@@ -84,7 +84,7 @@ Android-релизы ведутся отдельно и могут публик�
 
 Используется для основной упаковки Windows-релизов.
 
-### `pnpm pack:win-exe`
+### `pnpm pack:desktop`
 
 Используется, если нужен отдельный EXE-формат поставки.
 

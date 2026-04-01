@@ -185,6 +185,7 @@ const LINKS_VISIBILITY_MODE = (
 const HIDE_LOCAL_LINKS_IN_LOGS =
   LINKS_VISIBILITY_MODE === "public" || LINKS_VISIBILITY_MODE === "external";
 const SERVE_CLIENT = process.env.BUNKER_SERVE_CLIENT !== "false";
+const DESKTOP_API_SECRET = String(process.env.BUNKER_DESKTOP_API_SECRET ?? "").trim();
 const ALLOWED_ORIGINS_RAW = process.env.BUNKER_ALLOWED_ORIGINS ?? "";
 const ENFORCE_ORIGIN_CHECKS = (() => {
   const explicit = process.env.BUNKER_ENFORCE_ORIGIN_CHECKS;
@@ -441,6 +442,34 @@ function isLocalHostValue(host: string): boolean {
     normalized === "0.0.0.0" ||
     normalized === "::1"
   );
+}
+
+function isLoopbackIpValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "::1" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "::ffff:localhost"
+  );
+}
+
+function isDesktopLocalRequest(req: Request): boolean {
+  const host = String(req.get("host") ?? "").trim().split(":")[0] ?? "";
+  const ip = String(req.ip ?? "").trim();
+  return isLocalHostValue(host) || isLoopbackIpValue(ip);
+}
+
+function isDesktopApiAuthorized(req: Request): boolean {
+  if (!isDesktopLocalRequest(req)) return false;
+  if (req.get("origin")) return false;
+  if (!DESKTOP_API_SECRET) return false;
+  const provided = String(req.get("x-bunker-desktop-secret") ?? "").trim();
+  if (!provided) return false;
+  const expectedBuffer = Buffer.from(DESKTOP_API_SECRET, "utf8");
+  const providedBuffer = Buffer.from(provided, "utf8");
+  if (expectedBuffer.length !== providedBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
 function hostFromOrigin(origin: string | undefined): string | null {
@@ -4212,6 +4241,144 @@ async function main() {
       roomCode: room.code,
       viewUrlLan: `${lanOrigin}${viewPath}`,
       viewUrlExternal: publicResolution.base ? `${publicResolution.base}${viewPath}` : null,
+    });
+  });
+
+  app.post("/api/desktop/access", async (req, res) => {
+    if (!isDesktopApiAuthorized(req)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(undefined, "error.forbidden") });
+      return;
+    }
+
+    const payload = isRecord(req.body) ? req.body : {};
+    const requestedRoomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const room =
+      requestedRoomCode.length > 0
+        ? rooms.get(requestedRoomCode)
+        : rooms.size === 1
+          ? Array.from(rooms.values())[0]
+          : undefined;
+
+    if (!room) {
+      if (requestedRoomCode.length > 0) {
+        res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+        return;
+      }
+
+      if (rooms.size === 0) {
+        res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.noActiveRoom") });
+        return;
+      }
+
+      res.status(409).json({ ok: false, message: tServerForRoom(undefined, "error.roomSelectionRequired") });
+      return;
+    }
+
+    ensureOverlayTokensActive(room);
+    ensureOverlayControlInviteActive(room);
+
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    const links = buildLinkSet({
+      lanBase: lanOrigin,
+      publicBase: publicResolution.base,
+      roomCode: room.code,
+      overlayViewToken: room.overlayToken,
+      spectatorViewToken: room.spectatorToken,
+      overlayControlToken: room.overlayEditToken,
+      overlayControlInviteToken: room.overlayControlInviteToken,
+      overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
+    });
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      links: {
+        appUrl: links.appUrl,
+        overlayViewUrl: links.overlayViewUrl,
+      },
+    });
+  });
+
+  app.post("/api/desktop/endpoints", async (req, res) => {
+    if (!isDesktopApiAuthorized(req)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(undefined, "error.forbidden") });
+      return;
+    }
+
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+
+    res.json({
+      ok: true,
+      base: {
+        lan: lanOrigin,
+        public: publicResolution.base ?? null,
+      },
+    });
+  });
+
+  app.post("/api/desktop/control-invite", async (req, res) => {
+    if (!isDesktopApiAuthorized(req)) {
+      res.status(403).json({ ok: false, message: tServerForRoom(undefined, "error.forbidden") });
+      return;
+    }
+
+    const payload = isRecord(req.body) ? req.body : {};
+    const requestedRoomCode = String(payload.roomCode ?? "")
+      .trim()
+      .toUpperCase();
+    const room =
+      requestedRoomCode.length > 0
+        ? rooms.get(requestedRoomCode)
+        : rooms.size === 1
+          ? Array.from(rooms.values())[0]
+          : undefined;
+
+    if (!room) {
+      if (requestedRoomCode.length > 0) {
+        res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.roomNotFound") });
+        return;
+      }
+
+      if (rooms.size === 0) {
+        res.status(404).json({ ok: false, message: tServerForRoom(undefined, "error.noActiveRoom") });
+        return;
+      }
+
+      res.status(409).json({ ok: false, message: tServerForRoom(undefined, "error.roomSelectionRequired") });
+      return;
+    }
+
+    rotateOverlayControlInvite(room, "host_create");
+    ensureOverlayTokensActive(room);
+
+    const host = req.get("host");
+    const requestOrigin = host ? `${req.protocol}://${host}` : undefined;
+    const { lanOrigin } = buildLinkOrigins(requestOrigin);
+    const publicResolution = await resolvePublicBase(LISTEN_PORT);
+    const links = buildLinkSet({
+      lanBase: lanOrigin,
+      publicBase: publicResolution.base,
+      roomCode: room.code,
+      overlayViewToken: room.overlayToken,
+      spectatorViewToken: room.spectatorToken,
+      overlayControlToken: room.overlayEditToken,
+      overlayControlInviteToken: room.overlayControlInviteToken,
+      overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
+    });
+
+    res.json({
+      ok: true,
+      roomCode: room.code,
+      inviteUrlLan: links.overlayControlUrl.lan,
+      inviteUrlExternal: links.overlayControlUrl.public ?? null,
     });
   });
 

@@ -13,10 +13,11 @@ logs/
 **/releases/
 **/build/
 **/bin/
+**/obj/
 !scripts/release/
 !scripts/release/**
-!win-exe/build/
-!win-exe/build/**
+!win-desktop/build/
+!win-desktop/build/**
 
 # electron-builder and desktop artifacts
 desktop/dist/
@@ -63,6 +64,9 @@ artifacts/**/*.tar
 artifacts/**/*.tar.gz
 artifacts/**/*.tgz
 
+# embedded packaging payloads
+win-desktop/src/ProtocolBunker.Desktop.Setup/Embedded/payload.zip
+
 
 *.tsbuildinfo
 
@@ -80,3 +84,4 @@ Thumbs.db
 
 .project-notes.md
 docs/internal/notes/release-texts.md
+docs/design/

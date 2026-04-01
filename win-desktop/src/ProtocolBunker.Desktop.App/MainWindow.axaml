@@ -1,0 +1,228 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:ProtocolBunker.Desktop.Application.ViewModels"
+        xmlns:views="using:ProtocolBunker.Desktop.App.Views"
+        x:Class="ProtocolBunker.Desktop.App.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        mc:Ignorable="d"
+        Width="1360"
+        Height="860"
+        MinWidth="1100"
+        MinHeight="760"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        Icon="/Assets/app.ico"
+        Title="{Binding T.ShellTitle}">
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:HomeSectionViewModel">
+      <views:HomeSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:AccessSectionViewModel">
+      <views:AccessSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:NetworkSectionViewModel">
+      <views:NetworkSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DiagnosticsSectionViewModel">
+      <views:DiagnosticsSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:UpdatesSectionViewModel">
+      <views:UpdatesSectionView />
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Grid ColumnDefinitions="292,*" Background="{StaticResource BunkerBg}">
+    <Border Grid.Column="0" Background="{StaticResource BunkerSidebar}" Padding="26">
+      <Grid RowDefinitions="Auto,24,Auto,20,*">
+        <StackPanel Spacing="8">
+          <Border Background="{StaticResource BunkerAccentSoft}"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1"
+                  CornerRadius="999"
+                  HorizontalAlignment="Left"
+                  Padding="10,4">
+            <TextBlock Text="{Binding T.ShellBadge}"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource BunkerAccent}" />
+          </Border>
+          <TextBlock Text="{Binding T.ShellTitle}"
+                     FontSize="28"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <TextBlock Text="{Binding T.ShellIntro}"
+                     Foreground="{StaticResource BunkerMuted}"
+                     TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding T.ShellLanguage}"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource BunkerSubtle}" />
+            <Button Content="{Binding T.LanguageAuto}"
+                    Command="{Binding SetLanguageAutoCommand}"
+                    Classes.selected="{Binding IsLanguageAutoSelected}" />
+            <Button Content="{Binding T.LanguageRu}"
+                    Command="{Binding SetLanguageRuCommand}"
+                    Classes.selected="{Binding IsLanguageRuSelected}" />
+            <Button Content="{Binding T.LanguageEn}"
+                    Command="{Binding SetLanguageEnCommand}"
+                    Classes.selected="{Binding IsLanguageEnSelected}" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Spacing="10">
+          <TextBlock Text="{Binding T.SidebarSections}"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerSubtle}" />
+          <ItemsControl ItemsSource="{Binding Sections}"
+                        HorizontalAlignment="Stretch">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:DesktopNavItemViewModel">
+                <Button Classes.nav-button="True"
+                        Classes.selected="{Binding IsSelected}"
+                        Command="{Binding SelectCommand}"
+                        HorizontalAlignment="Stretch"
+                        Margin="6,0,6,10">
+                  <Border Classes="nav-card"
+                          HorizontalAlignment="Stretch"
+                          Padding="14,12"
+                          CornerRadius="14"
+                          BorderBrush="Transparent"
+                          BorderThickness="0"
+                          Background="{StaticResource BunkerPanel}">
+                    <Grid ColumnDefinitions="4,*" ColumnSpacing="10">
+                      <Border Classes="nav-card-accent"
+                              Width="4"
+                              CornerRadius="999"
+                              Background="Transparent" />
+                      <Grid Grid.Column="1"
+                            ColumnDefinitions="Auto,*"
+                            ColumnSpacing="8"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}"
+                                   Foreground="{StaticResource BunkerText}"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Subtitle}"
+                                   Grid.Column="1"
+                                   Foreground="{StaticResource BunkerSubtle}"
+                                   FontSize="11"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center" />
+                      </Grid>
+                    </Grid>
+                  </Border>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <Border Grid.Row="4"
+                Background="{StaticResource BunkerPanel}"
+                CornerRadius="18"
+                Padding="16"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1"
+                VerticalAlignment="Top"
+                ClipToBounds="True">
+          <StackPanel Spacing="8">
+            <TextBlock Text="{Binding T.SidebarRuntime}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource BunkerText}" />
+
+            <TextBlock Text="{Binding T.SidebarState}" Foreground="{StaticResource BunkerSubtle}" FontSize="12" />
+            <TextBlock Text="{Binding Home.RuntimeState}" Foreground="{StaticResource BunkerText}" />
+
+            <TextBlock Text="{Binding T.SidebarPortRoom}" Foreground="{StaticResource BunkerSubtle}" FontSize="12" />
+            <TextBlock Foreground="{StaticResource BunkerText}" TextWrapping="Wrap">
+              <Run Text="{Binding Home.Port}" />
+              <Run Text=" / " />
+              <Run Text="{Binding Home.RoomCode}" />
+            </TextBlock>
+
+            <TextBlock Text="{Binding T.SidebarModeDev}" Foreground="{StaticResource BunkerSubtle}" FontSize="12" />
+            <TextBlock Foreground="{StaticResource BunkerText}" TextWrapping="Wrap">
+              <Run Text="{Binding Home.ActiveMode}" />
+              <Run Text=" / " />
+              <Run Text="{Binding Home.DeveloperMode}" />
+            </TextBlock>
+
+            <TextBlock Text="{Binding T.SidebarStatus}" Foreground="{StaticResource BunkerSubtle}" FontSize="12" />
+            <TextBlock Text="{Binding Network.SettingsStatus}"
+                       Foreground="{StaticResource BunkerMuted}"
+                       FontSize="12"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Column="1" RowDefinitions="Auto,24,*" Margin="32">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding SectionTitle}"
+                     FontSize="34"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <TextBlock Text="{Binding SectionDescription}"
+                     FontSize="13"
+                     Foreground="{StaticResource BunkerMuted}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Grid.Column="1"
+                Background="{StaticResource BunkerPanel}"
+                CornerRadius="18"
+                Padding="18,16"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1"
+                MinWidth="280">
+          <Grid ColumnDefinitions="*,16,*">
+            <Grid>
+              <StackPanel Spacing="4"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+                <TextBlock Text="{Binding T.HeaderBuildIdentity}"
+                           Foreground="{StaticResource BunkerSubtle}"
+                           FontSize="12"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding Home.Version}"
+                           Foreground="{StaticResource BunkerText}"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+            <Border Grid.Column="1"
+                    Width="1"
+                    Background="{StaticResource BunkerStroke}"
+                    Margin="0,2" />
+            <Grid Grid.Column="2">
+              <StackPanel Spacing="4"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+                <TextBlock Text="{Binding T.HeaderRuntimePid}"
+                           Foreground="{StaticResource BunkerSubtle}"
+                           FontSize="12"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding Home.ProcessId}"
+                           Foreground="{StaticResource BunkerMuted}"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <Grid Grid.Row="2">
+        <ContentControl
+                        Content="{Binding CurrentSectionContent}" />
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

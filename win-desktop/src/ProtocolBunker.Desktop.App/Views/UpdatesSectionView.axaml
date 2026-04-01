@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ProtocolBunker.Desktop.Application.ViewModels"
+             x:Class="ProtocolBunker.Desktop.App.Views.UpdatesSectionView"
+             x:DataType="vm:UpdatesSectionViewModel"
+             mc:Ignorable="d">
+  <Grid RowDefinitions="Auto,20,*">
+    <Border Background="{StaticResource BunkerPanelRaised}"
+            CornerRadius="24"
+            Padding="26"
+            BorderBrush="{StaticResource BunkerStroke}"
+            BorderThickness="1">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+        <StackPanel Spacing="10">
+          <Border Background="{StaticResource BunkerAccentSoft}"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1"
+                  CornerRadius="999"
+                  HorizontalAlignment="Left"
+                  Padding="10,4">
+            <TextBlock Text="{Binding T.UpdatesBadge}"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource BunkerAccent}" />
+          </Border>
+          <TextBlock Text="{Binding T.UpdatesHeroTitle}"
+                     FontSize="22"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="{Binding StatusMessage}"
+                     Foreground="{StaticResource BunkerMuted}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+        <Button Grid.Column="1"
+                Content="{Binding T.UpdatesCheckNow}"
+                Command="{Binding CheckForUpdatesCommand}" />
+        <Button Grid.Column="2"
+                Content="{Binding T.UpdatesOpenReleases}"
+                Command="{Binding OpenReleasesPageCommand}" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="1.1*,0.9*" ColumnSpacing="20">
+      <Border Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="20"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,14,Auto,14,Auto,14,Auto">
+          <TextBlock Text="{Binding T.UpdatesCurrentVersion}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Column="1" Text="{Binding CurrentVersion}" Foreground="{StaticResource BunkerText}" />
+
+          <TextBlock Grid.Row="2" Text="{Binding T.UpdatesLatestRelease}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LatestVersion}" Foreground="{StaticResource BunkerText}" />
+
+          <TextBlock Grid.Row="4" Text="{Binding T.UpdatesSelectedAsset}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedAssetName}" Foreground="{StaticResource BunkerText}" TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="6" Text="{Binding T.UpdatesAvailable}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="6"
+                     Grid.Column="1"
+                     Text="{Binding AvailabilityText}"
+                     Foreground="{StaticResource BunkerAccent}" />
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1"
+              Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="20"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding T.UpdatesActions}"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <TextBlock Text="{Binding T.UpdatesActionsBody}"
+                     Foreground="{StaticResource BunkerMuted}"
+                     TextWrapping="Wrap" />
+          <Button Content="{Binding T.UpdatesOpenSelectedAsset}"
+                  Command="{Binding OpenSelectedAssetCommand}"
+                  IsEnabled="{Binding CanOpenSelectedAsset}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

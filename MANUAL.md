@@ -228,7 +228,7 @@ Server-профиль ARM64:
 
 Сборка релизных пакетов:
 `pnpm pack:win`
-`pnpm pack:win-exe`
+`pnpm pack:desktop`
 `pnpm pack:linux`
 `pnpm pack:linux:arm64`
 

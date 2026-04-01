@@ -77,7 +77,7 @@
 
 `pnpm pack:linux:arm64`
 
-`pnpm pack:win-exe`
+`pnpm pack:desktop`
 
 Эти команды используются для сборки релизных артефактов под разные платформы.
 

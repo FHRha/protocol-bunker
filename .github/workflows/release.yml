@@ -230,8 +230,8 @@ jobs:
           if-no-files-found: error
           path: artifacts/win/*.zip
 
-  build-windows-exe:
-    name: Build Windows EXE artifacts
+  build-windows-desktop:
+    name: Build Windows desktop artifacts
     runs-on: windows-latest
     timeout-minutes: 120
     needs:
@@ -256,13 +256,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Detect win-exe sources
-        id: detect_win_exe
+      - name: Detect desktop packaging sources
+        id: detect_desktop
         shell: pwsh
         run: |
           $required = @(
-            "win-exe/build.ps1",
-            "win-exe/build/pack-release.ps1"
+            "win-desktop/build.ps1",
+            "win-desktop/build/pack-release.ps1"
           )
           $missing = @()
           foreach ($file in $required) {
@@ -273,41 +273,41 @@ jobs:
 
           if ($missing.Count -eq 0) {
             "available=true" >> $env:GITHUB_OUTPUT
-            Write-Host "[release] win-exe sources found."
+            Write-Host "[release] desktop packaging sources found."
           } else {
             "available=false" >> $env:GITHUB_OUTPUT
-            Write-Host "[release] win-exe sources are incomplete in this repository snapshot. Skipping pack:win-exe."
+            Write-Host "[release] desktop packaging sources are incomplete in this repository snapshot. Skipping pack:desktop."
             Write-Host "[release] Missing files:"
             $missing | ForEach-Object { Write-Host " - $_" }
           }
 
       - name: Download Windows portable base
-        if: steps.detect_win_exe.outputs.available == 'true'
+        if: steps.detect_desktop.outputs.available == 'true'
         uses: actions/download-artifact@v5
         with:
           name: windows-portable-base
           path: artifacts/win/.Protocol-Bunker-base
 
-      - name: Pack Windows EXE
-        if: steps.detect_win_exe.outputs.available == 'true'
+      - name: Pack Windows desktop
+        if: steps.detect_desktop.outputs.available == 'true'
         shell: pwsh
         run: >
-          powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File win-desktop/build.ps1
           -SkipBuild
           -ForceRepack
           -PortableBaseDir artifacts/win/.Protocol-Bunker-base
           -AssetVariant 1x
 
-      - name: Validate Windows EXE artifacts
-        if: steps.detect_win_exe.outputs.available == 'true'
+      - name: Validate Windows desktop artifacts
+        if: steps.detect_desktop.outputs.available == 'true'
         shell: pwsh
         run: |
-          Get-ChildItem artifacts/win-exe -ErrorAction SilentlyContinue | Format-Table -AutoSize
+          Get-ChildItem artifacts/win-desktop -ErrorAction SilentlyContinue | Format-Table -AutoSize
 
           $v = "${{ needs.verify-version.outputs.version_tag }}"
           $expected = @(
-            "artifacts/win-exe/protocol-bunker-win-x64-exe-$v.zip",
-            "artifacts/win-exe/protocol-bunker-win-x64-exe-setup-$v.exe"
+            "artifacts/win-desktop/protocol-bunker-win-x64-desktop-$v.zip",
+            "artifacts/win-desktop/protocol-bunker-win-x64-desktop-setup-$v.exe"
           )
           foreach ($file in $expected) {
             if (-not (Test-Path -LiteralPath $file)) {
@@ -316,31 +316,47 @@ jobs:
           }
 
           $runtimeRequired = @(
-            "artifacts/win-exe/Protocol-Bunker/app/assets/ASSET_VARIANT",
-            "artifacts/win-exe/Protocol-Bunker/app/assets/decks/1x",
-            "artifacts/win-exe/Protocol-Bunker/app/client/dist/index.html",
-            "artifacts/win-exe/Protocol-Bunker/app/server/dist/index.js"
+            "artifacts/win-desktop/Protocol-Bunker/ProtocolBunker.exe",
+            "artifacts/win-desktop/Protocol-Bunker/UpdaterHelper.exe",
+            "artifacts/win-desktop/Protocol-Bunker/Localization/desktop.ru.json",
+            "artifacts/win-desktop/Protocol-Bunker/Localization/desktop.en.json",
+            "artifacts/win-desktop/Protocol-Bunker/app/assets/ASSET_VARIANT",
+            "artifacts/win-desktop/Protocol-Bunker/app/assets/decks/1x",
+            "artifacts/win-desktop/Protocol-Bunker/app/client/dist/index.html",
+            "artifacts/win-desktop/Protocol-Bunker/app/server/dist/index.js",
+            "artifacts/win-desktop/Protocol-Bunker/app/VERSION",
+            "artifacts/win-desktop/Protocol-Bunker/app/portable.env"
           )
           foreach ($file in $runtimeRequired) {
             if (-not (Test-Path -LiteralPath $file)) {
-              throw "Missing expected EXE runtime file: $file"
+              throw "Missing expected desktop runtime file: $file"
             }
           }
 
-          $assetVariant = (Get-Content -LiteralPath "artifacts/win-exe/Protocol-Bunker/app/assets/ASSET_VARIANT" -Raw).Trim()
+          $asciiDir = "artifacts/win-desktop/Protocol-Bunker/AsciiAnimations"
+          if (-not (Test-Path -LiteralPath $asciiDir)) {
+            throw "Missing expected desktop runtime directory: $asciiDir"
+          }
+
+          $asciiFiles = Get-ChildItem -LiteralPath $asciiDir -File -ErrorAction Stop
+          if ($asciiFiles.Count -lt 1) {
+            throw "AsciiAnimations directory is empty: $asciiDir"
+          }
+
+          $assetVariant = (Get-Content -LiteralPath "artifacts/win-desktop/Protocol-Bunker/app/assets/ASSET_VARIANT" -Raw).Trim()
           if ($assetVariant -ne "1x") {
             throw "Unexpected EXE asset variant marker: $assetVariant"
           }
 
-      - name: Upload Windows EXE release assets
-        if: steps.detect_win_exe.outputs.available == 'true'
+      - name: Upload Windows desktop release assets
+        if: steps.detect_desktop.outputs.available == 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: release-windows-exe
+          name: release-windows-desktop
           if-no-files-found: error
           path: |
-            artifacts/win-exe/protocol-bunker-win-x64-exe-${{ needs.verify-version.outputs.version_tag }}.zip
-            artifacts/win-exe/protocol-bunker-win-x64-exe-setup-${{ needs.verify-version.outputs.version_tag }}.exe
+            artifacts/win-desktop/protocol-bunker-win-x64-desktop-${{ needs.verify-version.outputs.version_tag }}.zip
+            artifacts/win-desktop/protocol-bunker-win-x64-desktop-setup-${{ needs.verify-version.outputs.version_tag }}.exe
 
   prepare-linux-base-x64:
     name: Prepare Linux x64 base
@@ -531,7 +547,7 @@ jobs:
     needs:
       - verify-version
       - build-windows-portable
-      - build-windows-exe
+      - build-windows-desktop
       - build-linux-variants
     permissions:
       contents: write

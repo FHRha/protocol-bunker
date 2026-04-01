@@ -1,6 +1,6 @@
 {
   "name": "bunker-browser",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "packageManager": "pnpm@9.12.0",
   "workspaces": [
@@ -18,8 +18,11 @@
     "locale:audit": "node scripts/localization-audit.mjs",
     "locale:check": "node scripts/localization-audit.mjs --strict",
     "typecheck": "pnpm -C shared typecheck && pnpm -C scenarios typecheck && pnpm -C server typecheck && pnpm -C client typecheck",
+    "kill:project-processes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-project-processes.ps1 -ResetAttributes",
+    "fix:repo-acl": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fix-repo-acl.ps1",
     "test:ws": "pnpm -C shared build && pnpm -C scenarios build && node --test tests/ws.integration.test.mjs",
     "test:install": "node --test tests/install-update.test.mjs",
+    "test:desktop": "dotnet test win-desktop/tests/ProtocolBunker.Desktop.Tests/ProtocolBunker.Desktop.Tests.csproj",
     "test:integration": "pnpm run test:ws && pnpm run test:install",
     "build:client": "pnpm run sync:icons && pnpm -C client build",
     "build:server": "pnpm -C server build",
@@ -35,9 +38,10 @@
     "pack:linux:hq": "node scripts/pack-linux-portable.mjs --asset-variant 2x",
     "pack:linux:arm64": "node scripts/pack-linux-portable.mjs --arch arm64",
     "pack:linux:arm64:hq": "node scripts/pack-linux-portable.mjs --arch arm64 --asset-variant 2x",
-    "build:win-exe:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build/build-launcher.ps1",
-    "pack:win-exe": "powershell -NoProfile -ExecutionPolicy Bypass -File win-exe/build.ps1",
-    "pack:all": "pnpm run pack:win && pnpm run pack:linux && pnpm run pack:win-exe",
+    "build:desktop:launcher": "dotnet build win-desktop/src/ProtocolBunker.Desktop.App/ProtocolBunker.Desktop.App.csproj",
+    "pack:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File win-desktop/build.ps1",
+    "pack:desktop:fast": "powershell -NoProfile -ExecutionPolicy Bypass -File win-desktop/build.ps1 -SkipBuild -Fast -NoArchive -NoSetup",
+    "pack:all": "pnpm run pack:win && pnpm run pack:linux && pnpm run pack:desktop",
     "start": "node server/dist/index.js",
     "clean": "node scripts/clean.mjs"
   },

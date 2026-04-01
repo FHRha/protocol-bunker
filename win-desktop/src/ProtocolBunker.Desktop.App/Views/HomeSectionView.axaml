@@ -1,0 +1,196 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ProtocolBunker.Desktop.Application.ViewModels"
+             x:Class="ProtocolBunker.Desktop.App.Views.HomeSectionView"
+             x:DataType="vm:HomeSectionViewModel"
+             mc:Ignorable="d">
+  <Grid RowDefinitions="Auto,20,*">
+    <Border Background="{StaticResource BunkerPanelRaised}"
+            CornerRadius="24"
+            Padding="26"
+            BorderBrush="{StaticResource BunkerStroke}"
+            BorderThickness="1">
+      <Grid ColumnDefinitions="1.05*,0.95*"
+            ColumnSpacing="24">
+        <Grid Grid.Column="0"
+              RowDefinitions="Auto,20,*"
+              RowSpacing="0">
+          <Border Background="{StaticResource BunkerPanel}"
+                  CornerRadius="20"
+                  Padding="18"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1">
+            <StackPanel Spacing="14">
+              <Border Background="{StaticResource BunkerAccentSoft}"
+                      BorderBrush="{StaticResource BunkerStroke}"
+                      BorderThickness="1"
+                      CornerRadius="999"
+                      HorizontalAlignment="Left"
+                      Padding="10,4">
+                <TextBlock Text="{Binding T.HomeBadge}"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource BunkerAccent}" />
+              </Border>
+              <TextBlock Text="{Binding T.HomeHeroTitle}"
+                         FontSize="22"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Row="2"
+                  Background="{StaticResource BunkerPanelStrong}"
+                  CornerRadius="20"
+                  Padding="18"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1"
+                  HorizontalAlignment="Stretch">
+            <Grid ColumnDefinitions="*,190"
+                  ColumnSpacing="18">
+              <Grid RowDefinitions="Auto,14,*" RowSpacing="0">
+                <TextBlock Text="{Binding T.HomeLiveStatus}"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource BunkerText}" />
+                <StackPanel Grid.Row="2" Spacing="10">
+                  <TextBlock Text="{Binding T.HomeCurrentState}"
+                             Foreground="{StaticResource BunkerSubtle}"
+                             FontSize="12" />
+                  <TextBlock Text="{Binding RuntimeState}"
+                             FontSize="22"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource BunkerAccent}" />
+                  <TextBlock Text="{Binding T.HomeStatusDetail}"
+                             Foreground="{StaticResource BunkerSubtle}"
+                             FontSize="12"
+                             Margin="0,8,0,0" />
+                  <TextBlock Text="{Binding StatusDetail}"
+                             Foreground="{StaticResource BunkerMuted}"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+              <StackPanel Grid.Column="1"
+                          VerticalAlignment="Center"
+                          HorizontalAlignment="Stretch"
+                          Spacing="10">
+                <Button Content="{Binding T.HomeStartRuntime}"
+                        Command="{Binding StartRuntimeCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        MinHeight="46" />
+                <Button Content="{Binding T.HomeStopRuntime}"
+                        Command="{Binding StopRuntimeCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        MinHeight="46" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+
+        <Border Grid.Column="1"
+                Background="{StaticResource BunkerPanel}"
+                CornerRadius="20"
+                Padding="18"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                ClipToBounds="True">
+          <Grid HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
+            <Border Width="350"
+                    Height="350"
+                    Background="Transparent"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+              <Viewbox Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center">
+                <TextBlock Text="{Binding AsciiFrame}"
+                           FontFamily="Cascadia Mono,Consolas,Menlo,Monospace"
+                           FontSize="10"
+                           LineHeight="10"
+                           Foreground="{StaticResource BunkerAccent}"
+                           TextWrapping="NoWrap" />
+              </Viewbox>
+            </Border>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="20">
+      <Border Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="22"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,14,Auto,14,Auto,14,Auto,14,Auto">
+          <TextBlock Text="{Binding T.HomeActiveMode}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Column="1" Text="{Binding ActiveMode}" Foreground="{StaticResource BunkerText}" />
+
+          <TextBlock Grid.Row="2" Text="{Binding T.HomePort}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Port}" Foreground="{StaticResource BunkerText}" />
+
+          <TextBlock Grid.Row="4" Text="{Binding T.HomeRoomCode}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding RoomCode}" Foreground="{StaticResource BunkerText}" />
+
+          <TextBlock Grid.Row="6" Text="{Binding T.HomePublicHost}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding PublicHost}" Foreground="{StaticResource BunkerText}" TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="8" Text="{Binding T.HomeDomainDev}" Foreground="{StaticResource BunkerSubtle}" />
+          <TextBlock Grid.Row="8" Grid.Column="1" Foreground="{StaticResource BunkerText}" TextWrapping="Wrap">
+            <Run Text="{Binding Domain}" />
+            <Run Text=" / " />
+            <Run Text="{Binding DeveloperMode}" />
+          </TextBlock>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1"
+              Background="{StaticResource BunkerPanel}"
+              CornerRadius="20"
+              Padding="22"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding T.HomeOpenGame}"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,12,Auto,12,Auto">
+            <TextBlock Text="{Binding T.CommonInternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding PlayerUrlInternal}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding PlayerUrlInternal}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenPlayerInternalCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyPlayerInternalCommand}" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="{Binding T.CommonExternal}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Text="{Binding PlayerUrlExternal}"
+                         Foreground="{StaticResource BunkerText}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding PlayerUrlExternal}" />
+              <Button Grid.Column="1" Content="{Binding T.CommonOpen}" Command="{Binding OpenPlayerExternalCommand}" />
+              <Button Grid.Column="2" Content="{Binding T.CommonCopy}" Command="{Binding CopyPlayerExternalCommand}" />
+            </Grid>
+
+            <TextBlock Grid.Row="4" Text="{Binding T.HomeReachability}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Reachability}" Foreground="{StaticResource BunkerMuted}" TextWrapping="Wrap" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

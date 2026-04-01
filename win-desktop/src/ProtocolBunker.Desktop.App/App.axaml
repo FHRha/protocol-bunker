@@ -1,0 +1,179 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ProtocolBunker.Desktop.App.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <SolidColorBrush x:Key="BunkerBg" Color="#100F0D" />
+    <SolidColorBrush x:Key="BunkerSidebar" Color="#171511" />
+    <SolidColorBrush x:Key="BunkerPanel" Color="#1F1A15" />
+    <SolidColorBrush x:Key="BunkerPanelRaised" Color="#262019" />
+    <SolidColorBrush x:Key="BunkerPanelStrong" Color="#30271D" />
+    <SolidColorBrush x:Key="BunkerStroke" Color="#4B3A28" />
+    <SolidColorBrush x:Key="BunkerText" Color="#F4EBDD" />
+    <SolidColorBrush x:Key="BunkerMuted" Color="#B9A993" />
+    <SolidColorBrush x:Key="BunkerSubtle" Color="#8A7760" />
+    <SolidColorBrush x:Key="BunkerAccent" Color="#D39B43" />
+    <SolidColorBrush x:Key="BunkerAccentStrong" Color="#F0AE4F" />
+    <SolidColorBrush x:Key="BunkerAccentSoft" Color="#4D381C" />
+    <SolidColorBrush x:Key="BunkerSuccess" Color="#6FA66C" />
+    <SolidColorBrush x:Key="BunkerDanger" Color="#D56C5B" />
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanelStrong}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.14" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.14" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="RenderTransform" Value="scale(1.02)" />
+    </Style>
+    <Style Selector="Button:focus">
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+    </Style>
+    <Style Selector="Button.selected">
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="RenderTransform" Value="scale(1.02)" />
+    </Style>
+    <Style Selector="Button:pressed">
+      <Setter Property="Background" Value="#614621" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="RenderTransform" Value="scale(0.985)" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanelRaised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanelRaised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector="ComboBox:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanelStrong}" />
+    </Style>
+    <Style Selector="ComboBox:focus">
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanelStrong}" />
+    </Style>
+    <Style Selector="ComboBoxItem">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanel}" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="ComboBoxItem:pointerover">
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+    </Style>
+    <Style Selector="ComboBoxItem:selected">
+      <Setter Property="Background" Value="{StaticResource BunkerPanelStrong}" />
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+    </Style>
+    <Style Selector="Border.nav-card-accent">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.16" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.nav-card">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.16" />
+          <BrushTransition Property="Background" Duration="0:0:0.16" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" />
+        </Transitions>
+      </Setter>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+    <Style Selector="Button.nav-button">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="1" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.16" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.nav-button:pointerover">
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="RenderTransform" Value="scale(1.01,1)" />
+    </Style>
+    <Style Selector="Button.nav-button.selected">
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccentStrong}" />
+      <Setter Property="RenderTransform" Value="scale(1.01,1)" />
+    </Style>
+  </Application.Styles>
+</Application>

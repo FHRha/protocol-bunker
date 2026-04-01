@@ -1,0 +1,71 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ProtocolBunker.Desktop.UpdateHelper.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <SolidColorBrush x:Key="BunkerBg" Color="#100F0D" />
+    <SolidColorBrush x:Key="BunkerPanel" Color="#261F18" />
+    <SolidColorBrush x:Key="BunkerPanelStrong" Color="#31271E" />
+    <SolidColorBrush x:Key="BunkerStroke" Color="#5A442C" />
+    <SolidColorBrush x:Key="BunkerText" Color="#F4EBDD" />
+    <SolidColorBrush x:Key="BunkerMuted" Color="#B9A993" />
+    <SolidColorBrush x:Key="BunkerAccent" Color="#D39B43" />
+    <SolidColorBrush x:Key="BunkerAccentStrong" Color="#F0AE4F" />
+    <SolidColorBrush x:Key="BunkerAccentSoft" Color="#4D381C" />
+    <SolidColorBrush x:Key="BunkerDisabled" Color="#6F6558" />
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{StaticResource BunkerBg}" />
+    </Style>
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{StaticResource BunkerPanel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="22" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Foreground" Value="{StaticResource BunkerText}" />
+      <Setter Property="Background" Value="{StaticResource BunkerPanelStrong}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="16,10" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="Background" Value="{StaticResource BunkerAccentSoft}" />
+    </Style>
+    <Style Selector="Button:disabled">
+      <Setter Property="Foreground" Value="{StaticResource BunkerDisabled}" />
+    </Style>
+    <Style Selector="ProgressBar">
+      <Setter Property="Foreground" Value="{StaticResource BunkerAccent}" />
+      <Setter Property="Background" Value="#3A3027" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Height" Value="16" />
+    </Style>
+  </Application.Styles>
+</Application>

@@ -1,0 +1,89 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ProtocolBunker.Desktop.Application.ViewModels"
+             x:Class="ProtocolBunker.Desktop.App.Views.DiagnosticsSectionView"
+             x:DataType="vm:DiagnosticsSectionViewModel"
+             mc:Ignorable="d">
+  <Grid RowDefinitions="Auto,20,*">
+    <Border Background="{StaticResource BunkerPanelRaised}"
+            CornerRadius="24"
+            Padding="26"
+            BorderBrush="{StaticResource BunkerStroke}"
+            BorderThickness="1">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <StackPanel Spacing="10">
+          <Border Background="{StaticResource BunkerAccentSoft}"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1"
+                  CornerRadius="999"
+                  HorizontalAlignment="Left"
+                  Padding="10,4">
+            <TextBlock Text="{Binding T.DiagnosticsBadge}"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource BunkerAccent}" />
+          </Border>
+          <TextBlock Text="{Binding T.DiagnosticsHeroTitle}"
+                     FontSize="22"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+          <Button Content="{Binding T.DiagnosticsCopyAll}"
+                  Command="{Binding CopyAllLogsCommand}" />
+          <Button Content="{Binding T.DiagnosticsClear}"
+                  Command="{Binding ClearLogsCommand}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2"
+            Background="{StaticResource BunkerPanel}"
+            CornerRadius="20"
+            Padding="20"
+            BorderBrush="{StaticResource BunkerStroke}"
+            BorderThickness="1">
+      <Grid RowDefinitions="Auto,16,*">
+        <TextBox Text="{Binding LogSearchText}"
+                 Watermark="{Binding T.DiagnosticsSearchPlaceholder}" />
+
+        <Border Grid.Row="2"
+                Background="#16120E"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="14">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding VisibleLogs}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RuntimeLogItemViewModel">
+                  <Border Background="{StaticResource BunkerPanelStrong}"
+                          BorderBrush="{StaticResource BunkerStroke}"
+                          BorderThickness="1"
+                          CornerRadius="12"
+                          Padding="10"
+                          Margin="0,0,0,8">
+                    <Grid ColumnDefinitions="72,52,*" ColumnSpacing="10">
+                      <TextBlock Text="{Binding Timestamp}"
+                                 Foreground="{StaticResource BunkerSubtle}" />
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding Level}"
+                                 Foreground="{StaticResource BunkerAccent}" />
+                      <TextBlock Grid.Column="2"
+                                 Text="{Binding Text}"
+                                 Foreground="{StaticResource BunkerText}"
+                                 TextWrapping="Wrap" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

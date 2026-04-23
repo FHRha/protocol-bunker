@@ -50,7 +50,7 @@ const runningFromSource =
   process.argv.some((arg) => arg.replace(/\\/g, "/").endsWith("src/index.ts"));
 const runningDevScript = process.env.npm_lifecycle_event === "dev";
 export const IDENTITY_MODE: IdentityMode =
-  identityModeRaw === "prod"
+  identityModeRaw === "prod" || identityModeRaw === "token"
     ? "prod"
     : identityModeRaw === "dev_tab" ||
         envFlag(process.env.DEV_NEW_PLAYER_PER_TAB) ||

@@ -1,23 +1,14 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LINK_PATHS, type OverlayPlayerView, type PublicCategorySlot, type PublicPlayerView, type WorldState30 } from "@bunker/shared";
 import { Link } from "react-router-dom";
 import TableLayout from "../components/TableLayout";
-import Modal from "../components/Modal";
-import { getCardBackUrl, getCardFaceUrl } from "../cards";
-import { shouldShowCardFront } from "../game/cardFacePolicy";
+import { getCardFaceUrl } from "../cards";
 import { useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import { useViewState } from "../hooks/useViewState";
 import { API_BASE } from "../config";
-
-type SpectatorCategoryKey =
-  | "profession"
-  | "health"
-  | "hobby"
-  | "baggage"
-  | "fact1"
-  | "fact2"
-  | "biology"
-  | "special";
+import { SpectatorSelectedPanel } from "../spectator/SpectatorSelectedPanel";
+import { type SpectatorCategoryKey } from "../spectator/SpectatorCategoryCard";
+import { SpectatorWorldModal } from "../spectator/SpectatorWorldModal";
 
 const CATEGORY_ORDER_KEYS: SpectatorCategoryKey[] = [
   "profession",
@@ -280,115 +271,6 @@ function buildWorldFromOverlayState(
   };
 }
 
-function SpectatorCategoryCard({ category, hiddenLabel, cardLocale, categoryLabels }: { category: PublicCategorySlot; hiddenLabel: string; cardLocale: "ru" | "en"; categoryLabels?: Record<SpectatorCategoryKey, string> }) {
-  const categoryKey = normalizeCategoryKey(category.category) ?? "special";
-  const categoryTitle = categoryLabels?.[categoryKey] ?? categoryLabel(categoryKey, categoryLabels ?? { profession: "profession", health: "health", hobby: "hobby", baggage: "baggage", fact1: "fact1", fact2: "fact2", biology: "biology", special: "special" });
-  const isRevealed = shouldShowCardFront(
-    {
-      status: category.status,
-      revealed: category.status === "revealed",
-      faceUp: category.status === "revealed",
-    },
-    { mode: "spectator" }
-  );
-  const card = category.cards[0] as ReadOnlyCard | undefined;
-  const frontLabel = String(card?.labelShort ?? categoryTitle).trim() || categoryTitle;
-  const faceSrc = getCardFaceUrl(card?.imgUrl);
-  const backSrc = getCardBackUrl(categoryKey, cardLocale) || getCardBackUrl("facts", cardLocale);
-
-  if (isRevealed && faceSrc) {
-    return (
-      <div className="card-tile" title={frontLabel}>
-        <img src={faceSrc} alt={frontLabel} loading="lazy" decoding="async" />
-      </div>
-    );
-  }
-
-  if (isRevealed) {
-    if (backSrc) {
-      return (
-        <div className="card-tile" title={frontLabel}>
-          <img src={backSrc} alt={frontLabel} loading="lazy" decoding="async" />
-          <span className="card-tile-label">{frontLabel}</span>
-        </div>
-      );
-    }
-    return (
-      <div className="card-tile fallback" title={frontLabel}>
-        <span>{frontLabel}</span>
-      </div>
-    );
-  }
-
-  if (backSrc) {
-    return (
-      <div className="card-tile" title={categoryTitle}>
-        <img src={backSrc} alt={categoryTitle} loading="lazy" decoding="async" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="card-tile fallback" title={category.category}>
-      <span>{hiddenLabel}</span>
-    </div>
-  );
-}
-
-function SpectatorWorldCardTile({
-  revealed,
-  imageId,
-  label,
-  backDeck,
-  cardLocale,
-}: {
-  revealed: boolean;
-  imageId?: string;
-  label: string;
-  backDeck?: string;
-  cardLocale: "ru" | "en";
-}) {
-  const frontVisible = shouldShowCardFront(
-    {
-      isRevealed: revealed,
-      frontId: imageId,
-    },
-    { mode: "spectator" }
-  );
-  const faceSrc = frontVisible ? getCardFaceUrl(imageId) : undefined;
-  const backSrc = backDeck ? getCardBackUrl(backDeck, cardLocale) : undefined;
-
-  if (faceSrc) {
-    return (
-      <div className="card-tile" title={label}>
-        <img src={faceSrc} alt={label} loading="lazy" decoding="async" />
-      </div>
-    );
-  }
-
-  if (frontVisible) {
-    return (
-      <div className="card-tile fallback" title={label}>
-        <span>{label}</span>
-      </div>
-    );
-  }
-
-  if (backSrc) {
-    return (
-      <div className="card-tile" title={label}>
-        <img src={backSrc} alt={label} loading="lazy" decoding="async" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="card-tile fallback" title={label}>
-      <span>{label}</span>
-    </div>
-  );
-}
-
 export default function SpectatorTablePage() {
   useUiLocaleNamespacesActivation(["game", "common", "world", "reconnect", "overlay-links", "format", "misc"]);
   const spectatorText = useUiLocaleNamespace("world", {
@@ -624,206 +506,44 @@ export default function SpectatorTablePage() {
               />
             </div>
           </div>
-          <aside className="selected-panel spectator-selected-panel">
-            <div className="selected-header">
-              <div className="panel-subtitle">{spectatorLocale.selectedPlayerTitle}</div>
-              {selectedPlayer ? <div className="selected-name">{selectedPlayer.name}</div> : null}
-            </div>
-            {selectedPlayer ? (
-              <div className="spectatorSelectedGrid">
-                {selectedCategories.map((category) => (
-                  <SpectatorCategoryCard
-                    key={`${selectedPlayer.playerId}-${category.category}`}
-                    category={category}
-                    hiddenLabel={spectatorLocale.cardHidden}
-                    cardLocale={cardLocale}
-                    categoryLabels={categoryLabels}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="selected-empty muted">{spectatorLocale.selectedPlayerHint}</div>
-            )}
-          </aside>
+          <SpectatorSelectedPanel
+            selectedPlayer={selectedPlayer}
+            selectedCategories={selectedCategories}
+            selectedPlayerTitle={spectatorLocale.selectedPlayerTitle}
+            selectedPlayerHint={spectatorLocale.selectedPlayerHint}
+            cardHidden={spectatorLocale.cardHidden}
+            cardLocale={cardLocale}
+            categoryLabels={categoryLabels}
+            normalizeCategoryKey={normalizeCategoryKey}
+            categoryLabel={categoryLabel}
+          />
         </div>
       </section>
-
-      <Modal
+      <SpectatorWorldModal
         open={Boolean(world) && worldModalOpen}
-        title={spectatorLocale.worldModalTitle}
+        world={world}
+        cardLocale={cardLocale}
+        text={{
+          worldModalTitle: spectatorLocale.worldModalTitle,
+          worldNotLoaded: spectatorLocale.worldNotLoaded,
+          worldKindBunker: spectatorLocale.worldKindBunker,
+          worldKindDisaster: spectatorLocale.worldKindDisaster,
+          worldKindThreat: spectatorLocale.worldKindThreat,
+          worldBunkerCard: spectatorLocale.worldBunkerCard,
+          worldThreatCard: spectatorLocale.worldThreatCard,
+          closeButton: spectatorLocale.closeButton,
+        }}
+        worldDetail={worldDetail}
+        setWorldDetail={setWorldDetail}
+        getWorldImage={getWorldImage}
         onClose={() => {
           setWorldModalOpen(false);
           setWorldDetail(null);
         }}
-        dismissible={true}
-        className="world-modal"
-      >
-        {world ? (
-          <div className="world-modal-layout">
-            <div className="world-columns">
-              <div
-                className="world-column world-column-left world-column-grid"
-                style={{ "--card-rows": Math.max(1, Math.ceil(world.bunker.length / 2)) } as CSSProperties}
-              >
-                {world.bunker.map((card, index) => {
-                  const isSoloLast = world.bunker.length % 2 === 1 && index === world.bunker.length - 1;
-                  const label = spectatorLocale.worldBunkerCard(index + 1);
-                  const revealed = card.isRevealed;
-                  const imageId = (card as { imageId?: string }).imageId;
-                  const faceUrl = getWorldImage(imageId);
-                  return (
-                    <div
-                      key={card.id}
-                      className={`world-slot ${revealed ? "revealed clickable" : "hidden"}${isSoloLast ? " world-slot--solo" : ""}`}
-                      role={revealed ? "button" : undefined}
-                      tabIndex={revealed ? 0 : -1}
-                      onClick={() => {
-                        if (!revealed) return;
-                        setWorldDetail({
-                          kind: spectatorLocale.worldKindBunker,
-                          title: card.title || label,
-                          imageUrl: faceUrl,
-                          label,
-                        });
-                      }}
-                      onKeyDown={(event) => {
-                        if (!revealed) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setWorldDetail({
-                            kind: spectatorLocale.worldKindBunker,
-                            title: card.title || label,
-                            imageUrl: faceUrl,
-                            label,
-                          });
-                        }
-                      }}
-                    >
-                      <div className="world-slot-header">{spectatorLocale.worldKindBunker}</div>
-                      <div className="world-slot-media">
-                        <SpectatorWorldCardTile
-                          revealed={revealed}
-                          imageId={imageId}
-                          label={revealed ? card.title || label : label}
-                          backDeck="bunker"
-                          cardLocale={cardLocale}
-                        />
-                      </div>
-                      <div className="world-slot-footer">
-                        <div className="world-slot-title">{revealed ? card.title : label}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="world-center">
-                <div
-                  className="world-center-media"
-                  onClick={() =>
-                    setWorldDetail({
-                      kind: spectatorLocale.worldKindDisaster,
-                      title: world.disaster.title,
-                      imageUrl: getWorldImage((world.disaster as { imageId?: string }).imageId),
-                      label: spectatorLocale.worldKindDisaster,
-                    })
-                  }
-                  role="button"
-                  tabIndex={0}
-                >
-                  <SpectatorWorldCardTile
-                    revealed={true}
-                    imageId={(world.disaster as { imageId?: string }).imageId}
-                    label={world.disaster.title || spectatorLocale.worldKindDisaster}
-                    backDeck="disaster"
-                    cardLocale={cardLocale}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="world-column world-column-right world-column-grid"
-                style={{ "--card-rows": Math.max(1, Math.ceil(world.threats.length / 2)) } as CSSProperties}
-              >
-                {world.threats.map((card, index) => {
-                  const isSoloLast = world.threats.length % 2 === 1 && index === world.threats.length - 1;
-                  const label = spectatorLocale.worldThreatCard(index + 1);
-                  const revealed = card.isRevealed;
-                  const imageId = (card as { imageId?: string }).imageId;
-                  const faceUrl = getWorldImage(imageId);
-                  return (
-                    <div
-                      key={card.id}
-                      className={`world-slot ${revealed ? "revealed clickable" : "hidden"}${isSoloLast ? " world-slot--solo" : ""}`}
-                      role={revealed ? "button" : undefined}
-                      tabIndex={revealed ? 0 : -1}
-                      onClick={() => {
-                        if (!revealed) return;
-                        setWorldDetail({
-                          kind: spectatorLocale.worldKindThreat,
-                          title: card.title || label,
-                          imageUrl: faceUrl,
-                          label,
-                        });
-                      }}
-                      onKeyDown={(event) => {
-                        if (!revealed) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setWorldDetail({
-                            kind: spectatorLocale.worldKindThreat,
-                            title: card.title || label,
-                            imageUrl: faceUrl,
-                            label,
-                          });
-                        }
-                      }}
-                    >
-                      <div className="world-slot-header">{spectatorLocale.worldKindThreat}</div>
-                      <div className="world-slot-media">
-                        <SpectatorWorldCardTile
-                          revealed={revealed}
-                          imageId={imageId}
-                          label={revealed ? card.title || label : label}
-                          backDeck="threat"
-                          cardLocale={cardLocale}
-                        />
-                      </div>
-                      <div className="world-slot-footer">
-                        <div className="world-slot-title">{revealed ? card.title : label}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {worldDetail ? (
-                <div className="world-detail-overlay" onClick={() => setWorldDetail(null)}>
-                  <div className="world-detail-card" onClick={(event) => event.stopPropagation()}>
-                    <div className="world-detail-header">
-                      <div className="world-detail-kind">{worldDetail.kind}</div>
-                      <button className="icon-button" onClick={() => setWorldDetail(null)} aria-label={spectatorLocale.closeButton}>
-                        ×
-                      </button>
-                    </div>
-                    <div className="world-detail-title">{worldDetail.title}</div>
-                    <div className="world-detail-media">
-                      {worldDetail.imageUrl ? (
-                        <img src={worldDetail.imageUrl} alt={worldDetail.label} loading="lazy" decoding="async" />
-                      ) : (
-                        <div className="world-detail-fallback">{worldDetail.label}</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="muted">{spectatorLocale.worldNotLoaded}</div>
-        )}
-      </Modal>
+      />
     </div>
   );
 }
+
+
 

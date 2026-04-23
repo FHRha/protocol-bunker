@@ -2,7 +2,6 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import type { GameEvent, GameView, RoomState, SpecialConditionInstance, SpecialTargetScope } from "@bunker/shared";
 import { computeNeighbors, getTargetCandidates } from "@bunker/shared";
 import { getCurrentLocale, useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
-import Modal from "../components/Modal";
 import TableLayout from "../components/TableLayout";
 import DossierMiniCard from "../components/DossierMiniCard";
 import { getCardBackUrl, getCardFaceUrl, preloadCategoryBacks } from "../cards";
@@ -17,6 +16,18 @@ import {
   getCategoryOptions,
   normalizeCategoryKey,
 } from "../game/categoryPresentation";
+import { CardTile } from "../game/CardTile";
+import { GameDossierPanel } from "../game/GameDossierPanel";
+import { GameMobileDossierPanel } from "../game/GameMobileDossierPanel";
+import { GameSpecialDialog } from "../game/GameSpecialDialog";
+import { GameVoteModal } from "../game/GameVoteModal";
+import { GameWorldModal } from "../game/GameWorldModal";
+import type {
+  SpecialDialogCardPicker,
+  SpecialDialogKind,
+  SpecialDialogState,
+  WorldDetailState,
+} from "../game/gamePageTypes";
 
 interface GamePageProps {
   roomState: RoomState | null;
@@ -41,22 +52,6 @@ interface GamePageProps {
   onClearMobileDossierError?: () => void;
 }
 
-type SpecialDialogKind = "none" | "player" | "neighbor" | "category" | "bunker" | "baggage" | "special";
-
-interface SpecialDialogCardPicker {
-  categoryKey: string;
-  requireSourceCard?: boolean;
-}
-
-interface SpecialDialogState {
-  kind: SpecialDialogKind;
-  specialInstanceId: string;
-  title: string;
-  options: Array<{ id: string; label: string }>;
-  description?: string;
-  cardPicker?: SpecialDialogCardPicker;
-}
-
 const VOTING_ONLY_EFFECTS = new Set([
   "banVoteAgainst",
   "disableVote",
@@ -72,42 +67,6 @@ function formatPlayerNameShort(name: string, maxLen = 14): string {
   if (!normalized) return "";
   if (normalized.length <= maxLen) return normalized;
   return `${normalized.slice(0, maxLen - 1)}…`;
-}
-
-
-interface CardTileProps {
-  src?: string;
-  fallback: string;
-  overlayLabel?: string;
-}
-
-function CardTile({ src, fallback, overlayLabel }: CardTileProps) {
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-  }, [src]);
-
-  if (!src || failed) {
-    return (
-      <div className="card-tile fallback">
-        <span>{fallback}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card-tile">
-      <img
-        src={src}
-        alt={overlayLabel ?? fallback}
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(true)}
-      />
-      {overlayLabel ? <span className="card-tile-label">{overlayLabel}</span> : null}
-    </div>
-  );
 }
 
 export default function GamePage({
@@ -254,13 +213,7 @@ export default function GamePage({
   >([]);
   const [now, setNow] = useState(() => Date.now());
   const [worldModalOpen, setWorldModalOpen] = useState(false);
-  const [worldDetail, setWorldDetail] = useState<{
-    title: string;
-    description?: string;
-    imageUrl?: string;
-    label: string;
-    kind: string;
-  } | null>(null);
+  const [worldDetail, setWorldDetail] = useState<WorldDetailState | null>(null);
   const [expandedDossierKey, setExpandedDossierKey] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 1250px)").matches : false
@@ -510,6 +463,16 @@ export default function GamePage({
     return () => query.removeListener(update);
   }, []);
   useEffect(() => {
+    if (!worldDetail) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setWorldDetail(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [worldDetail]);
+  useEffect(() => {
     if (!isMobile) {
       setDossierOpen(false);
     }
@@ -644,16 +607,6 @@ export default function GamePage({
     return () => window.clearInterval(id);
   }, [activeTimer?.kind, activeTimer?.endsAt]);
   useEffect(() => {
-    if (!worldDetail) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setWorldDetail(null);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [worldDetail]);
-  useEffect(() => {
     if (!selectedPlayerId) return;
     if (!publicPlayers.some((player) => player.playerId === selectedPlayerId)) {
       setSelectedPlayerId(null);
@@ -675,7 +628,6 @@ export default function GamePage({
     if (!code) return "";
     return gameLocale.voteReasonCode(code);
   };
-
   const yourVoteLabel = useMemo(() => {
     const vote = yourVoteEntry;
     if (!vote || vote.status !== "voted" || !vote.targetName) return gameText.t("votingSummaryNone");
@@ -684,7 +636,6 @@ export default function GamePage({
     }
     return gameLocale.votingSummary(vote.targetName);
   }, [yourVoteEntry, you?.playerId]);
-
   const yourVoteWeight = useMemo(() => {
     if (!yourVoteEntry) return 1;
     const weight = Number(yourVoteEntry.weight ?? 1);
@@ -695,7 +646,6 @@ export default function GamePage({
     const reasonCode = String(yourVoteEntry.reasonCode ?? "");
     return reasonCode === "VOTE_BLOCKED" || reasonCode === "VOTE_SPENT";
   }, [yourVoteEntry]);
-
   const selectedVotePlayer = useMemo(
     () => publicPlayers.find((entry) => entry.playerId === voteTargetId) ?? null,
     [publicPlayers, voteTargetId]
@@ -1703,338 +1653,6 @@ export default function GamePage({
 
   const youSafe = gameView.you;
 
-  const DossierPanel = ({ mobile = false }: { mobile?: boolean }) => (
-    <>
-      <div className={`panel-header dossier-header${mobile ? " dossier-header-mobile" : ""}`}>
-        <div>
-          {!mobile ? <h3>{gameText.t("dossierTitle")}</h3> : null}
-          <div className="muted">{gameText.t("dossierSubtitle")}</div>
-          {postGame?.isActive ? <div className="muted">{gameText.t("postGameRevealHint")}</div> : null}
-        </div>
-        <span className={youStatus === "alive" ? "badge revealed" : "badge eliminated"}>
-          {youStatus === "alive" ? gameText.t("statusAlive") : gameText.t("statusEliminated")}
-        </span>
-      </div>
-
-      <div className="special-section compact">
-        <div className="panel-subtitle">{gameText.t("specialTitle")}</div>
-        <div className="special-list">
-          {youSafe.specialConditions.map((special) => {
-            const canUse = canUseSpecialNow(special);
-
-            return (
-              <div key={special.instanceId} className="special-card compact">
-                <div className="special-header">
-                  <div className="special-title">{special.title}</div>
-                  <span
-                    className={`special-status ${
-                      special.used ? "used" : special.revealedPublic ? "revealed" : "hidden"
-                    }`}
-                    aria-label={
-                      special.used
-                        ? gameText.t("usedLabel", { value: gameText.t("boolean.true") })
-                        : special.revealedPublic
-                          ? gameText.t("cardRevealed")
-                          : gameText.t("cardHidden")
-                    }
-                    title={
-                      special.used
-                        ? gameText.t("usedLabel", { value: gameText.t("boolean.true") })
-                        : special.revealedPublic
-                          ? gameText.t("cardRevealed")
-                          : gameText.t("cardHidden")
-                    }
-                  />
-                </div>
-                <div className="special-description">{special.text}</div>
-                <div className="special-meta">
-                  {!special.implemented ? <span>{gameText.t("notImplemented")}</span> : null}
-                  {special.used ? <span>{gameText.t("specialApplied")}</span> : null}
-                </div>
-                <div className="special-actions">
-                  <button className="primary" disabled={!canUse} onClick={() => handleApplySpecial(special)}>
-                    {gameText.t("useSpecialButton")}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {(() => {
-        const categoriesSet = new Set(orderedDossierCategories);
-        const renderMiniCard = (categoryKey: string, fullWidth = false, featured = false) => {
-          const slot = youSafe.categories.find(
-            (entry) => normalizeCategoryKey(entry.category) === categoryKey
-          );
-          const cards = slot?.cards ?? [];
-          const categoryLocked = isCategoryLockedByForcedReveal(categoryKey);
-          const preview = cards.length === 0 ? "—" : cards[0]?.labelShort ?? "—";
-          const expandedText = cards.length === 0 ? "—" : cards.map((card) => card.labelShort).join(" • ");
-          const expanded = expandedDossierKey === categoryKey;
-          const firstSelectableCard =
-            cards.find((card) => isCardSelectableForReveal(categoryKey, card.revealed)) ?? null;
-          const selectedInCategory = cards.some((card) => card.instanceId === selectedCardId);
-          const revealedInCategory = cards.some((card) => card.revealed);
-          const options = cards.map((card) => {
-            const selectable = isCardSelectableForReveal(categoryKey, card.revealed);
-            return {
-              id: card.instanceId,
-              label: card.labelShort,
-              selectable,
-              selected: card.instanceId === selectedCardId,
-            };
-          });
-          return (
-            <DossierMiniCard
-              key={categoryKey}
-              label={getCategoryDisplayLabel(categoryKey, gameLocale)}
-              preview={preview}
-              expandedText={expandedText}
-              expanded={expanded}
-              selected={selectedInCategory}
-              revealed={revealedInCategory}
-              fullWidth={fullWidth}
-              featured={featured}
-              inactive={categoryLocked}
-              expandable={categoryKey !== DOSSIER_MAIN_CATEGORY_KEY}
-              options={options}
-              onCardClick={() => {
-                if (firstSelectableCard) {
-                  setSelectedCardId(firstSelectableCard.instanceId);
-                }
-              }}
-              onToggleExpand={() => {
-                if (categoryKey === DOSSIER_MAIN_CATEGORY_KEY) return;
-                setExpandedDossierKey((prev) => (prev === categoryKey ? null : categoryKey));
-              }}
-              onSelectOption={(cardId) => setSelectedCardId(cardId)}
-            />
-          );
-        };
-
-        return (
-          <>
-            {categoriesSet.has(DOSSIER_MAIN_CATEGORY_KEY)
-              ? renderMiniCard(DOSSIER_MAIN_CATEGORY_KEY, true, true)
-              : null}
-            <div className="dossier-mini-grid">
-              {DOSSIER_GRID_ROW_KEYS.flat()
-                .filter((category) => categoriesSet.has(category))
-                .map((category) => renderMiniCard(category))}
-              {orderedDossierCategories
-                .filter(
-                  (category) =>
-                    category !== DOSSIER_MAIN_CATEGORY_KEY && !DOSSIER_GRID_ROW_KEYS.flat().includes(category)
-                )
-                .map((category, index, arr) =>
-                  renderMiniCard(category, arr.length % 2 === 1 && index === arr.length - 1)
-                )}
-            </div>
-          </>
-        );
-      })()}
-
-      {!mobile ? (
-        <div className="action-block">
-          <button
-            className="primary"
-            disabled={!canReveal || !selectedCardId || !canRevealSelectedCard}
-            onClick={() => selectedCardId && onRevealCard(selectedCardId)}
-          >
-            {canRevealPostGame ? gameText.t("revealPostGameAction") : gameText.t("revealAction")}
-          </button>
-        </div>
-      ) : null}
-
-      {isDevScenario ? (
-        <div className="dev-panel">
-          <div className="panel-subtitle">{gameText.t("devControlsTitle")}</div>
-          <div className="dev-row muted">{gameLocale.devPlayersInGame(publicPlayers.length)}</div>
-          <div className="dev-actions">
-            <button className="ghost button-small" onClick={() => onDevAddPlayer()}>
-              {gameText.t("devAddPlayer")}
-            </button>
-            <div className="dev-remove">
-              <select value={devRemoveTargetId} onChange={(event) => setDevRemoveTargetId(event.target.value)}>
-                <option value="">{gameText.t("devRemoveLastBot")}</option>
-                {publicPlayers
-                  .filter((player) => player.playerId !== you?.playerId)
-                  .map((player) => (
-                    <option key={player.playerId} value={player.playerId}>
-                      {player.name}
-                    </option>
-                  ))}
-              </select>
-              <button
-                className="ghost button-small"
-                onClick={() => {
-                  onDevRemovePlayer(devRemoveTargetId || undefined);
-                  setDevRemoveTargetId("");
-                }}
-              >
-                {gameText.t("devRemoveButton")}
-              </button>
-            </div>
-          </div>
-          <button className="ghost button-small" onClick={runDevChecks}>
-            {gameText.t("devRunChecks")}
-          </button>
-          {devChecks.length > 0 ? (
-            <div className="dev-checks">
-              {devChecks.map((check) => (
-                <div key={check.id} className={`dev-check ${check.status}`}>
-                  <span>{check.label}</span>
-                  <span className="dev-check-status">
-                    {check.status === "pass" ? "PASS" : "FAIL"}
-                    {check.detail ? ` • ${check.detail}` : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {phase === "resolution" ? (
-        <div className="resolution-box">
-          <div className="panel-subtitle">{gameText.t("resolutionTitle")}</div>
-          <div>{gameView.public.resolutionNote ?? gameText.t("resolutionWaiting")}</div>
-        </div>
-      ) : null}
-    </>
-  );
-
-  const MobileDossierPanel = () => {
-    const categoriesSet = new Set(orderedDossierCategories);
-    const cardsByCategory = orderedDossierCategories
-      .filter((category) => categoriesSet.has(category))
-      .map((category) => {
-        const slot = youSafe.categories.find((entry) => normalizeCategoryKey(entry.category) === category);
-        const cards = slot?.cards ?? [];
-        const categoryLocked = isCategoryLockedByForcedReveal(category);
-        const selectableCards = cards.filter((card) => isCardSelectableForReveal(category, card.revealed));
-        return {
-          category,
-          cards,
-          selectableCards,
-          categoryLocked,
-        };
-      });
-
-    return (
-      <div className="mobile-dossier">
-        <div className="mobile-dossier-header">
-          <div>
-            <div className="mobile-dossier-title">{gameText.t("dossierTitle")}</div>
-            <div className="muted">{gameText.t("dossierSubtitle")}</div>
-            {postGame?.isActive ? <div className="muted">{gameText.t("postGameRevealHint")}</div> : null}
-          </div>
-          <span className={youStatus === "alive" ? "badge revealed" : "badge eliminated"}>
-            {youStatus === "alive" ? gameText.t("statusAlive") : gameText.t("statusEliminated")}
-          </span>
-        </div>
-
-        <div className="mobile-dossier-section">
-          <div className="panel-subtitle">{gameText.t("specialTitle")}</div>
-          <div className="special-list">
-            {youSafe.specialConditions.map((special) => {
-              const canUse = canUseSpecialNow(special);
-
-              return (
-                <div key={special.instanceId} className="special-card compact">
-                  <div className="special-header">
-                    <div className="special-title">{special.title}</div>
-                    <span
-                      className={`special-status ${
-                        special.used ? "used" : special.revealedPublic ? "revealed" : "hidden"
-                      }`}
-                    />
-                  </div>
-                  <div className="special-description">{special.text}</div>
-                  {special.used ? <div className="special-meta"><span>{gameText.t("specialApplied")}</span></div> : null}
-                  <div className="special-actions">
-                    <button className="primary" disabled={!canUse} onClick={() => handleApplySpecialFromDossier(special)}>
-                      {gameText.t("useSpecialButton")}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="mobile-dossier-section">
-          <div className="panel-subtitle">{gameText.t("dossierCardsTitle")}</div>
-          <div className="mobile-dossier-cards">
-            {cardsByCategory.map(({ category, cards, selectableCards, categoryLocked }) => {
-              const label = getCategoryDisplayLabel(category, gameLocale);
-              const value =
-                cards.length === 0 ? "—" : cards.map((card) => card.labelShort ?? "—").join(" • ");
-              const firstSelectable = selectableCards[0];
-              const selectedInCategory = cards.some((card) => card.instanceId === selectedCardId);
-              const revealedInCategory = cards.some((card) => card.revealed);
-              const showOptions = cards.length > 1 && selectableCards.length > 0;
-              return (
-                <div
-                  key={category}
-                  className={`mobile-dossier-card${selectedInCategory ? " selected" : ""}${revealedInCategory ? " revealed" : ""}${categoryLocked ? " inactive" : ""}`}
-                  onClick={() => {
-                    if (categoryLocked) return;
-                    if (firstSelectable) {
-                      setSelectedCardId(firstSelectable.instanceId);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={categoryLocked ? -1 : 0}
-                  onKeyDown={(event) => {
-                    if (categoryLocked) return;
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      if (firstSelectable) {
-                        setSelectedCardId(firstSelectable.instanceId);
-                      }
-                    }
-                  }}
-                >
-                  <div className="mobile-dossier-label">{label}</div>
-                  <div className="mobile-dossier-value">{value}</div>
-                  {showOptions ? (
-                    <div className="mobile-dossier-options">
-                      {cards.map((card) => {
-                        const selectable = isCardSelectableForReveal(category, card.revealed);
-                        return (
-                          <button
-                            key={card.instanceId}
-                            type="button"
-                            className={`mobile-dossier-option${
-                              card.instanceId === selectedCardId ? " selected" : ""
-                            }`}
-                            disabled={!selectable}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (selectable) {
-                                setSelectedCardId(card.instanceId);
-                              }
-                            }}
-                          >
-                            {card.labelShort ?? "—"}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-      </div>
-    );
-  };
-
   return (
     <div className="game-layout">
       <section className="panel game-status-bar">
@@ -2107,7 +1725,37 @@ export default function GamePage({
       <div className="game-main">
         {!isMobile ? (
           <section className={`panel dossier${isDevScenario ? " dossier--dev-scroll" : ""}`}>
-            <DossierPanel />
+            <GameDossierPanel
+              you={youSafe}
+              youStatus={youStatus}
+              postGameActive={Boolean(postGame?.isActive)}
+              gameText={gameText}
+              gameLocale={gameLocale}
+              canUseSpecialNow={canUseSpecialNow}
+              handleApplySpecial={handleApplySpecial}
+              orderedDossierCategories={orderedDossierCategories}
+              isCategoryLockedByForcedReveal={isCategoryLockedByForcedReveal}
+              expandedDossierKey={expandedDossierKey}
+              selectedCardId={selectedCardId}
+              isCardSelectableForReveal={isCardSelectableForReveal}
+              setSelectedCardId={setSelectedCardId}
+              setExpandedDossierKey={setExpandedDossierKey}
+              canReveal={canReveal}
+              canRevealSelectedCard={canRevealSelectedCard}
+              canRevealPostGame={canRevealPostGame}
+              onRevealCard={onRevealCard}
+              isDevScenario={isDevScenario}
+              publicPlayers={publicPlayers}
+              currentPlayerId={you?.playerId}
+              devRemoveTargetId={devRemoveTargetId}
+              setDevRemoveTargetId={setDevRemoveTargetId}
+              onDevAddPlayer={onDevAddPlayer}
+              onDevRemovePlayer={onDevRemovePlayer}
+              runDevChecks={runDevChecks}
+              devChecks={devChecks}
+              phase={phase}
+              resolutionNote={gameView.public.resolutionNote}
+            />
           </section>
         ) : null}
 
@@ -2471,7 +2119,20 @@ export default function GamePage({
                   {mobileDossierError}
                 </div>
               ) : null}
-              <MobileDossierPanel />
+              <GameMobileDossierPanel
+                you={youSafe}
+                orderedDossierCategories={orderedDossierCategories}
+                isCategoryLockedByForcedReveal={isCategoryLockedByForcedReveal}
+                isCardSelectableForReveal={isCardSelectableForReveal}
+                gameText={gameText}
+                gameLocale={gameLocale}
+                postGameActive={Boolean(postGame?.isActive)}
+                youStatus={youStatus}
+                canUseSpecialNow={canUseSpecialNow}
+                handleApplySpecialFromDossier={handleApplySpecialFromDossier}
+                selectedCardId={selectedCardId}
+                setSelectedCardId={setSelectedCardId}
+              />
             </div>
             <div className="mobile-dossier-footer">
               <button
@@ -2485,447 +2146,49 @@ export default function GamePage({
           </div>
         </div>
       ) : null}
-
-      <Modal
-        open={isMobile && mobileDeckModal !== null && !!world}
-        title={
-          mobileDeckModal === "bunker"
-            ? gameText.t("worldKindBunker")
-            : mobileDeckModal === "threat"
-              ? gameText.t("worldKindThreat")
-              : gameText.t("worldKindDisaster")
-        }
-        onClose={() => setMobileDeckModal(null)}
-        dismissible={true}
-        className="mobile-deck-modal"
-      >
-        {world ? (
-          <div className="mobile-deck-body">
-            {mobileDeckModal === "bunker" ? (
-              <div className="mobile-deck-grid">
-                {world.bunker.map((card, index) => {
-                  const label = gameLocale.worldBunkerCard(index + 1);
-                  const revealed = card.isRevealed;
-                  const faceUrl = revealed ? getWorldImage(card.imageId) : undefined;
-                  const backUrl = getCardBackUrl("bunker", cardLocale);
-                  return (
-                    <div key={card.id} className="mobile-deck-card">
-                      <CardTile src={revealed ? faceUrl : backUrl} fallback={label} />
-                      <div className="mobile-deck-title">{revealed ? card.title : label}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {mobileDeckModal === "disaster" ? (
-              <div className="mobile-deck-single">
-                {canDecidePostGameOutcome ? (
-                  <div className="mobile-outcome-actions">
-                    <button
-                      className="primary world-outcome-button success"
-                      onClick={() => onSetBunkerOutcome("survived")}
-                    >
-                      {gameText.t("bunkerOutcomeSurvived")}
-                    </button>
-                    <button
-                      className="primary world-outcome-button danger"
-                      onClick={() => onSetBunkerOutcome("failed")}
-                    >
-                      {gameText.t("bunkerOutcomeFailed")}
-                    </button>
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  className="mobile-deck-card mobile-deck-card--single"
-                >
-                  <CardTile
-                    src={getWorldImage(world.disaster.imageId)}
-                    fallback={gameText.t("worldKindDisaster")}
-                  />
-                  <div className="mobile-deck-title">{world.disaster.title}</div>
-                </button>
-              </div>
-            ) : null}
-
-            {mobileDeckModal === "threat" ? (
-              <div className="mobile-deck-grid">
-                {visibleWorldThreats.map((card, index) => {
-                  const label = gameLocale.worldThreatCard(index + 1);
-                  const revealed = card.isRevealed;
-                  const faceUrl = revealed ? getWorldImage(card.imageId) : undefined;
-                  const backUrl = getCardBackUrl("threat", cardLocale);
-                  const canReveal = canRevealThreats && !revealed;
-                  return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      className="mobile-deck-card"
-                      onClick={() => {
-                        if (canReveal) {
-                          onRevealWorldThreat(index);
-                        }
-                      }}
-                    >
-                      <CardTile src={revealed ? faceUrl : backUrl} fallback={label} />
-                      <div className="mobile-deck-title">{revealed ? card.title : label}</div>
-                      {canReveal && showHints ? (
-                        <div className="mobile-deck-hint">{gameText.t("worldHintTapToReveal")}</div>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="muted">{gameText.t("worldNotLoaded")}</div>
-        )}
-        <div className="mobile-deck-footer">
-          <button className="ghost" onClick={() => setMobileDeckModal(null)}>
-            {gameText.t("closeButton")}
-          </button>
-        </div>
-      </Modal>
-
-      <Modal
+      <GameVoteModal
         open={voteModalOpen}
-        title={gameText.t("votingModalTitle")}
         onClose={() => setVoteModalOpen(false)}
-        dismissible={true}
-        className="vote-modal"
-      >
-        {votePhase === "voting" ? (
-          <div className="vote-modal-layout">
-            <div className="vote-modal-section">
-              <div className="muted">{yourVoteLabel}</div>
-              {yourVoteWeight > 1 ? <div className="muted">{gameLocale.votingWeightHint(yourVoteWeight)}</div> : null}
-              <select value={voteTargetId ?? ""} onChange={(event) => setVoteTargetId(event.target.value)}>
-                <option value="" disabled>
-                  {gameText.t("selectPlayerPlaceholder")}
-                </option>
-                {alivePlayers
-                  .filter((player) => player.playerId !== you?.playerId)
-                  .map((player) => (
-                    <option
-                      key={player.playerId}
-                      value={player.playerId}
-                      disabled={disallowedVoteTargetSet.has(player.playerId)}
-                    >
-                      {player.name}
-                      {disallowedVoteTargetSet.has(player.playerId) ? ` (${gameText.t("voteTargetBlockedPlanBSuffix")})` : ""}
-                    </option>
-                  ))}
-              </select>
-              <button
-                className="primary"
-                disabled={!canVote || !voteTargetId || selectedVoteTargetDisallowed}
-                onClick={() => voteTargetId && onVote(voteTargetId)}
-              >
-                {gameText.t("voteButton")}
-              </button>
-              {!canVote ? <div className="muted">{gameText.t("alreadyVoted")}</div> : null}
-              {canVote && selectedVoteTargetDisallowed ? (
-                <div className="muted">{gameText.t("voteTargetBlockedPlanB")}</div>
-              ) : null}
-            </div>
-            <div className="vote-modal-right">
-              <div className="panel-subtitle">{gameText.t("voteCandidateTitle")}</div>
-              {!voteTargetId ? (
-                <div className="muted">{gameText.t("voteCandidateHint")}</div>
-              ) : (
-                <div className="vote-candidate-grid">
-                  {categoryOrder.map((category) => {
-                    const slot = selectedVotePlayer?.categories.find((entry) => normalizeCategoryKey(entry.category) === category);
-                    const labels =
-                      slot && slot.status === "revealed" && slot.cards.length > 0
-                        ? slot.cards.map((card) => card.labelShort ?? "—").join(", ")
-                        : gameLocale.slotHidden;
-                    const categoryLabel = getCategoryDisplayLabel(normalizeCategoryKey(category), gameLocale);
-
-                    return (
-                      <div key={category} className="vote-candidate-card">
-                        <span className="vote-candidate-text">
-                          {categoryLabel}: {labels}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
-
-        {votePhase === "voteResolve" ? (
-          <div className="vote-modal-section">
-            <div className="panel-subtitle">{gameText.t("votingResolveTitle")}</div>
-            <div>{gameView.public.resolutionNote ?? gameText.t("votingResolveEmpty")}</div>
-            <div className="vote-summary-list">
-              {votesPublic.map((vote) => (
-                <div key={vote.voterId} className="vote-summary-row">
-                  <span>{vote.voterName}</span>
-                  <span>
-                    {(() => {
-                      const reasonText = voteReasonText(vote.reasonCode, vote.reason);
-                      if (vote.status === "voted" && vote.targetName) {
-                        return reasonText
-                          ? `${gameLocale.voteAgainst(vote.targetName)} (${reasonText})${(vote.weight ?? 1) > 1 ? ` x${vote.weight}` : ""}`
-                          : `${gameLocale.voteAgainst(vote.targetName)}${(vote.weight ?? 1) > 1 ? ` x${vote.weight}` : ""}`;
-                      }
-                      if (vote.status === "invalid") {
-                        return gameLocale.voteInvalid(reasonText || gameLocale.voteNotVoted);
-                      }
-                      return gameLocale.voteNotVoted;
-                    })()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </Modal>
-
-      <Modal
+        gameText={gameText}
+        gameLocale={gameLocale}
+        votePhase={votePhase}
+        yourVoteLabel={yourVoteLabel}
+        yourVoteWeight={yourVoteWeight}
+        voteTargetId={voteTargetId}
+        setVoteTargetId={setVoteTargetId}
+        alivePlayers={alivePlayers}
+        currentPlayerId={you?.playerId}
+        disallowedVoteTargetSet={disallowedVoteTargetSet}
+        canVote={canVote}
+        selectedVoteTargetDisallowed={selectedVoteTargetDisallowed}
+        onVote={onVote}
+        categoryOrder={categoryOrder}
+        selectedVotePlayer={selectedVotePlayer}
+        votesPublic={votesPublic}
+        resolutionNote={gameView.public.resolutionNote}
+        voteReasonText={voteReasonText}
+      />
+      <GameWorldModal
         open={!isMobile && worldModalOpen && !!world}
-        title={gameText.t("worldModalTitle")}
         onClose={() => setWorldModalOpen(false)}
-        dismissible={true}
-        className="world-modal"
-      >
-        {world ? (
-          <div className="world-modal-layout">
-            <div className="world-columns">
-              <div
-                className="world-column world-column-left world-column-grid"
-                style={
-                  {
-                    "--card-rows": Math.max(1, Math.ceil(world.bunker.length / 2)),
-                  } as CSSProperties
-                }
-              >
-                {world.bunker.map((card, index) => {
-                  const isSoloLast = world.bunker.length % 2 === 1 && index === world.bunker.length - 1;
-                  const label = gameLocale.worldBunkerCard(index + 1);
-                  const revealed = card.isRevealed;
-                  const faceUrl = revealed ? getWorldImage(card.imageId) : undefined;
-                  const backUrl = getCardBackUrl("bunker", cardLocale);
-                  return (
-                    <div
-                      key={card.id}
-                      className={`world-slot ${revealed ? "revealed clickable" : "hidden"}${
-                        isSoloLast ? " world-slot--solo" : ""
-                      }`}
-                      role={revealed ? "button" : undefined}
-                      tabIndex={revealed ? 0 : -1}
-                      onClick={() => {
-                        if (!revealed) return;
-                        openWorldDetail({
-                          kind: gameText.t("worldKindBunker"),
-                          title: card.title || label,
-                          description: card.description,
-                          imageUrl: faceUrl,
-                          label,
-                        });
-                      }}
-                      onKeyDown={(event) => {
-                        if (!revealed) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openWorldDetail({
-                            kind: gameText.t("worldKindBunker"),
-                            title: card.title || label,
-                            description: card.description,
-                            imageUrl: faceUrl,
-                            label,
-                          });
-                        }
-                      }}
-                    >
-                      <div className="world-slot-header">{gameText.t("worldKindBunker")}</div>
-                      <div className="world-slot-media">
-                        <CardTile
-                          src={revealed ? faceUrl : backUrl}
-                          fallback={label}
-                        />
-                      </div>
-                      <div className="world-slot-footer">
-                        <div className="world-slot-title">{revealed ? card.title : label}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="world-center">
-                {canDecidePostGameOutcome ? (
-                  <div className="world-outcome-actions">
-                    <button
-                      className="primary world-outcome-button success"
-                      onClick={() => onSetBunkerOutcome("survived")}
-                    >
-                      {gameText.t("bunkerOutcomeSurvived")}
-                    </button>
-                    <button
-                      className="primary world-outcome-button danger"
-                      onClick={() => onSetBunkerOutcome("failed")}
-                    >
-                      {gameText.t("bunkerOutcomeFailed")}
-                    </button>
-                  </div>
-                ) : null}
-                {showThreatModifier ? (
-                  <div className="world-threat-modifier">{threatModifierText}</div>
-                ) : null}
-                <div
-                  className="world-center-media"
-                  onClick={() =>
-                    openWorldDetail({
-                      kind: gameText.t("worldKindDisaster"),
-                      title: world.disaster.title,
-                      description: world.disaster.description,
-                      imageUrl: getWorldImage(world.disaster.imageId),
-                      label: gameText.t("worldKindDisaster"),
-                    })
-                  }
-                  role="button"
-                  tabIndex={0}
-                >
-                  <CardTile
-                    src={getWorldImage(world.disaster.imageId)}
-                    fallback={gameText.t("worldKindDisaster")}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="world-column world-column-right world-column-grid"
-                style={
-                  {
-                    "--card-rows": Math.max(1, Math.ceil(visibleWorldThreats.length / 2)),
-                  } as CSSProperties
-                }
-              >
-                {visibleWorldThreats.map((card, index) => {
-                  const isSoloLast =
-                    visibleWorldThreats.length % 2 === 1 && index === visibleWorldThreats.length - 1;
-                  const label = gameLocale.worldThreatCard(index + 1);
-                  const revealed = card.isRevealed;
-                  const faceUrl = revealed ? getWorldImage(card.imageId) : undefined;
-                  const backUrl = getCardBackUrl("threat", cardLocale);
-                  const canReveal = canRevealThreats && !revealed;
-                  return (
-                    <div
-                      key={card.id}
-                      className={`world-slot ${revealed ? "revealed clickable" : "hidden"} ${canReveal ? "clickable" : ""}${
-                        isSoloLast ? " world-slot--solo" : ""
-                      }`}
-                      onClick={() => {
-                        if (!revealed && canReveal) {
-                          onRevealWorldThreat(index);
-                          return;
-                        }
-                        if (revealed) {
-                          openWorldDetail({
-                            kind: gameText.t("worldKindThreat"),
-                            title: card.title || label,
-                            description: card.description,
-                            imageUrl: faceUrl,
-                            label,
-                          });
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (!canReveal && !revealed) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          if (!revealed && canReveal) {
-                            onRevealWorldThreat(index);
-                            return;
-                          }
-                          if (revealed) {
-                            openWorldDetail({
-                              kind: gameText.t("worldKindThreat"),
-                              title: card.title || label,
-                              description: card.description,
-                              imageUrl: faceUrl,
-                              label,
-                            });
-                          }
-                        }
-                      }}
-                      role={canReveal || revealed ? "button" : undefined}
-                      tabIndex={canReveal || revealed ? 0 : -1}
-                    >
-                      <div className="world-slot-header">{gameText.t("worldKindThreat")}</div>
-                      <div className="world-slot-media">
-                        <CardTile
-                          src={revealed ? faceUrl : backUrl}
-                          fallback={label}
-                        />
-                      </div>
-                      <div className="world-slot-footer">
-                        <div className="world-slot-title">{revealed ? card.title : label}</div>
-                      </div>
-                      {canReveal && showHints ? (
-                        <div className="world-slot-hint">{gameText.t("worldHintTapToReveal")}</div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-              {worldDetail ? (
-                <div
-                  className="world-detail-overlay"
-                  onClick={() => setWorldDetail(null)}
-                >
-                  <div
-                    className="world-detail-card"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <div className="world-detail-header">
-                      <div className="world-detail-kind">{worldDetail.kind}</div>
-                      <button
-                        className="icon-button"
-                        onClick={() => setWorldDetail(null)}
-                        aria-label={gameText.t("closeButton")}
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="world-detail-title">{worldDetail.title}</div>
-                    <div className="world-detail-media">
-                      {worldDetail.imageUrl ? (
-                        <img
-                          src={worldDetail.imageUrl}
-                          alt={worldDetail.label}
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <div className="world-detail-fallback">{worldDetail.label}</div>
-                      )}
-                    </div>
-                    {!worldDetail.imageUrl && worldDetail.description ? (
-                      <div className="world-detail-text">{worldDetail.description}</div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-                ) : (
-          <div className="muted">{gameText.t("worldNotLoaded")}</div>
-        )}
-        {isMobile ? (
-          <div className="world-modal-footer">
-            <button className="ghost" onClick={() => setWorldModalOpen(false)}>
-              {gameText.t("closeButton")}
-            </button>
-          </div>
-        ) : null}
-      </Modal>
+        world={world}
+        isMobile={isMobile}
+        cardLocale={cardLocale}
+        gameText={gameText}
+        gameLocale={gameLocale}
+        canDecidePostGameOutcome={canDecidePostGameOutcome}
+        onSetBunkerOutcome={onSetBunkerOutcome}
+        showThreatModifier={showThreatModifier}
+        threatModifierText={threatModifierText}
+        getWorldImage={getWorldImage}
+        visibleWorldThreats={visibleWorldThreats}
+        canRevealThreats={canRevealThreats}
+        onRevealWorldThreat={onRevealWorldThreat}
+        showHints={showHints}
+        openWorldDetail={openWorldDetail}
+        worldDetail={worldDetail}
+        onCloseWorldDetail={() => setWorldDetail(null)}
+      />
 
       {postGame?.outcome ? (
         <div className="postgame-overlay" role="dialog" aria-modal="true">
@@ -2942,223 +2205,62 @@ export default function GamePage({
           </div>
         </div>
       ) : null}
-
       {!isMobileNarrow ? (
-        <Modal
-          open={Boolean(specialDialog)}
-          title={specialDialog?.title}
-          onClose={closeSpecialDialog}
-          dismissible={true}
-        >
-          {specialDialog?.description ? <div className="muted">{specialDialog.description}</div> : null}
-          {specialDialog && specialDialog.kind !== "none" ? (
-            <>
-              {specialDialog.options.length === 0 ? (
-                <div className="muted">{gameText.t("noTargetCandidates")}</div>
-              ) : (
-                <>
-                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
-                    <>
-                      <div className="muted">{gameText.t("specialDialogStepOwnCard")}</div>
-                      <select
-                        value={dialogSourceCardSelection}
-                        onChange={(event) => setDialogSourceCardSelection(event.target.value)}
-                        disabled={dialogSourceCards.length === 0}
-                      >
-                        <option value="" disabled>
-                          {gameText.t("specialDialogPlaceholderOwnCard")}
-                        </option>
-                        {dialogSourceCards.map((card) => (
-                          <option key={card.instanceId} value={card.instanceId}>
-                            {card.hint}
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  ) : null}
-
-                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
-                    <div className="muted">{gameText.t("specialDialogStepPlayer")}</div>
-                  ) : null}
-                  <select
-                    value={dialogSelection}
-                    onChange={(event) => selectDialogPlayer(event.target.value)}
-                    disabled={specialDialog.options.length === 0}
-                  >
-                    <option value="" disabled>
-                      {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard
-                        ? gameText.t("specialDialogPlaceholderPlayer")
-                        : gameText.t("modalSelect")}
-                    </option>
-                    {specialDialog.options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  {isPlayerCardPickerDialog && dialogSelection ? (
-                    <>
-                      {specialDialog?.cardPicker?.requireSourceCard ? (
-                        <div className="muted">{gameText.t("specialDialogStepTargetCard")}</div>
-                      ) : (
-                        <div className="muted">{gameText.t("specialDialogLabelTargetCard")}</div>
-                      )}
-                      <select
-                        value={dialogTargetCardSelection}
-                        onChange={(event) => setDialogTargetCardSelection(event.target.value)}
-                        disabled={dialogTargetCards.length === 0}
-                      >
-                        <option value="" disabled>
-                          {gameText.t("specialDialogPlaceholderTargetCard")}
-                        </option>
-                        {dialogTargetCards.map((card) => (
-                          <option key={card.instanceId} value={card.instanceId}>
-                            {card.hint}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedTargetCardHint ? (
-                        <div className="muted">
-                          {specialDialog?.cardPicker?.requireSourceCard && selectedSourceCardHint
-                            ? gameLocale.specialDialogSummaryWithSource(
-                                selectedSourceCardHint,
-                                selectedTargetCardHint
-                              )
-                            : gameLocale.specialDialogSummaryTargetOnly(selectedTargetCardHint)}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </>
-              )}
-            </>
-          ) : null}
-          <div className="modal-actions">
-            <button className="ghost" onClick={closeSpecialDialog}>
-              {gameText.t("modalCancel")}
-            </button>
-            <button
-              className="primary"
-              disabled={!canSubmitSpecialDialog}
-              onClick={submitSpecialDialog}
-            >
-              {gameText.t("modalApply")}
-            </button>
-          </div>
-        </Modal>
+        <GameSpecialDialog
+          mobile={false}
+          specialDialog={specialDialog}
+          closeSpecialDialog={closeSpecialDialog}
+          gameText={gameText}
+          gameLocale={gameLocale}
+          isPlayerCardPickerDialog={isPlayerCardPickerDialog}
+          dialogSelection={dialogSelection}
+          selectDialogPlayer={selectDialogPlayer}
+          dialogSourceCardSelection={dialogSourceCardSelection}
+          setDialogSourceCardSelection={setDialogSourceCardSelection}
+          dialogSourceCards={dialogSourceCards}
+          dialogTargetCardSelection={dialogTargetCardSelection}
+          setDialogTargetCardSelection={setDialogTargetCardSelection}
+          dialogTargetCards={dialogTargetCards}
+          selectedSourceCardHint={selectedSourceCardHint}
+          selectedTargetCardHint={selectedTargetCardHint}
+          canSubmitSpecialDialog={canSubmitSpecialDialog}
+          submitSpecialDialog={submitSpecialDialog}
+        />
       ) : null}
 
       {isMobileNarrow && specialDialog ? (
-        <div className="mobile-special-backdrop" onClick={closeSpecialDialog}>
-          <div
-            className="mobile-special-panel"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mobile-special-header">
-              <div className="mobile-special-title">{specialDialog.title}</div>
-              <button className="icon-button" onClick={closeSpecialDialog} aria-label={gameText.t("closeButton")}>
-                ×
-              </button>
-            </div>
-            {specialDialog.description ? (
-              <div className="muted mobile-special-description">{specialDialog.description}</div>
-            ) : null}
-            <div className="mobile-special-body">
-              {specialDialog.options.length === 0 ? (
-                <div className="muted">{gameText.t("noTargetCandidates")}</div>
-              ) : (
-                <>
-                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
-                    <>
-                      <div className="muted">{gameText.t("specialDialogStepOwnCard")}</div>
-                      <select
-                        value={dialogSourceCardSelection}
-                        onChange={(event) => setDialogSourceCardSelection(event.target.value)}
-                        disabled={dialogSourceCards.length === 0}
-                      >
-                        <option value="" disabled>
-                          {gameText.t("specialDialogPlaceholderOwnCard")}
-                        </option>
-                        {dialogSourceCards.map((card) => (
-                          <option key={card.instanceId} value={card.instanceId}>
-                            {card.hint}
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  ) : null}
-
-                  {isPlayerCardPickerDialog && specialDialog?.cardPicker?.requireSourceCard ? (
-                    <div className="muted">{gameText.t("specialDialogStepPlayer")}</div>
-                  ) : null}
-                  <div className="mobile-special-options">
-                    {specialDialog.options.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`mobile-special-option${dialogSelection === option.id ? " selected" : ""}`}
-                        onClick={() => selectDialogPlayer(option.id)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {isPlayerCardPickerDialog && dialogSelection ? (
-                    <>
-                      {specialDialog?.cardPicker?.requireSourceCard ? (
-                        <div className="muted">{gameText.t("specialDialogStepTargetCard")}</div>
-                      ) : (
-                        <div className="muted">{gameText.t("specialDialogLabelTargetCard")}</div>
-                      )}
-                      <select
-                        value={dialogTargetCardSelection}
-                        onChange={(event) => setDialogTargetCardSelection(event.target.value)}
-                        disabled={dialogTargetCards.length === 0}
-                      >
-                        <option value="" disabled>
-                          {gameText.t("specialDialogPlaceholderTargetCard")}
-                        </option>
-                        {dialogTargetCards.map((card) => (
-                          <option key={card.instanceId} value={card.instanceId}>
-                            {card.hint}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedTargetCardHint ? (
-                        <div className="muted">
-                          {specialDialog?.cardPicker?.requireSourceCard && selectedSourceCardHint
-                            ? gameLocale.specialDialogSummaryWithSource(
-                                selectedSourceCardHint,
-                                selectedTargetCardHint
-                              )
-                            : gameLocale.specialDialogSummaryTargetOnly(selectedTargetCardHint)}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </>
-              )}
-            </div>
-            <div className="mobile-special-footer">
-              <button className="ghost" onClick={closeSpecialDialog}>
-                {gameText.t("modalCancel")}
-              </button>
-              <button
-                className="primary"
-                disabled={!canSubmitSpecialDialog}
-                onClick={submitSpecialDialog}
-              >
-                {gameText.t("modalApply")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <GameSpecialDialog
+          mobile={true}
+          specialDialog={specialDialog}
+          closeSpecialDialog={closeSpecialDialog}
+          gameText={gameText}
+          gameLocale={gameLocale}
+          isPlayerCardPickerDialog={isPlayerCardPickerDialog}
+          dialogSelection={dialogSelection}
+          selectDialogPlayer={selectDialogPlayer}
+          dialogSourceCardSelection={dialogSourceCardSelection}
+          setDialogSourceCardSelection={setDialogSourceCardSelection}
+          dialogSourceCards={dialogSourceCards}
+          dialogTargetCardSelection={dialogTargetCardSelection}
+          setDialogTargetCardSelection={setDialogTargetCardSelection}
+          dialogTargetCards={dialogTargetCards}
+          selectedSourceCardHint={selectedSourceCardHint}
+          selectedTargetCardHint={selectedTargetCardHint}
+          canSubmitSpecialDialog={canSubmitSpecialDialog}
+          submitSpecialDialog={submitSpecialDialog}
+        />
       ) : null}
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
 

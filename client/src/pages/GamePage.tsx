@@ -1,12 +1,22 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import type { GameEvent, GameView, RoomState, SpecialConditionInstance, SpecialTargetScope } from "@bunker/shared";
 import { computeNeighbors, getTargetCandidates } from "@bunker/shared";
-import { getCurrentLocale, type UiDictionary, useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
+import { getCurrentLocale, useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import Modal from "../components/Modal";
 import TableLayout from "../components/TableLayout";
 import DossierMiniCard from "../components/DossierMiniCard";
 import { getCardBackUrl, getCardFaceUrl, preloadCategoryBacks } from "../cards";
 import { buildGameContextHints, type BuildGameHintsParams } from "../gameContextHints";
+import {
+  CATEGORY_KEY_ORDER,
+  DOSSIER_GRID_ROW_KEYS,
+  DOSSIER_MAIN_CATEGORY_KEY,
+  PUBLIC_CATEGORY_ORDER,
+  getCategoryDisplayLabel,
+  getCategoryDisplayLabelFromRaw,
+  getCategoryOptions,
+  normalizeCategoryKey,
+} from "../game/categoryPresentation";
 
 interface GamePageProps {
   roomState: RoomState | null;
@@ -45,65 +55,6 @@ interface SpecialDialogState {
   options: Array<{ id: string; label: string }>;
   description?: string;
   cardPicker?: SpecialDialogCardPicker;
-}
-
-const CATEGORY_KEY_ORDER = ["profession", "health", "hobby", "baggage", "facts1", "facts2", "biology"];
-const PUBLIC_CATEGORY_ORDER = [...CATEGORY_KEY_ORDER, "special"];
-const DOSSIER_MAIN_CATEGORY_KEY = "profession";
-const DOSSIER_GRID_ROW_KEYS: string[][] = [
-  ["health", "biology"],
-  ["baggage", "hobby"],
-  ["facts1", "facts2"],
-];
-
-const CATEGORY_KEY_ALIASES: Record<string, string> = {
-  fact1: "facts1",
-  fact2: "facts2",
-  facts: "facts1",
-  special_conditions: "special",
-  specialconditions: "special",
-  bio: "biology",
-};
-
-type GameCategoryLabels = Pick<UiDictionary,
-  | "categoryProfession"
-  | "categoryHealth"
-  | "categoryHobby"
-  | "categoryBaggage"
-  | "categoryFacts"
-  | "categoryFact1"
-  | "categoryFact2"
-  | "categoryBiology"
-  | "categorySpecial">;
-
-function getCategoryDisplayLabel(categoryKey: string, text: GameCategoryLabels): string {
-  const labels: Record<string, string> = {
-    profession: text.categoryProfession,
-    health: text.categoryHealth,
-    hobby: text.categoryHobby,
-    baggage: text.categoryBaggage,
-    facts: text.categoryFacts,
-    facts1: text.categoryFact1,
-    facts2: text.categoryFact2,
-    biology: text.categoryBiology,
-    special: text.categorySpecial,
-  };
-  return labels[categoryKey] ?? categoryKey;
-}
-
-function normalizeCategoryKey(category: string): string {
-  const raw = String(category ?? "").trim();
-  if (!raw) return "";
-  const lowered = raw.toLowerCase();
-  return CATEGORY_KEY_ALIASES[lowered] ?? lowered;
-}
-
-function getCategoryDisplayLabelFromRaw(category: string, text: GameCategoryLabels): string {
-  return getCategoryDisplayLabel(normalizeCategoryKey(category), text);
-}
-
-function getCategoryOptions(text: GameCategoryLabels): Array<{ id: string; label: string }> {
-  return CATEGORY_KEY_ORDER.map((id) => ({ id, label: getCategoryDisplayLabel(id, text) }));
 }
 
 const VOTING_ONLY_EFFECTS = new Set([

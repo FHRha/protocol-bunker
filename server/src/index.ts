@@ -18,7 +18,6 @@ import {
   type ScenarioMeta,
   type ScenarioSession,
   type ScenarioModule,
-  type ScenarioContext,
   type GameSettings,
   type GameRuleset,
   type ManualRulesConfig,
@@ -34,198 +33,124 @@ import {
   buildLinkSet,
   getRulesetForPlayerCount,
 } from "@bunker/shared";
-import { buildAssetCatalog } from "./catalog.js";
-import { createRandomRng } from "./rng.js";
 import {
   getSubtitleMap,
   getThreatOverlayShortMap,
   resolveCardKeyFromAssetId as resolveSubtitleCardKeyFromAssetId,
   type SubtitleMap,
-} from "./card_subtitles.js";
-import { getDisasterTextByAssetId } from "./world_texts.js";
-import { normalizeServerLocale, tServer, type ServerLocaleCode } from "./serverLocale.js";
-import { tOverlay } from "./overlayLocale.js";
-import { localizeScenarioMessage, resolveScenarioLocaleKey } from "./scenarioLocale.js";
-import { localizeSpecialConditionField } from "./specialConditionLocale.js";
-import { buildDefaultOverlayBioTags, buildOverlayBiology } from "./biologyLocale.js";
-import { loadScenarios } from "@bunker/scenarios";
+} from "./assets/card_subtitles.js";
+import { getDisasterTextByAssetId } from "./assets/world_texts.js";
+import { normalizeServerLocale, tServer, type ServerLocaleCode } from "./locales/serverLocale.js";
+import { tOverlay } from "./locales/overlayLocale.js";
+import { localizeScenarioMessage, resolveScenarioLocaleKey } from "./locales/scenarioLocale.js";
+import { localizeSpecialConditionField } from "./locales/specialConditionLocale.js";
+import { buildDefaultOverlayBioTags, buildOverlayBiology } from "./locales/biologyLocale.js";
+import { createRuntimeContext } from "./bootstrap/runtimeContext.js";
+import {
+  broadcastOverlayState as broadcastOverlayStatePresenter,
+  broadcastGameViews as broadcastGameViewsPresenter,
+  broadcastRoomState as broadcastRoomStatePresenter,
+  sendGameView as sendGameViewPresenter,
+  sendOverlayState as sendOverlayStatePresenter,
+  syncScenarioStatuses,
+} from "./presenters/gameState.js";
+import {
+  sendLocalizedError as sendLocalizedErrorPresenter,
+  sendReconnectForbidden as sendReconnectForbiddenPresenter,
+  tServerForRoom as tServerForRoomPresenter,
+} from "./presenters/messages.js";
+import { buildRoomState as buildRoomStateProjection } from "./presenters/roomState.js";
+import { createLobbyRoom } from "./rooms/factory.js";
+import {
+  buildSystemEvent,
+  broadcastEvent,
+  formatRemaining,
+  getCurrentTurnPlayerId,
+  getEffectiveMaxPlayers,
+  getScenarioStatus,
+  isClassicRoom,
+  pickNextHost,
+  resolveControlActorId,
+  updateRulesetIfAuto,
+} from "./game/runtime.js";
+import { runControlCommand, startGameAsControl, type ControlCommand } from "./game/control.js";
+import { createWsContexts } from "./ws/context.js";
+import { routeClientMessage } from "./ws/router.js";
+import { handleSocketClose, parseIncomingClientMessage, validateWsOrigin } from "./ws/transport.js";
+import type {
+  IdentityMode,
+  OverlayControlInviteToken,
+  OverlayControlToken,
+  OverlayViewToken,
+  Player,
+  PlayerReconnectToken,
+  Room,
+  SpectatorInvite,
+  SpectatorToken,
+} from "./core/types.js";
+import {
+  ALLOWED_ORIGINS_RAW,
+  ASSETS_ROOT,
+  ASSETS_ROOT_SOURCE,
+  BUILD_PROFILE,
+  CLIENT_DIST,
+  CLIENT_DIST_SOURCE,
+  DESKTOP_API_SECRET,
+  DEV_LOGS,
+  DEV_SCENARIOS_ENABLED,
+  DISCONNECT_GRACE_MS,
+  DOMAIN,
+  ENFORCE_ORIGIN_CHECKS,
+  HIDE_LOCAL_LINKS_IN_LOGS,
+  HOST,
+  HOST_GRACE_MS,
+  IDENTITY_MODE,
+  LINKS_VISIBILITY_MODE,
+  LOCALES_ROOT,
+  OUTBOUND_SENSITIVE_PAYLOAD_GUARD,
+  OUTBOUND_SENSITIVE_PAYLOAD_GUARD_STRICT,
+  OVERLAY_CONTROL_INVITE_TTL_MS,
+  OVERLAY_PUBLIC_ROOT,
+  OVERLAY_TOKEN_TTL_MS,
+  PORT,
+  PUBLIC_HOST,
+  PUBLIC_ORIGIN,
+  RECONNECT_GRACE_AFTER_KICK_MS,
+  ROOM_CLEANUP_INTERVAL_MS,
+  ROOM_ENDED_TTL_MS,
+  ROOM_INACTIVE_TTL_MS,
+  SENSITIVE_HTTP_RATE_LIMIT_ENABLED,
+  SENSITIVE_HTTP_RATE_LIMIT_MAX,
+  SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS,
+  SERVE_CLIENT,
+  SPECTATOR_INVITE_TTL_MS,
+  TRUST_PROXY,
+  WAN_LOOKUP_CACHE_TTL_MS,
+  WAN_LOOKUP_TIMEOUT_MS,
+  envFlag,
+} from "./config/runtime.js";
+import { connectionInfo, overlaySubscriptions, rooms } from "./core/serverState.js";
+import {
+  addLobbyBotPlayer as addLobbyBotPlayerState,
+  attachPlayer as attachPlayerState,
+  generateRoomCode as generateRoomCodeState,
+  removeLobbyPlayer as removeLobbyPlayerState,
+} from "./rooms/lifecycle.js";
+import { createCleanupInactiveRooms } from "./rooms/runtime.js";
+import {
+  computeKickRemainingMs as computeKickRemainingMsState,
+  findPlayerBySessionId as findPlayerBySessionIdState,
+  findPlayerByTabId as findPlayerByTabIdState,
+  findPlayerByToken as findPlayerByTokenState,
+  markPlayerLeftBunker as markPlayerLeftBunkerState,
+  scheduleHostTransfer as scheduleHostTransferState,
+  transferHost as transferHostState,
+} from "./sessions/playerSession.js";
 
-type PlayerReconnectToken = string;
-type OverlayViewToken = string;
-type OverlayControlToken = string;
-type OverlayControlInviteToken = string;
-type SpectatorToken = string;
-
-interface SpectatorInvite {
-  maxUses: number;
-  remainingUses: number;
-  issuedAt: number;
-  expiresAt: number;
-}
-
-interface Player {
-  playerId: string;
-  name: string;
-  token: PlayerReconnectToken;
-  tabId?: string;
-  sessionId?: string;
-  ws?: WebSocket;
-  connected: boolean;
-  disconnectedAt?: number;
-  totalAbsentMs?: number;
-  scenarioStatus?: PlayerStatus;
-  eliminatedAt?: number;
-  leftBunker?: boolean;
-  kickedAt?: number;
-  disconnectTimer?: ReturnType<typeof setTimeout>;
-  disconnectTicker?: ReturnType<typeof setInterval>;
-  disconnectNotifiedMinutes?: number;
-  needsFullState?: boolean;
-  needsFullGameView?: boolean;
-}
-
-interface Room {
-  code: string;
-  hostId: string;
-  controlId: string;
-  createdAt: number;
-  phase: "lobby" | "game";
-  scenarioId: string;
-  scenarioMeta: ScenarioMeta;
-  scenarioModule: ScenarioModule;
-  settings: GameSettings;
-  disasterOptions: Array<{ id: string; title: string }>;
-  ruleset: GameRuleset;
-  rulesOverriddenByHost: boolean;
-  rulesPresetCount?: number;
-  world?: WorldState30;
-  isDev?: boolean;
-  players: Map<string, Player>;
-  playersByToken: Map<string, string>;
-  playersByTabId: Map<string, string>;
-  playersBySessionId: Map<string, string>;
-  joinOrder: string[];
-  hostTransferTimer?: ReturnType<typeof setTimeout>;
-  session?: ScenarioSession;
-  sessionContext?: ScenarioContext;
-  sessionPlayerIds?: Set<string>;
-  lastRoomState?: RoomState;
-  lastGameViews?: Map<string, ReturnType<ScenarioSession["getGameView"]>>;
-  overlayToken: OverlayViewToken;
-  spectatorToken: SpectatorToken;
-  overlayEditToken: OverlayControlToken;
-  overlayTokenIssuedAt: number;
-  overlayEditTokenIssuedAt: number;
-  overlayControlInviteToken: OverlayControlInviteToken;
-  overlayControlInviteIssuedAt: number;
-  spectatorInvites: Map<string, SpectatorInvite>;
-  overlayOverrides?: OverlayOverrides;
-}
-
-const PORT = Number(process.env.PORT ?? 3000);
 let LISTEN_PORT = PORT;
-const HOST = process.env.HOST ?? "0.0.0.0";
-const ASSETS_PRIMARY = path.resolve(process.cwd(), "assets");
-const ASSETS_FALLBACK = path.resolve(process.cwd(), "..", "assets");
-const LOCALES_PRIMARY = path.resolve(process.cwd(), "locales");
-const LOCALES_FALLBACK = path.resolve(process.cwd(), "..", "locales");
-const CLIENT_DIST_PRIMARY = path.resolve(process.cwd(), "client", "dist");
-const CLIENT_DIST_FALLBACK = path.resolve(process.cwd(), "..", "client", "dist");
-const OVERLAY_PUBLIC_PRIMARY = path.resolve(process.cwd(), "server", "public", "overlay");
-const OVERLAY_PUBLIC_FALLBACK = path.resolve(process.cwd(), "public", "overlay");
-
-const resolveOptionalPath = (envKey: string, primary: string, fallback: string) => {
-  const raw = process.env[envKey]?.trim();
-  if (raw) {
-    const resolved = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-    return { path: resolved, source: `${envKey}=${raw}` };
-  }
-  const chosen = fs.existsSync(primary) ? primary : fallback;
-  return { path: chosen, source: fs.existsSync(primary) ? "default(primary)" : "default(fallback)" };
-};
-
-const assetsResolved = resolveOptionalPath("BUNKER_ASSETS_ROOT", ASSETS_PRIMARY, ASSETS_FALLBACK);
-const ASSETS_ROOT = assetsResolved.path;
-const localesResolved = resolveOptionalPath("BUNKER_LOCALES_ROOT", LOCALES_PRIMARY, LOCALES_FALLBACK);
-const LOCALES_ROOT = localesResolved.path;
-const clientResolved = resolveOptionalPath("BUNKER_CLIENT_DIST", CLIENT_DIST_PRIMARY, CLIENT_DIST_FALLBACK);
-const CLIENT_DIST = clientResolved.path;
-const overlayPublicResolved = fs.existsSync(OVERLAY_PUBLIC_PRIMARY)
-  ? OVERLAY_PUBLIC_PRIMARY
-  : OVERLAY_PUBLIC_FALLBACK;
-const OVERLAY_PUBLIC_ROOT = overlayPublicResolved;
-type IdentityMode = "prod" | "dev_tab";
-const IDENTITY_MODE: IdentityMode =
-  process.env.BUNKER_IDENTITY_MODE?.trim().toLowerCase() === "dev_tab" ||
-  envFlag(process.env.DEV_NEW_PLAYER_PER_TAB)
-    ? "dev_tab"
-    : "prod";
-const DEV_LOGS = IDENTITY_MODE === "dev_tab" || envFlag(process.env.BUNKER_DEV_LOGS);
-const DEV_SCENARIOS_ENABLED =
-  IDENTITY_MODE === "dev_tab" || envFlag(process.env.BUNKER_ENABLE_DEV_SCENARIOS);
-const DISCONNECT_GRACE_MS = 300_000;
-const RECONNECT_GRACE_AFTER_KICK_MS = 300_000;
-const HOST_GRACE_MS = 60_000;
-const ROOM_CLEANUP_INTERVAL_MS = Number(process.env.BUNKER_ROOM_CLEANUP_INTERVAL_MS ?? 60_000);
-const ROOM_INACTIVE_TTL_MS = Number(process.env.BUNKER_ROOM_INACTIVE_TTL_MS ?? 6 * 60 * 60 * 1000);
-const ROOM_ENDED_TTL_MS = Number(process.env.BUNKER_ROOM_ENDED_TTL_MS ?? 30 * 60 * 1000);
 const CLASSIC_SCENARIO_ID = "classic";
 const MIN_CLASSIC_PLAYERS = 4;
 const MAX_CLASSIC_PLAYERS = 16;
-const TRUST_PROXY = envFlag(process.env.TRUST_PROXY);
-const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN;
-const PUBLIC_HOST = process.env.PUBLIC_HOST ?? process.env.BUNKER_PUBLIC_HOST;
-const DOMAIN = process.env.DOMAIN ?? process.env.BUNKER_DOMAIN;
-const BUILD_PROFILE = (process.env.BUNKER_BUILD_PROFILE ?? "").trim().toLowerCase();
-const LINKS_VISIBILITY_MODE = (
-  process.env.BUNKER_LINKS_VISIBILITY ?? (BUILD_PROFILE === "server" ? "public" : "all")
-)
-  .trim()
-  .toLowerCase();
-const HIDE_LOCAL_LINKS_IN_LOGS =
-  LINKS_VISIBILITY_MODE === "public" || LINKS_VISIBILITY_MODE === "external";
-const SERVE_CLIENT = process.env.BUNKER_SERVE_CLIENT !== "false";
-const DESKTOP_API_SECRET = String(process.env.BUNKER_DESKTOP_API_SECRET ?? "").trim();
-const ALLOWED_ORIGINS_RAW = process.env.BUNKER_ALLOWED_ORIGINS ?? "";
-const ENFORCE_ORIGIN_CHECKS = (() => {
-  const explicit = process.env.BUNKER_ENFORCE_ORIGIN_CHECKS;
-  if (typeof explicit === "string" && explicit.trim().length > 0) {
-    return envFlag(explicit);
-  }
-  const hasNonWildcardAllowlist = ALLOWED_ORIGINS_RAW
-    .split(/[\s,;]+/)
-    .map((entry) => entry.trim())
-    .some((entry) => entry.length > 0 && entry !== "*");
-  return hasNonWildcardAllowlist;
-})();
-const OUTBOUND_SENSITIVE_PAYLOAD_GUARD = process.env.BUNKER_OUTBOUND_SENSITIVE_GUARD !== "0";
-const OUTBOUND_SENSITIVE_PAYLOAD_GUARD_STRICT = envFlag(process.env.BUNKER_OUTBOUND_SENSITIVE_GUARD_STRICT);
-const SENSITIVE_HTTP_RATE_LIMIT_ENABLED = process.env.BUNKER_SENSITIVE_HTTP_RATE_LIMIT !== "0";
-const SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS = (() => {
-  const raw = Number(process.env.BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS ?? 60_000);
-  if (!Number.isFinite(raw)) return 60_000;
-  return Math.max(1_000, Math.floor(raw));
-})();
-const SENSITIVE_HTTP_RATE_LIMIT_MAX = (() => {
-  const raw = Number(process.env.BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX ?? 120);
-  if (!Number.isFinite(raw)) return 120;
-  return Math.max(1, Math.floor(raw));
-})();
-const OVERLAY_TOKEN_TTL_MS = (() => {
-  const raw = Number(process.env.BUNKER_OVERLAY_TOKEN_TTL_MS ?? 0);
-  if (!Number.isFinite(raw)) return 0;
-  return Math.max(0, Math.floor(raw));
-})();
-const OVERLAY_CONTROL_INVITE_TTL_MS = (() => {
-  const raw = Number(process.env.BUNKER_OVERLAY_CONTROL_INVITE_TTL_MS ?? 10 * 60 * 1000);
-  if (!Number.isFinite(raw)) return 10 * 60 * 1000;
-  return Math.max(0, Math.floor(raw));
-})();
-const SPECTATOR_INVITE_TTL_MS = (() => {
-  const raw = Number(process.env.BUNKER_SPECTATOR_INVITE_TTL_MS ?? 10 * 60 * 1000);
-  if (!Number.isFinite(raw)) return 10 * 60 * 1000;
-  return Math.max(1_000, Math.floor(raw));
-})();
 const OVERLAY_MAX_LINE_LEN = 120;
 const OVERLAY_MAX_CATA_LEN = 600;
 const OVERLAY_MAX_NAME_LEN = 24;
@@ -242,8 +167,6 @@ const MANUAL_MAX_VOTES_PER_ROUND = 9;
 const MANUAL_MIN_TARGET_REVEALS = 5;
 const MANUAL_MAX_TARGET_REVEALS = 7;
 const MANUAL_DEFAULT_TARGET_REVEALS = 7;
-const WAN_LOOKUP_TIMEOUT_MS = 2800;
-const WAN_LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const OVERLAY_BACKGROUNDS_ROOT = path.join(OVERLAY_PUBLIC_ROOT, "backgrounds");
 const OVERLAY_PRESETS_FILE_PRIMARY = path.resolve(process.cwd(), "docs", "overlay_presets.txt");
@@ -312,12 +235,6 @@ function renderClientIndexHtml(identityMode: IdentityMode): string {
   clientIndexCacheStamp = stamp;
   clientIndexCacheHtml = injected;
   return injected;
-}
-
-function envFlag(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 function shouldUseColor(): boolean {
@@ -2110,131 +2027,24 @@ const DEFAULT_SETTINGS: GameSettings = {
   cardLocale: "ru",
 };
 
-const rooms = new Map<string, Room>();
-const connectionInfo = new WeakMap<WebSocket, { roomCode: string; playerId: string }>();
-const overlaySubscriptions = new Map<WebSocket, { roomCode: string; role: Role }>();
 let roomCleanupTimer: ReturnType<typeof setInterval> | undefined;
 
-function hasOverlaySubscribers(roomCode: string): boolean {
-  for (const sub of overlaySubscriptions.values()) {
-    if (sub.roomCode === roomCode) return true;
-  }
-  return false;
-}
+const cleanupInactiveRooms = createCleanupInactiveRooms({
+  overlaySubscriptions: overlaySubscriptions as Map<unknown, { roomCode: string; role: string }>,
+  logRoomLifecycle,
+  roomEndedTtlMs: ROOM_ENDED_TTL_MS,
+  roomInactiveTtlMs: ROOM_INACTIVE_TTL_MS,
+});
 
-function getCachedGameView(room: Room): ReturnType<ScenarioSession["getGameView"]> | undefined {
-  if (!room.lastGameViews || room.lastGameViews.size === 0) return undefined;
-  return room.lastGameViews.values().next().value as ReturnType<ScenarioSession["getGameView"]> | undefined;
-}
-
-function getRoomGamePhase(room: Room): string | undefined {
-  const cached = getCachedGameView(room);
-  if (cached?.phase) return cached.phase;
-  if (!room.session) return undefined;
-  const anchorId = room.players.has(room.hostId)
-    ? room.hostId
-    : room.joinOrder.find((id) => room.players.has(id));
-  if (!anchorId) return undefined;
-  try {
-    return room.session.getGameView(anchorId).phase;
-  } catch {
-    return undefined;
-  }
-}
-
-function cleanupInactiveRooms(): void {
-  const now = Date.now();
-  for (const [roomCode, room] of rooms.entries()) {
-    const players = Array.from(room.players.values());
-    if (players.length === 0) {
-      logRoomLifecycle("closed", roomCode, { reason: "cleanup_empty" });
-      rooms.delete(roomCode);
-      continue;
-    }
-    if (players.some((player) => player.connected || Boolean(player.ws))) continue;
-    if (hasOverlaySubscribers(roomCode)) continue;
-
-    let lastDisconnectAt = 0;
-    for (const player of players) {
-      if (player.disconnectedAt) {
-        lastDisconnectAt = Math.max(lastDisconnectAt, player.disconnectedAt);
-      }
-    }
-    if (!lastDisconnectAt) continue;
-
-    const inactiveMs = now - lastDisconnectAt;
-    const gamePhase = getRoomGamePhase(room);
-    const ttlMs = gamePhase === "ended" ? ROOM_ENDED_TTL_MS : ROOM_INACTIVE_TTL_MS;
-    if (inactiveMs < ttlMs) continue;
-
-    if (room.hostTransferTimer) {
-      clearTimeout(room.hostTransferTimer);
-      room.hostTransferTimer = undefined;
-    }
-    for (const player of room.players.values()) {
-      if (player.disconnectTimer) {
-        clearTimeout(player.disconnectTimer);
-        player.disconnectTimer = undefined;
-      }
-      if (player.disconnectTicker) {
-        clearInterval(player.disconnectTicker);
-        player.disconnectTicker = undefined;
-      }
-    }
-
-    logRoomLifecycle("closed", roomCode, {
-      reason: gamePhase === "ended" ? "cleanup_ended_ttl" : "cleanup_inactive_ttl",
-      inactiveSec: Math.floor(inactiveMs / 1000),
-      phase: room.phase,
-      gamePhase,
-      players: room.players.size,
-    });
-    rooms.delete(roomCode);
-  }
-}
-
-function generateRoomCode(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 4; i += 1) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  if (rooms.has(code)) return generateRoomCode();
-  return code;
-}
+const generateRoomCode = () => generateRoomCodeState();
 
 function buildRoomState(room: Room): RoomState {
-  const locale = getRoomCardLocale(room);
-  return {
-    roomCode: room.code,
-    players: Array.from(room.players.values()).map((player) => ({
-      playerId: player.playerId,
-      name: player.name,
-      connected: player.connected,
-      disconnectedAt: player.disconnectedAt,
-      totalAbsentMs: player.totalAbsentMs ?? 0,
-      currentOfflineMs: !player.connected && player.disconnectedAt ? Date.now() - player.disconnectedAt : 0,
-      kickRemainingMs: Math.max(
-        0,
-        DISCONNECT_GRACE_MS - (!player.connected && player.disconnectedAt ? Date.now() - player.disconnectedAt : 0)
-      ),
-      leftBunker: player.leftBunker,
-    })),
-    hostId: room.hostId,
-    controlId: room.controlId,
-    phase: room.phase,
-    scenarioMeta: room.scenarioMeta,
-    settings: {
-      ...room.settings,
-      cardLocale: locale,
-    },
-    ruleset: room.ruleset,
-    rulesOverriddenByHost: room.rulesOverriddenByHost,
-    rulesPresetCount: room.rulesPresetCount,
-    world: localizeWorldStateForLocale(room.world, locale),
-    isDev: room.isDev,
-    disasterOptions: localizeDisasterOptionsForLocale(room.disasterOptions, locale),
-  };
+  return buildRoomStateProjection(room, {
+    disconnectGraceMs: DISCONNECT_GRACE_MS,
+    getRoomCardLocale,
+    localizeWorldStateForLocale,
+    localizeDisasterOptionsForLocale,
+  });
 }
 
 // Overlay category configuration with localization keys
@@ -3162,23 +2972,19 @@ function send(ws: WebSocket, message: ServerMessage): void {
   ws.send(JSON.stringify(message));
 }
 
-function getSocketLocale(ws: WebSocket, room?: Room): ServerLocaleCode {
-  if (room) {
-    return normalizeServerLocale(room.settings.cardLocale);
-  }
-  const info = connectionInfo.get(ws);
-  if (!info) return "ru";
-  const resolvedRoom = rooms.get(info.roomCode);
-  return normalizeServerLocale(resolvedRoom?.settings.cardLocale);
-}
+const messagePresenterDeps = {
+  send,
+  normalizeServerLocale,
+  connectionInfo,
+  rooms,
+};
 
 function tServerForRoom(
   room: Room | undefined,
   key: string,
   vars?: Record<string, unknown>
 ): string {
-  const locale = room ? normalizeServerLocale(room.settings.cardLocale) : "ru";
-  return tServer(locale, key, vars);
+  return tServerForRoomPresenter(messagePresenterDeps, room, key, vars);
 }
 
 function localizeScenarioMessageForRoom(room: Room, message: string): string {
@@ -3195,46 +3001,34 @@ function sendLocalizedError(
     extra?: Record<string, unknown>;
   }
 ): void {
-  const locale = getSocketLocale(ws, options.room);
-  send(ws, {
-    type: "error",
-    payload: {
-      ...(options.extra ?? {}),
-      ...(options.code ? { code: options.code } : {}),
-      message: tServer(locale, options.key, options.vars),
-    },
-  });
+  sendLocalizedErrorPresenter(ws, messagePresenterDeps, options);
 }
 
 function sendReconnectForbidden(ws: WebSocket, room?: Room): void {
-  sendLocalizedError(ws, {
-    key: "error.reconnectForbidden",
-    room,
-    code: "RECONNECT_FORBIDDEN",
-  });
+  sendReconnectForbiddenPresenter(ws, messagePresenterDeps, room);
 }
 
+const gameStatePresenterDeps = {
+  disconnectGraceMs: DISCONNECT_GRACE_MS,
+  overlaySubscriptions: overlaySubscriptions as Map<WebSocket, { roomCode: string; role: string }>,
+  send,
+  sendLocalizedError,
+  canControl,
+  getOverlayState,
+  buildOverlayPresenterState,
+  buildRoomState,
+  diffTopLevel,
+  localizeGameViewForLocale,
+  getRoomCardLocale,
+  devLog,
+};
+
 async function sendOverlayState(room: Room, ws: WebSocket, role: Role = "VIEW") {
-  const state = await getOverlayState(room);
-  const presenter = canControl(role) ? buildOverlayPresenterState(room) : undefined;
-  send(ws, {
-    type: "overlayState",
-    payload: {
-      ok: true,
-      roomCode: room.code,
-      state: state ?? undefined,
-      presenter,
-      presenterModeEnabled: Boolean(room.settings.enablePresenterMode),
-      role,
-    },
-  });
+  await sendOverlayStatePresenter(room, ws, gameStatePresenterDeps, role);
 }
 
 function broadcastOverlayState(room: Room) {
-  for (const [ws, sub] of overlaySubscriptions.entries()) {
-    if (sub.roomCode !== room.code) continue;
-    void sendOverlayState(room, ws, sub.role);
-  }
+  broadcastOverlayStatePresenter(room, gameStatePresenterDeps);
 }
 
 function devLog(...args: unknown[]) {
@@ -3242,603 +3036,152 @@ function devLog(...args: unknown[]) {
   console.log("[dev]", ...args);
 }
 
-function isClassicRoom(room: Room): boolean {
-  return room.scenarioMeta.id === CLASSIC_SCENARIO_ID;
-}
-
-function getEffectiveMaxPlayers(room: Room): number {
-  if (!isClassicRoom(room)) return room.settings.maxPlayers;
-  return Math.min(room.settings.maxPlayers, MAX_CLASSIC_PLAYERS);
-}
-
-function updateRulesetIfAuto(room: Room): void {
-  if (room.phase !== "lobby") return;
-  if (!isClassicRoom(room)) {
-    room.ruleset = buildAutoRuleset(room.players.size);
-    room.rulesOverriddenByHost = false;
-    room.rulesPresetCount = undefined;
-    return;
-  }
-  if (room.rulesOverriddenByHost) {
-    const manualConfig = room.ruleset.manualConfig;
-    if (room.ruleset.rulesetMode === "manual" && manualConfig) {
-      room.ruleset = buildManualRuleset(manualConfig, room.players.size);
-      room.rulesPresetCount = manualConfig.seedTemplatePlayers;
-    }
-    return;
-  }
-  room.ruleset = buildAutoRuleset(room.players.size);
-  room.rulesPresetCount = undefined;
-}
-
 function broadcastRoomState(room: Room): void {
-  const roomState = buildRoomState(room);
-  const patch = diffTopLevel(room.lastRoomState, roomState);
-  for (const player of room.players.values()) {
-    if (player.ws) {
-      if (player.needsFullState || !room.lastRoomState) {
-        send(player.ws, { type: "roomState", payload: roomState });
-      } else if (patch) {
-        send(player.ws, { type: "statePatch", payload: { roomState: patch } });
-      }
-    }
-  }
-  room.lastRoomState = roomState;
-  for (const player of room.players.values()) {
-    player.needsFullState = false;
-  }
-  broadcastOverlayState(room);
+  broadcastRoomStatePresenter(room, gameStatePresenterDeps);
 }
 
 function sendGameView(room: Room, player: Player): void {
-  if (!room.session || !player.ws) return;
-  if (room.sessionPlayerIds && !room.sessionPlayerIds.has(player.playerId)) {
-    devLog("gameView skip: player not in session", { room: room.code, playerId: player.playerId });
-    sendLocalizedError(player.ws, {
-      key: "error.playerRestoreFailedRejoin",
-      room,
-      code: "PLAYER_RESTORE_FAILED",
-    });
-    return;
-  }
-  try {
-    const view = room.session.getGameView(player.playerId);
-    syncScenarioStatuses(room, view.public.players);
-    const enrichedPlayers = view.public.players.map((entry) => {
-      const roomPlayer = room.players.get(entry.playerId);
-      const currentOfflineMs =
-        roomPlayer && !roomPlayer.connected && roomPlayer.disconnectedAt
-          ? Date.now() - roomPlayer.disconnectedAt
-          : 0;
-      return {
-        ...entry,
-        connected: roomPlayer?.connected ?? false,
-        disconnectedAt: roomPlayer?.disconnectedAt,
-        totalAbsentMs: roomPlayer?.totalAbsentMs ?? 0,
-        currentOfflineMs,
-        kickRemainingMs: Math.max(0, DISCONNECT_GRACE_MS - currentOfflineMs),
-        leftBunker: roomPlayer?.leftBunker ?? entry.status === "left_bunker",
-      };
-    });
-    const payload = {
-      ...view,
-      public: {
-        ...view.public,
-        players: enrichedPlayers,
-      },
-    };
-    room.world = payload.world;
-    const localizedPayload = localizeGameViewForLocale(payload, getRoomCardLocale(room), room.scenarioId);
-    if (!room.lastGameViews) {
-      room.lastGameViews = new Map();
-    }
-    const lastView = room.lastGameViews.get(player.playerId);
-    if (player.needsFullGameView || !lastView) {
-      send(player.ws, { type: "gameView", payload: localizedPayload });
-      player.needsFullGameView = false;
-    } else {
-      const patch = diffTopLevel(lastView, localizedPayload);
-      if (patch) {
-        send(player.ws, { type: "statePatch", payload: { gameView: patch } });
-      }
-      player.needsFullGameView = false;
-    }
-    room.lastGameViews.set(player.playerId, localizedPayload);
-    devLog("gameView sent", { room: room.code, playerId: player.playerId });
-  } catch (error) {
-    console.error("[server] Scenario getGameView failed", error);
-    sendLocalizedError(player.ws, {
-      key: "error.scenarioStateFailed",
-      room,
-    });
-  }
+  sendGameViewPresenter(room, player, gameStatePresenterDeps);
 }
 
 function broadcastGameViews(room: Room): void {
-  if (!room.session) return;
-  for (const player of room.players.values()) {
-    if (player.ws) {
-      try {
-        sendGameView(room, player);
-      } catch (error) {
-        console.error("[server] broadcast gameView failed", error);
-      }
-    }
-  }
-  broadcastOverlayState(room);
+  broadcastGameViewsPresenter(room, gameStatePresenterDeps);
 }
 
-function broadcastEvent(room: Room, event: GameEvent): void {
-  for (const player of room.players.values()) {
-    if (player.ws) {
-      send(player.ws, { type: "gameEvent", payload: event });
-    }
-  }
-}
-
-function buildSystemEvent(room: Room, kind: GameEvent["kind"], message: string): GameEvent {
-  return {
-    id: `${room.code}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    kind,
-    message,
-    createdAt: Date.now(),
-  };
-}
-
-function syncScenarioStatuses(room: Room, players: Array<{ playerId: string; status: PlayerStatus }>) {
-  players.forEach((entry) => {
-    const roomPlayer = room.players.get(entry.playerId);
-    if (!roomPlayer) return;
-    roomPlayer.scenarioStatus = entry.status;
-    if (entry.status === "eliminated" && !roomPlayer.eliminatedAt) {
-      roomPlayer.eliminatedAt = Date.now();
-    }
-  });
-}
-
-function getScenarioStatus(room: Room, playerId: string): PlayerStatus | undefined {
-  const cached = room.players.get(playerId)?.scenarioStatus;
-  if (cached) return cached;
-  const cachedView = getCachedGameView(room);
-  const cachedStatus = cachedView?.public.players.find((entry) => entry.playerId === playerId)?.status;
-  if (cachedStatus) {
-    syncScenarioStatuses(room, cachedView.public.players);
-    return room.players.get(playerId)?.scenarioStatus ?? cachedStatus;
-  }
-  if (!room.session) return undefined;
-  try {
-    const view = room.session.getGameView(playerId);
-    syncScenarioStatuses(room, view.public.players);
-    return room.players.get(playerId)?.scenarioStatus;
-  } catch (error) {
-    console.error("[server] getScenarioStatus failed", error);
-    return undefined;
-  }
-}
-
-function isPlayerAlive(room: Room, playerId: string): boolean {
-  const player = room.players.get(playerId);
-  if (!player) return false;
-  if (player.leftBunker) return false;
-  if (!room.session) return true;
-  const status = getScenarioStatus(room, playerId);
-  return status ? status === "alive" : true;
-}
-
-function pickNextHost(room: Room, excludeId?: string): string | undefined {
-  const order = room.joinOrder.filter((id) => room.players.has(id));
-  if (order.length === 0) return undefined;
-  for (const id of order) {
-    if (excludeId && id === excludeId) continue;
-    if (isPlayerAlive(room, id)) return id;
-  }
-  for (const id of order) {
-    if (excludeId && id === excludeId) continue;
-    return id;
-  }
-  return undefined;
-}
-
-function getCurrentTurnPlayerId(room: Room): string | undefined {
-  const cached = getCachedGameView(room);
-  if (cached?.public.currentTurnPlayerId) {
-    return cached.public.currentTurnPlayerId;
-  }
-  if (!room.session) return undefined;
-  const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
-  if (!anchorId) return undefined;
-  try {
-    const view = room.session.getGameView(anchorId);
-    return view.public.currentTurnPlayerId ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveControlActorId(
-  room: Room,
-  options?: { preferredId?: string; allowAnyPresentPlayer?: boolean }
-): string | undefined {
-  const preferredId = String(options?.preferredId ?? "").trim();
-  if (preferredId) {
-    if (!room.players.has(preferredId)) return undefined;
-    if (!room.session || isPlayerAlive(room, preferredId)) return preferredId;
-  }
-
-  if (room.players.has(room.hostId) && (!room.session || isPlayerAlive(room, room.hostId))) {
-    return room.hostId;
-  }
-
-  const nextAlive = pickNextHost(room, room.hostId);
-  if (nextAlive) return nextAlive;
-
-  if (options?.allowAnyPresentPlayer) {
-    const anyPresent = room.joinOrder.find((id) => room.players.has(id));
-    if (anyPresent) return anyPresent;
-  }
-
-  if (room.players.has(room.hostId)) return room.hostId;
-  return room.joinOrder.find((id) => room.players.has(id));
-}
-
-function removeLobbyPlayer(room: Room, playerId: string): boolean {
-  const player = room.players.get(playerId);
-  if (!player) return false;
-
-  if (player.disconnectTimer) {
-    clearTimeout(player.disconnectTimer);
-    player.disconnectTimer = undefined;
-  }
-  if (player.disconnectTicker) {
-    clearInterval(player.disconnectTicker);
-    player.disconnectTicker = undefined;
-  }
-
-  if (player.ws) {
-    connectionInfo.delete(player.ws);
-  }
-
-  room.players.delete(playerId);
-  room.playersByToken.delete(player.token);
-  if (player.tabId) {
-    room.playersByTabId.delete(player.tabId);
-  }
-  if (player.sessionId) {
-    room.playersBySessionId.delete(player.sessionId);
-  }
-  room.joinOrder = room.joinOrder.filter((id) => id !== playerId);
-  logRoomLifecycle("left", room.code, {
-    player: player.name,
-    count: room.players.size,
-    phase: room.phase,
+const removeLobbyPlayer = (room: Room, playerId: string): boolean =>
+  removeLobbyPlayerState(room, playerId, {
+    logRoomLifecycle,
+    pickNextHost,
+    updateRulesetIfAuto: (targetRoom) =>
+      updateRulesetIfAuto(targetRoom, {
+        classicScenarioId: CLASSIC_SCENARIO_ID,
+        buildAutoRuleset,
+        buildManualRuleset,
+      }),
   });
 
-  if (room.players.size === 0) {
-    if (room.hostTransferTimer) {
-      clearTimeout(room.hostTransferTimer);
-      room.hostTransferTimer = undefined;
-    }
-    logRoomLifecycle("closed", room.code, { reason: "empty_lobby" });
-    rooms.delete(room.code);
-    return true;
-  }
-
-  if (room.hostId === playerId) {
-    const nextHostId = pickNextHost(room, playerId);
-    if (nextHostId) {
-      room.hostId = nextHostId;
-      if (room.sessionContext) {
-        room.sessionContext.hostId = nextHostId;
-      }
-    }
-  }
-  if (room.controlId === playerId) {
-    const nextControlId = pickNextHost(room, playerId);
-    if (nextControlId) {
-      room.controlId = nextControlId;
-    }
-  }
-
-  updateRulesetIfAuto(room);
-
-  return true;
-}
-
-function addLobbyBotPlayer(room: Room, preferredName?: string): Player | null {
-  if (room.phase !== "lobby") return null;
-  const maxPlayers = getEffectiveMaxPlayers(room);
-  if (room.players.size >= maxPlayers) return null;
-
-  const baseName = String(preferredName ?? "").trim() || tServerForRoom(room, "info.botDefaultName");
-  const existingNames = new Set(
-    Array.from(room.players.values()).map((player) => String(player.name || "").trim().toLocaleLowerCase("ru-RU"))
+const addLobbyBotPlayer = (room: Room, preferredName?: string): Player | null =>
+  addLobbyBotPlayerState(
+    room,
+    {
+      getEffectiveMaxPlayers: (targetRoom) =>
+        getEffectiveMaxPlayers(targetRoom, {
+          classicScenarioId: CLASSIC_SCENARIO_ID,
+          maxClassicPlayers: MAX_CLASSIC_PLAYERS,
+        }),
+      logRoomLifecycle,
+      tServerForRoom,
+      updateRulesetIfAuto: (targetRoom) =>
+        updateRulesetIfAuto(targetRoom, {
+          classicScenarioId: CLASSIC_SCENARIO_ID,
+          buildAutoRuleset,
+          buildManualRuleset,
+        }),
+      generatePlayerReconnectToken,
+    },
+    preferredName
   );
-  let nextName = baseName;
-  let suffix = 2;
-  while (existingNames.has(nextName.toLocaleLowerCase("ru-RU"))) {
-    nextName = `${baseName} ${suffix}`;
-    suffix += 1;
-  }
 
-  const bot: Player = {
-    playerId: crypto.randomUUID(),
-    name: nextName,
-    token: generatePlayerReconnectToken(),
-    connected: true,
-    totalAbsentMs: 0,
-    needsFullState: false,
-    needsFullGameView: false,
-  };
-
-  room.players.set(bot.playerId, bot);
-  room.playersByToken.set(bot.token, bot.playerId);
-  room.joinOrder.push(bot.playerId);
-  updateRulesetIfAuto(room);
-  logRoomLifecycle("joined", room.code, { player: bot.name, count: room.players.size, phase: room.phase });
-  return bot;
-}
-
-function transferHost(
+const transferHost = (
   room: Room,
   reason: "disconnect_timeout" | "left_bunker" | "eliminated" | "manual",
   excludeId?: string,
   preferredHostId?: string
-): void {
-  if (room.hostTransferTimer) {
-    clearTimeout(room.hostTransferTimer);
-    room.hostTransferTimer = undefined;
-  }
-  const preferredId = String(preferredHostId ?? "").trim();
-  const nextHostId =
-    preferredId && preferredId !== excludeId && room.players.has(preferredId)
-      ? preferredId
-      : pickNextHost(room, excludeId);
-  if (!nextHostId) {
-    if (room.players.size === 0) {
-      rooms.delete(room.code);
-    }
-    return;
-  }
-  if (room.hostId === nextHostId) return;
-  room.hostId = nextHostId;
-  if (room.sessionContext) {
-    room.sessionContext.hostId = nextHostId;
-  }
-  broadcastRoomState(room);
-  const hostName = room.players.get(nextHostId)?.name ?? tServerForRoom(room, "info.playerFallbackName");
-  broadcastEvent(
+): void =>
+  transferHostState(
     room,
-    buildSystemEvent(
-      room,
-      "info",
-      tServerForRoom(room, "info.hostTransferred", {
-        hostName,
-      })
-    )
+    reason,
+    {
+      pickNextHost,
+      broadcastRoomState,
+      broadcastEvent: broadcastEventRuntime,
+      buildSystemEvent,
+      tServerForRoom,
+      sendHostChanged: (player, nextHostId, hostReason) => {
+        if (!player.ws) return;
+        send(player.ws, { type: "hostChanged", payload: { newHostId: nextHostId, reason: hostReason } });
+      },
+    },
+    excludeId,
+    preferredHostId
   );
-  for (const player of room.players.values()) {
-    if (player.ws) {
-      send(player.ws, { type: "hostChanged", payload: { newHostId: nextHostId, reason } });
-    }
-  }
-}
 
-function scheduleHostTransfer(room: Room, reason: "disconnect_timeout" | "left_bunker" | "eliminated"): void {
-  const candidate = pickNextHost(room, room.hostId);
-  if (!candidate) {
-    return;
-  }
-  if (room.hostTransferTimer) {
-    clearTimeout(room.hostTransferTimer);
-  }
-  const hostPlayer = room.players.get(room.hostId);
-  if (hostPlayer) {
-    broadcastEvent(
-      room,
-      buildSystemEvent(
-        room,
-        "info",
-        tServerForRoom(room, "info.hostDisconnectedTransferIn", {
-          hostName: hostPlayer.name,
-          seconds: String(Math.floor(HOST_GRACE_MS / 1000)),
-        })
-      )
-    );
-  }
-  room.hostTransferTimer = setTimeout(() => {
-    room.hostTransferTimer = undefined;
-    transferHost(room, reason, room.hostId);
-  }, HOST_GRACE_MS);
-  unrefTimer(room.hostTransferTimer);
-}
+const scheduleHostTransfer = (room: Room, reason: "disconnect_timeout" | "left_bunker" | "eliminated"): void =>
+  scheduleHostTransferState(room, reason, {
+    pickNextHost,
+    broadcastRoomState,
+    broadcastEvent: broadcastEventRuntime,
+    buildSystemEvent,
+    tServerForRoom,
+    hostGraceMs: HOST_GRACE_MS,
+    unrefTimer,
+    sendHostChanged: (player, nextHostId, hostReason) => {
+      if (!player.ws) return;
+      send(player.ws, { type: "hostChanged", payload: { newHostId: nextHostId, reason: hostReason } });
+    },
+  });
 
-function markPlayerLeftBunker(room: Room, player: Player) {
-  if (player.leftBunker) return;
-  if (player.connected) return;
-  player.leftBunker = true;
-  if (!player.kickedAt) {
-    player.kickedAt = Date.now();
-  }
-  if (player.disconnectTimer) {
-    clearTimeout(player.disconnectTimer);
-    player.disconnectTimer = undefined;
-  }
-  if (player.disconnectTicker) {
-    clearInterval(player.disconnectTicker);
-    player.disconnectTicker = undefined;
-  }
-  if (room.hostTransferTimer && room.hostId === player.playerId) {
-    clearTimeout(room.hostTransferTimer);
-    room.hostTransferTimer = undefined;
-  }
-  const systemActorId =
-    room.hostId && room.players.has(room.hostId)
-      ? room.hostId
-      : Array.from(room.players.keys())[0];
-  let didBroadcastGameViews = false;
-  if (room.session && systemActorId) {
-    const result = room.session.handleAction(systemActorId, {
-      type: "markLeftBunker",
-      payload: { targetPlayerId: player.playerId },
-    });
-    if (result.stateChanged) {
-      broadcastGameViews(room);
-      didBroadcastGameViews = true;
-    }
-  }
-  broadcastRoomState(room);
-  if (!didBroadcastGameViews) {
-    broadcastGameViews(room);
-  }
-  broadcastEvent(
+const markPlayerLeftBunker = (room: Room, player: Player) =>
+  markPlayerLeftBunkerState(room, player, {
+    pickNextHost,
+    broadcastRoomState,
+    broadcastEvent: broadcastEventRuntime,
+    buildSystemEvent,
+    tServerForRoom,
+    sendHostChanged: (targetPlayer, nextHostId, hostReason) => {
+      if (!targetPlayer.ws) return;
+      send(targetPlayer.ws, { type: "hostChanged", payload: { newHostId: nextHostId, reason: hostReason } });
+    },
+    broadcastGameViews,
+  });
+
+const computeKickRemainingMs = (player: Player, now = Date.now()): number =>
+  computeKickRemainingMsState(player, DISCONNECT_GRACE_MS, now);
+
+const findPlayerByToken = (room: Room, token?: string): Player | undefined => findPlayerByTokenState(room, token);
+
+const findPlayerByTabId = (room: Room, tabId?: string): Player | undefined => findPlayerByTabIdState(room, tabId);
+
+const findPlayerBySessionId = (room: Room, sessionId?: string): Player | undefined =>
+  findPlayerBySessionIdState(room, sessionId);
+
+const attachPlayer = (room: Room, payload: ClientHelloPayload, ws: WebSocket, existing?: Player): Player =>
+  attachPlayerState(
     room,
-    buildSystemEvent(
-      room,
-      "playerLeftBunker",
-      tServerForRoom(room, "info.playerLeftBunker", {
-        playerName: player.name,
-      })
-    )
+    payload,
+    ws,
+    {
+      broadcastEvent: broadcastEventRuntime,
+      buildSystemEvent,
+      identityMode: IDENTITY_MODE,
+      tServerForRoom,
+      send: (socket, message) => send(socket, message as ServerMessage),
+      generatePlayerReconnectToken,
+    },
+    existing
   );
-}
 
-function formatRemaining(ms: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-function computeKickRemainingMs(player: Player, now = Date.now()): number {
-  const currentOfflineMs = player.disconnectedAt ? now - player.disconnectedAt : 0;
-  return Math.max(0, DISCONNECT_GRACE_MS - currentOfflineMs);
-}
-
-function findPlayerByToken(room: Room, token?: string): Player | undefined {
-  if (!token) return undefined;
-  const playerId = room.playersByToken.get(token);
-  return playerId ? room.players.get(playerId) : undefined;
-}
-
-function findPlayerByTabId(room: Room, tabId?: string): Player | undefined {
-  if (!tabId) return undefined;
-  const playerId = room.playersByTabId.get(tabId);
-  return playerId ? room.players.get(playerId) : undefined;
-}
-
-function findPlayerBySessionId(room: Room, sessionId?: string): Player | undefined {
-  if (!sessionId) return undefined;
-  const playerId = room.playersBySessionId.get(sessionId);
-  return playerId ? room.players.get(playerId) : undefined;
-}
-
-function attachPlayer(room: Room, payload: ClientHelloPayload, ws: WebSocket, existing?: Player): Player {
-  const isNew = !existing;
-  const player = existing ?? {
-    playerId: crypto.randomUUID(),
-    name: payload.name,
-    token: generatePlayerReconnectToken(),
-    tabId: IDENTITY_MODE === "dev_tab" ? payload.tabId : undefined,
-    sessionId: payload.sessionId,
-    connected: true,
-    totalAbsentMs: 0,
-  };
-
-  if (isNew || !player.name) {
-    player.name = payload.name;
-  }
-  if (payload.sessionId) {
-    player.sessionId = payload.sessionId;
-  }
-  if (IDENTITY_MODE === "dev_tab" && payload.tabId) {
-    player.tabId = payload.tabId;
-  }
-  const wasDisconnected = Boolean(player.disconnectedAt);
-  if (player.disconnectTimer) {
-    clearTimeout(player.disconnectTimer);
-    player.disconnectTimer = undefined;
-  }
-  if (player.disconnectTicker) {
-    clearInterval(player.disconnectTicker);
-    player.disconnectTicker = undefined;
-  }
-  player.disconnectNotifiedMinutes = undefined;
-  if (wasDisconnected) {
-    // Grace timeout should apply to a single disconnection window, not accumulated history.
-    player.totalAbsentMs = 0;
-    player.disconnectedAt = undefined;
-  }
-  if (room.hostId === player.playerId && room.hostTransferTimer) {
-    clearTimeout(room.hostTransferTimer);
-    room.hostTransferTimer = undefined;
-    broadcastEvent(
-      room,
-      buildSystemEvent(
-        room,
-        "info",
-        tServerForRoom(room, "info.hostReturnedTransferCanceled", {
-          hostName: player.name,
-        })
-      )
-    );
-  }
-  player.ws = ws;
-  player.connected = true;
-  player.needsFullState = true;
-  player.needsFullGameView = true;
-
-  room.players.set(player.playerId, player);
-  room.playersByToken.set(player.token, player.playerId);
-  if (player.tabId) {
-    room.playersByTabId.set(player.tabId, player.playerId);
-  }
-  if (player.sessionId) {
-    room.playersBySessionId.set(player.sessionId, player.playerId);
-  }
-  if (isNew && !room.joinOrder.includes(player.playerId)) {
-    room.joinOrder.push(player.playerId);
-  }
-  if (!room.hostId) {
-    room.hostId = player.playerId;
-  }
-  if (!room.controlId) {
-    room.controlId = player.playerId;
-  }
-
-  connectionInfo.set(ws, { roomCode: room.code, playerId: player.playerId });
-  send(ws, { type: "helloAck", payload: { playerId: player.playerId, playerToken: player.token } });
-
-  if (existing && wasDisconnected) {
-    broadcastEvent(
-      room,
-      buildSystemEvent(
-        room,
-        "playerReconnected",
-        tServerForRoom(room, "info.playerReconnected", {
-          playerName: player.name,
-        })
-      )
-    );
-  }
-
-  return player;
-}
+const isClassicRoomRuntime = (room: Room): boolean => isClassicRoom(room, CLASSIC_SCENARIO_ID);
+const getEffectiveMaxPlayersRuntime = (room: Room): number =>
+  getEffectiveMaxPlayers(room, {
+    classicScenarioId: CLASSIC_SCENARIO_ID,
+    maxClassicPlayers: MAX_CLASSIC_PLAYERS,
+  });
+const updateRulesetIfAutoRuntime = (room: Room): void =>
+  updateRulesetIfAuto(room, {
+    classicScenarioId: CLASSIC_SCENARIO_ID,
+    buildAutoRuleset,
+    buildManualRuleset,
+  });
+const broadcastEventRuntime = (room: Room, event: GameEvent): void => broadcastEvent(room, event, send);
 
 async function main() {
-  const assets = buildAssetCatalog(ASSETS_ROOT);
-  controlDeckCatalog = Object.fromEntries(
-    Object.entries(assets.decks).map(([deckName, cards]) => [
-      deckName,
-      cards.map((card) => ({ id: card.id, labelShort: card.labelShort })),
-    ])
-  );
-  const scenarios = await loadScenarios();
-  const availableScenarios = scenarios.filter(
-    (scenario) => !(scenario.meta.devOnly && !DEV_SCENARIOS_ENABLED)
-  );
-  const scenarioMap = new Map<string, ScenarioModule>(
-    availableScenarios.map((scenario) => [scenario.meta.id, scenario])
-  );
+  const runtimeContext = await createRuntimeContext({
+    assetsRoot: ASSETS_ROOT,
+    devScenariosEnabled: DEV_SCENARIOS_ENABLED,
+  });
+  const { assets, availableScenarios, scenarioMap } = runtimeContext;
+  controlDeckCatalog = runtimeContext.controlDeckCatalog;
 
   const app = express();
   if (TRUST_PROXY) {
@@ -4439,481 +3782,6 @@ async function main() {
     res.json(availableScenarios.map((scenario) => scenario.meta));
   });
 
-  type ControlCommand =
-    | "START_GAME"
-    | "NEXT_STEP"
-    | "SKIP_STEP"
-    | "START_VOTE"
-    | "END_VOTE"
-    | "SET_OUTCOME_SURVIVED"
-    | "SET_OUTCOME_FAILED"
-    | "SKIP_ROUND"
-    | "KICK_PLAYER"
-    | "TRANSFER_HOST"
-    | "SCENARIO_ACTION";
-
-  type ControlCommandError = { errorKey: string; errorVars?: Record<string, unknown> };
-  type ControlCommandResult =
-    | { ok: true }
-    | { ok: false; messageKey?: string; messageVars?: Record<string, unknown>; message?: string };
-
-  const controlError = (
-    messageKey: string,
-    messageVars?: Record<string, unknown>
-  ): ControlCommandResult => ({
-    ok: false,
-    messageKey,
-    messageVars,
-  });
-
-  const startGameAsControl = (room: Room): ControlCommandResult => {
-    if (room.phase !== "lobby") {
-      return controlError("error.control.gameAlreadyStarted");
-    }
-    if (isClassicRoom(room) && room.players.size < MIN_CLASSIC_PLAYERS) {
-      return controlError("error.control.minPlayersRequired", { minPlayers: MIN_CLASSIC_PLAYERS });
-    }
-
-    updateRulesetIfAuto(room);
-
-    const rng = createRandomRng();
-    room.sessionPlayerIds = new Set(room.players.keys());
-    const sessionContext: ScenarioContext = {
-      roomCode: room.code,
-      createdAt: room.createdAt,
-      rng,
-      assets,
-      players: Array.from(room.players.values()).map((player) => ({
-        playerId: player.playerId,
-        name: player.name,
-      })),
-      settings: room.settings,
-      hostId: room.hostId,
-      ruleset: room.ruleset,
-      onStateChange: () => broadcastGameViews(room),
-      onEvent: (event) =>
-        broadcastEvent(room, {
-          ...event,
-          message: localizeScenarioMessageForRoom(room, event.message),
-        }),
-    };
-    room.sessionContext = sessionContext;
-    room.session = room.scenarioModule.createSession(sessionContext);
-    try {
-      room.world = room.session.getGameView(room.hostId).world;
-    } catch {
-      room.world = undefined;
-    }
-    room.phase = "game";
-    broadcastRoomState(room);
-    broadcastGameViews(room);
-    return { ok: true };
-  };
-
-  const parseControlScenarioAction = (
-    typeRaw: string,
-    payloadRaw: Record<string, unknown>
-  ): ScenarioAction | ControlCommandError => {
-    const actionType = String(typeRaw ?? "").trim();
-    const payload = isRecord(payloadRaw) ? payloadRaw : {};
-    const requireNonEmpty = (
-      value: unknown,
-      errorKey: string,
-      errorVars?: Record<string, unknown>
-    ): string | ControlCommandError => {
-      const next = String(value ?? "").trim();
-      return next ? next : { errorKey, errorVars };
-    };
-    const toNumber = (value: unknown): number | null => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-
-    switch (actionType) {
-      case "revealCard": {
-        const cardId = requireNonEmpty(payload.cardId, "error.control.cardIdRequired");
-        if (typeof cardId !== "string") return cardId;
-        return { type: "revealCard", payload: { cardId } };
-      }
-      case "vote": {
-        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "error.control.voteTargetRequired");
-        if (typeof targetPlayerId !== "string") return targetPlayerId;
-        return { type: "vote", payload: { targetPlayerId } };
-      }
-      case "finalizeVoting":
-        return { type: "finalizeVoting", payload: {} };
-      case "applySpecial": {
-        const specialInstanceId = requireNonEmpty(
-          payload.specialInstanceId,
-          "error.control.specialInstanceIdRequired"
-        );
-        if (typeof specialInstanceId !== "string") return specialInstanceId;
-        const nestedPayload = isRecord(payload.payload) ? payload.payload : {};
-        const fallbackPayload = { ...payload };
-        delete fallbackPayload.specialInstanceId;
-        delete fallbackPayload.payload;
-        const effectivePayload =
-          Object.keys(nestedPayload).length > 0 ? nestedPayload : (fallbackPayload as Record<string, unknown>);
-        return {
-          type: "applySpecial",
-          payload: {
-            specialInstanceId,
-            payload: effectivePayload,
-          },
-        };
-      }
-      case "revealWorldThreat": {
-        const index = toNumber(payload.index);
-        if (index === null || !Number.isInteger(index) || index < 0) {
-          return { errorKey: "error.control.threatIndexInvalid" };
-        }
-        return { type: "revealWorldThreat", payload: { index } };
-      }
-      case "setBunkerOutcome": {
-        const outcome = String(payload.outcome ?? "").trim();
-        if (outcome !== "survived" && outcome !== "failed") {
-          return { errorKey: "error.control.bunkerOutcomeInvalid" };
-        }
-        return { type: "setBunkerOutcome", payload: { outcome } };
-      }
-      case "devSkipRound":
-        return { type: "devSkipRound", payload: {} };
-      case "devKickPlayer": {
-        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "error.control.kickTargetRequired");
-        if (typeof targetPlayerId !== "string") return targetPlayerId;
-        return { type: "devKickPlayer", payload: { targetPlayerId } };
-      }
-      case "markLeftBunker": {
-        const targetPlayerId = requireNonEmpty(
-          payload.targetPlayerId,
-          "error.control.markLeftBunkerTargetRequired"
-        );
-        if (typeof targetPlayerId !== "string") return targetPlayerId;
-        return { type: "markLeftBunker", payload: { targetPlayerId } };
-      }
-      case "continueRound":
-        return { type: "continueRound", payload: {} };
-      case "devAddPlayer": {
-        const name = String(payload.name ?? "").trim();
-        return { type: "devAddPlayer", payload: name ? { name } : {} };
-      }
-      case "devRemovePlayer": {
-        const targetPlayerId = String(payload.targetPlayerId ?? "").trim();
-        return { type: "devRemovePlayer", payload: targetPlayerId ? { targetPlayerId } : {} };
-      }
-      case "adminReplacePlayerCard": {
-        const targetPlayerId = requireNonEmpty(payload.targetPlayerId, "error.control.targetPlayerRequired");
-        if (typeof targetPlayerId !== "string") return targetPlayerId;
-        const cardInstanceId = requireNonEmpty(payload.cardInstanceId, "error.control.playerCardRequired");
-        if (typeof cardInstanceId !== "string") return cardInstanceId;
-        const targetAreaRaw = String(payload.targetArea ?? "hand").trim().toLowerCase();
-        const targetArea = targetAreaRaw === "special" ? "special" : "hand";
-        const replacementModeRaw = String(payload.replacementMode ?? "random").trim().toLowerCase();
-        const replacementMode = replacementModeRaw === "specific" ? "specific" : "random";
-        const replacementCardId = String(payload.replacementCardId ?? "").trim();
-        return {
-          type: "adminReplacePlayerCard",
-          payload: {
-            targetPlayerId,
-            cardInstanceId,
-            targetArea,
-            replacementMode,
-            replacementCardId: replacementCardId || undefined,
-          },
-        };
-      }
-      case "adminSetWorldCardReveal": {
-        const kind = String(payload.kind ?? "").trim().toLowerCase();
-        if (kind !== "bunker" && kind !== "threat") {
-          return { errorKey: "error.control.worldKindBunkerThreatRequired" };
-        }
-        const index = toNumber(payload.index);
-        if (index === null || !Number.isInteger(index) || index < 0) {
-          return { errorKey: "error.control.worldCardIndexInvalid" };
-        }
-        return {
-          type: "adminSetWorldCardReveal",
-          payload: {
-            kind,
-            index,
-            revealed: Boolean(payload.revealed),
-          },
-        };
-      }
-      case "adminReplaceWorldCard": {
-        const kind = String(payload.kind ?? "").trim().toLowerCase();
-        if (kind !== "bunker" && kind !== "threat" && kind !== "disaster") {
-          return { errorKey: "error.control.worldKindBunkerThreatDisasterRequired" };
-        }
-        const replacementModeRaw = String(payload.replacementMode ?? "random").trim().toLowerCase();
-        const replacementMode = replacementModeRaw === "specific" ? "specific" : "random";
-        const replacementCardId = String(payload.replacementCardId ?? "").trim();
-        const index = toNumber(payload.index);
-        if (kind !== "disaster" && (index === null || !Number.isInteger(index) || index < 0)) {
-          return { errorKey: "error.control.worldIndexRequiredForBunkerThreat" };
-        }
-        return {
-          type: "adminReplaceWorldCard",
-          payload: {
-            kind,
-            index: kind === "disaster" ? undefined : index ?? undefined,
-            replacementMode,
-            replacementCardId: replacementCardId || undefined,
-          },
-        };
-      }
-      case "adminSetWorldCount": {
-        const kind = String(payload.kind ?? "").trim().toLowerCase();
-        if (kind !== "bunker" && kind !== "threat") {
-          return { errorKey: "error.control.worldKindBunkerThreatRequired" };
-        }
-        const count = toNumber(payload.count);
-        if (count === null || !Number.isInteger(count) || count < 0) {
-          return { errorKey: "error.control.worldCountInvalid" };
-        }
-        return { type: "adminSetWorldCount", payload: { kind, count } };
-      }
-      case "adminApplySpecial": {
-        const actorPlayerId = requireNonEmpty(payload.actorPlayerId, "error.control.actorPlayerRequired");
-        if (typeof actorPlayerId !== "string") return actorPlayerId;
-        const specialInstanceId = String(payload.specialInstanceId ?? "").trim();
-        const specialId = String(payload.specialId ?? "").trim();
-        if (!specialInstanceId && !specialId) {
-          return { errorKey: "error.control.specialSelectionRequired" };
-        }
-        const nestedPayload = isRecord(payload.payload) ? payload.payload : {};
-        const fallbackPayload = { ...payload };
-        delete fallbackPayload.actorPlayerId;
-        delete fallbackPayload.specialInstanceId;
-        delete fallbackPayload.specialId;
-        delete fallbackPayload.payload;
-        const effectivePayload =
-          Object.keys(nestedPayload).length > 0 ? nestedPayload : (fallbackPayload as Record<string, unknown>);
-        return {
-          type: "adminApplySpecial",
-          payload: {
-            actorPlayerId,
-            specialInstanceId: specialInstanceId || undefined,
-            specialId: specialId || undefined,
-            payload: effectivePayload,
-          },
-        };
-      }
-      default:
-        return {
-          errorKey: "error.control.unsupportedScenarioAction",
-          errorVars: { actionType: actionType || "unknown" },
-        };
-    }
-  };
-
-  const runControlCommand = (
-    room: Room,
-    command: ControlCommand,
-    options?: {
-      targetPlayerId?: string;
-      actorPlayerId?: string;
-      scenarioActionType?: string;
-      scenarioPayload?: Record<string, unknown>;
-    }
-  ): ControlCommandResult => {
-    if (command === "START_GAME") {
-      return startGameAsControl(room);
-    }
-
-    if (command === "TRANSFER_HOST") {
-      const requestedTargetId = String(options?.targetPlayerId ?? "").trim();
-      if (requestedTargetId) {
-        if (requestedTargetId === room.hostId) {
-          return controlError("error.alreadyHost");
-        }
-        const requestedTarget = room.players.get(requestedTargetId);
-        if (!requestedTarget) {
-          return controlError("error.targetPlayerNotFound");
-        }
-        if (!requestedTarget.connected) {
-          return controlError("error.cannotTransferHostOffline");
-        }
-      }
-      const nextHostId = requestedTargetId || pickNextHost(room, room.hostId);
-      if (!nextHostId) {
-        return controlError("error.noOtherPlayerForHostTransfer");
-      }
-      transferHost(room, "manual", room.hostId, requestedTargetId || undefined);
-      return { ok: true };
-    }
-
-    if (command === "KICK_PLAYER" && room.phase === "lobby") {
-      const targetPlayerId = String(options?.targetPlayerId ?? "").trim();
-      if (!targetPlayerId) {
-        return controlError("error.control.targetPlayerRequired");
-      }
-      if (targetPlayerId === room.controlId) {
-        return controlError("error.control.cannotKickControl");
-      }
-      const target = room.players.get(targetPlayerId);
-      if (!target) {
-        return controlError("error.targetPlayerNotFound");
-      }
-      if (target.ws) {
-        try {
-          target.ws.close();
-        } catch {
-          // ignore
-        }
-      }
-      removeLobbyPlayer(room, targetPlayerId);
-      if (rooms.has(room.code)) {
-        broadcastRoomState(room);
-      }
-      return { ok: true };
-    }
-
-    if (command === "SCENARIO_ACTION") {
-      const actionType = String(options?.scenarioActionType ?? "").trim();
-      if (!actionType) {
-        return controlError("error.control.scenarioActionTypeRequired");
-      }
-      const parsedScenarioAction = parseControlScenarioAction(actionType, options?.scenarioPayload ?? {});
-      if ("errorKey" in parsedScenarioAction) {
-        return controlError(parsedScenarioAction.errorKey, parsedScenarioAction.errorVars);
-      }
-
-      if (!room.session || room.phase !== "game") {
-        if (parsedScenarioAction.type === "devAddPlayer") {
-          const bot = addLobbyBotPlayer(room, parsedScenarioAction.payload.name);
-          if (!bot) {
-            return controlError("error.control.addBotFailed");
-          }
-          broadcastRoomState(room);
-          return { ok: true };
-        }
-
-        if (
-          parsedScenarioAction.type === "devKickPlayer" ||
-          parsedScenarioAction.type === "devRemovePlayer"
-        ) {
-          const targetPlayerId = String(parsedScenarioAction.payload.targetPlayerId ?? "").trim();
-          if (!targetPlayerId) {
-            return controlError("error.control.targetPlayerRequired");
-          }
-          if (targetPlayerId === room.controlId) {
-            return controlError("error.control.cannotKickControl");
-          }
-          const target = room.players.get(targetPlayerId);
-          if (!target) {
-            return controlError("error.targetPlayerNotFound");
-          }
-          if (target.ws) {
-            try {
-              target.ws.close();
-            } catch {
-              // ignore
-            }
-          }
-          removeLobbyPlayer(room, targetPlayerId);
-          if (rooms.has(room.code)) {
-            broadcastRoomState(room);
-          }
-          return { ok: true };
-        }
-
-        return controlError("error.control.availableAfterGameStart");
-      }
-
-      const explicitActorId = String(options?.actorPlayerId ?? "").trim();
-      const preferredContinueActorId =
-        parsedScenarioAction.type === "continueRound" && room.settings.continuePermission === "revealer_only"
-          ? getCurrentTurnPlayerId(room)
-          : room.hostId;
-      const actorPlayerId =
-        parsedScenarioAction.type === "adminApplySpecial"
-          ? parsedScenarioAction.payload.actorPlayerId
-          : resolveControlActorId(room, {
-              preferredId: explicitActorId || preferredContinueActorId,
-              allowAnyPresentPlayer: true,
-            }) || room.hostId;
-      if (!room.players.has(actorPlayerId)) {
-        return controlError("error.control.actorNotFoundInRoom");
-      }
-      const result = room.session.handleAction(actorPlayerId, parsedScenarioAction);
-      if (result.error) {
-        return { ok: false, message: localizeScenarioMessageForRoom(room, result.error) };
-      }
-      if (result.stateChanged) {
-        broadcastGameViews(room);
-      }
-      return { ok: true };
-    }
-
-    if (!room.session || room.phase !== "game") {
-      return controlError("error.gameNotFound");
-    }
-
-    const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
-    if (!anchorId) {
-      return controlError("error.control.noActiveHost");
-    }
-    let hostView: ReturnType<ScenarioSession["getGameView"]>;
-    try {
-      hostView = room.session.getGameView(anchorId);
-    } catch {
-      return controlError("error.control.phaseDetectFailed");
-    }
-    const continueActorId =
-      room.settings.continuePermission === "revealer_only"
-        ? hostView.public.currentTurnPlayerId ?? room.hostId
-        : room.hostId;
-
-    let scenarioAction: ScenarioAction | null = null;
-    if (command === "NEXT_STEP" || command === "START_VOTE") {
-      scenarioAction = { type: "continueRound", payload: {} };
-    } else if (command === "END_VOTE") {
-      scenarioAction = { type: "finalizeVoting", payload: {} };
-    } else if (command === "SKIP_STEP") {
-      if (hostView.phase === "reveal_discussion") {
-        scenarioAction = { type: "continueRound", payload: {} };
-      } else if (hostView.phase === "voting" && hostView.public.votePhase === "voteSpecialWindow") {
-        scenarioAction = { type: "finalizeVoting", payload: {} };
-      } else {
-        return controlError("error.control.skipStepUnavailable");
-      }
-    } else if (command === "SKIP_ROUND") {
-      scenarioAction = { type: "devSkipRound", payload: {} };
-    } else if (command === "SET_OUTCOME_SURVIVED") {
-      scenarioAction = { type: "setBunkerOutcome", payload: { outcome: "survived" } };
-    } else if (command === "SET_OUTCOME_FAILED") {
-      scenarioAction = { type: "setBunkerOutcome", payload: { outcome: "failed" } };
-    } else if (command === "KICK_PLAYER") {
-      const targetPlayerId = String(options?.targetPlayerId ?? "").trim();
-      if (!targetPlayerId) {
-        return controlError("error.control.targetPlayerRequired");
-      }
-      if (targetPlayerId === room.controlId) {
-        return controlError("error.control.cannotKickControl");
-      }
-      scenarioAction = { type: "devKickPlayer", payload: { targetPlayerId } };
-    }
-
-    if (!scenarioAction) {
-      return controlError("error.control.unknownCommand");
-    }
-
-    const actorId =
-      resolveControlActorId(room, {
-        preferredId: scenarioAction.type === "continueRound" ? continueActorId : room.hostId,
-        allowAnyPresentPlayer: true,
-      }) || room.hostId;
-    const result = room.session.handleAction(actorId, scenarioAction);
-    if (result.error) {
-      return { ok: false, message: localizeScenarioMessageForRoom(room, result.error) };
-    }
-    if (result.stateChanged) {
-      broadcastGameViews(room);
-    }
-    return { ok: true };
-  };
-
   app.post(LINK_PATHS.overlayControlAction, (req, res) => {
     const requestPayload = isRecord(req.body) ? req.body : {};
     const roomCode = String(requestPayload.roomCode ?? "")
@@ -4953,12 +3821,35 @@ async function main() {
       return;
     }
 
-    const result = runControlCommand(room, action, {
-      targetPlayerId,
-      actorPlayerId,
-      scenarioActionType,
-      scenarioPayload,
-    });
+    const result = runControlCommand(
+      room,
+      action,
+      {
+        assets,
+        rooms,
+        classicScenarioId: CLASSIC_SCENARIO_ID,
+        minClassicPlayers: MIN_CLASSIC_PLAYERS,
+        isClassicRoom: isClassicRoomRuntime,
+        updateRulesetIfAuto: updateRulesetIfAutoRuntime,
+        localizeScenarioMessageForRoom,
+        broadcastRoomState,
+        broadcastGameViews,
+        broadcastEvent: broadcastEventRuntime,
+        buildSystemEvent,
+        pickNextHost,
+        transferHost,
+        removeLobbyPlayer,
+        addLobbyBotPlayer,
+        getCurrentTurnPlayerId,
+        resolveControlActorId,
+      },
+      {
+        targetPlayerId,
+        actorPlayerId,
+        scenarioActionType,
+        scenarioPayload,
+      }
+    );
     if (!result.ok) {
       const localizedMessage = result.message
         ? result.message
@@ -5077,1005 +3968,123 @@ async function main() {
   process.on("SIGBREAK", () => shutdown("SIGBREAK"));
   process.on("SIGHUP", () => shutdown("SIGHUP"));
 
+  const { routerDeps, socketCloseDeps } = createWsContexts({
+    identityMode: IDENTITY_MODE,
+    devLogs: DEV_LOGS,
+    devScenariosEnabled: DEV_SCENARIOS_ENABLED,
+    reconnectGraceAfterKickMs: RECONNECT_GRACE_AFTER_KICK_MS,
+    disconnectGraceMs: DISCONNECT_GRACE_MS,
+    minClassicPlayers: MIN_CLASSIC_PLAYERS,
+    maxClassicPlayers: MAX_CLASSIC_PLAYERS,
+    classicScenarioId: CLASSIC_SCENARIO_ID,
+    defaultSettings: DEFAULT_SETTINGS,
+    assets,
+    scenarioMap,
+    rooms,
+    connectionInfo,
+    overlaySubscriptions: overlaySubscriptions as Map<WebSocket, { roomCode: string; role: string }>,
+    sendLocalizedError,
+    sendReconnectForbidden,
+    send,
+    devLog,
+    logProtocol,
+    logRoomLifecycle,
+    createLobbyRoom,
+    buildAutoRuleset,
+    generateRoomCode,
+    buildDisasterOptions,
+    normalizeCardLocale,
+    generateOverlayViewToken,
+    generateSpectatorToken,
+    generateOverlayControlToken,
+    generateOverlayControlInviteToken,
+    attachPlayer,
+    printOverlayInfo,
+    updateRulesetIfAuto: updateRulesetIfAutoRuntime,
+    broadcastRoomState,
+    broadcastGameViews,
+    sendGameView,
+    buildRoomState,
+    localizeGameViewForLocale,
+    getRoomCardLocale,
+    findPlayerByTabId,
+    findPlayerByToken,
+    findPlayerBySessionId,
+    getScenarioStatus,
+    computeKickRemainingMs,
+    markPlayerLeftBunker,
+    getEffectiveMaxPlayers: getEffectiveMaxPlayersRuntime,
+    getRoleForToken,
+    getRoleForPlayer,
+    canControl,
+    canPlayerAction,
+    sendOverlayState,
+    tServerForRoom,
+    startGameAsControl: (room) =>
+      startGameAsControl(room, {
+        assets,
+        rooms,
+        classicScenarioId: CLASSIC_SCENARIO_ID,
+        minClassicPlayers: MIN_CLASSIC_PLAYERS,
+        isClassicRoom: isClassicRoomRuntime,
+        updateRulesetIfAuto: updateRulesetIfAutoRuntime,
+        localizeScenarioMessageForRoom,
+        broadcastRoomState,
+        broadcastGameViews,
+        broadcastEvent: broadcastEventRuntime,
+        buildSystemEvent,
+        pickNextHost,
+        transferHost,
+        removeLobbyPlayer,
+        addLobbyBotPlayer,
+        getCurrentTurnPlayerId,
+        resolveControlActorId,
+      }),
+    isClassicRoom: isClassicRoomRuntime,
+    clampInt,
+    normalizeForcedDisasterId,
+    normalizeManualConfig,
+    seedManualConfigFromPreset,
+    buildManualRuleset,
+    pickNextHost,
+    transferHost,
+    removeLobbyPlayer,
+    resolveControlActorId,
+    getCurrentTurnPlayerId,
+    localizeScenarioMessageForRoom,
+    broadcastEvent: broadcastEventRuntime,
+    buildSystemEvent,
+    formatRemaining,
+    unrefTimer,
+    scheduleHostTransfer,
+  });
+
   wss.on("connection", (ws, request) => {
-    if (ENFORCE_ORIGIN_CHECKS) {
-      const originHeaderRaw = request.headers.origin;
-      const originHeader = Array.isArray(originHeaderRaw) ? originHeaderRaw[0] : originHeaderRaw;
-      const requestOrigin = getUpgradeRequestOrigin(request);
-      const allowed = isOriginAllowed(originHeader, requestOrigin, { allowMissingOrigin: false });
-      if (!allowed) {
-        const normalizedOrigin = normalizeOrigin(originHeader);
-        console.warn(
-          `[security] websocket origin rejected origin=${normalizedOrigin ?? "<missing>"} expected=${requestOrigin ?? "<unknown>"}`
-        );
-        try {
-          ws.close(1008, "Forbidden origin");
-        } catch {
-          ws.terminate();
-        }
-        return;
-      }
+    if (
+      !validateWsOrigin(ws, request, {
+        enforceOriginChecks: ENFORCE_ORIGIN_CHECKS,
+        getUpgradeRequestOrigin,
+        isOriginAllowed,
+        normalizeOrigin,
+      })
+    ) {
+      return;
     }
 
     ws.on("message", (data) => {
-      let parsedJson: unknown;
-      try {
-          parsedJson = JSON.parse(data.toString());
-        } catch {
-          sendLocalizedError(ws, {
-            key: "error.invalidJson",
-          });
-          return;
-        }
-
-      const parsed = ClientMessageSchema.safeParse(parsedJson);
-      if (!parsed.success) {
-        sendLocalizedError(ws, {
-          key: "error.invalidMessageFormat",
-        });
+      const message = parseIncomingClientMessage(ws, data, {
+        sendLocalizedError,
+        logProtocol,
+      });
+      if (!message) {
         return;
       }
 
-      const message = parsed.data as ClientMessage;
-      logProtocol("message", { type: message.type });
-
-      switch (message.type) {
-        case "hello": {
-          const payload = message.payload;
-          devLog("hello received", {
-            mode: IDENTITY_MODE,
-            room: payload.roomCode ?? "(create)",
-            tabId: payload.tabId ?? null,
-            token: payload.playerToken ? "set" : "none",
-          });
-          if (IDENTITY_MODE === "dev_tab" && !payload.tabId && !payload.playerToken) {
-            logProtocol("hello rejected", { reason: "missing_tabId", mode: IDENTITY_MODE });
-            sendLocalizedError(ws, {
-              key: "error.tabIdRequiredDev",
-            });
-            return;
-          }
-          if (payload.create) {
-            if (!payload.scenarioId) {
-              logProtocol("hello rejected", { reason: "missing_scenarioId" });
-              sendLocalizedError(ws, {
-                key: "error.scenarioIdRequired",
-              });
-              return;
-            }
-            const scenarioModule = scenarioMap.get(payload.scenarioId);
-            if (!scenarioModule) {
-              logProtocol("hello rejected", { reason: "scenario_not_found", scenarioId: payload.scenarioId });
-              sendLocalizedError(ws, {
-                key: "error.scenarioNotFound",
-              });
-              return;
-            }
-            const initialRuleset = buildAutoRuleset(MIN_CLASSIC_PLAYERS);
-            const roomCreatedAt = Date.now();
-
-            const room: Room = {
-              code: generateRoomCode(),
-              hostId: "",
-              controlId: "",
-              createdAt: roomCreatedAt,
-              phase: "lobby",
-              scenarioId: scenarioModule.meta.id,
-              scenarioMeta: scenarioModule.meta,
-              scenarioModule,
-              settings: {
-			   ...DEFAULT_SETTINGS,
-			   cardLocale: normalizeCardLocale(payload.locale),
-			  },
-              disasterOptions: buildDisasterOptions(assets),
-              ruleset: initialRuleset,
-              rulesOverriddenByHost: false,
-              rulesPresetCount: undefined,
-              isDev: IDENTITY_MODE === "dev_tab",
-              players: new Map(),
-              playersByToken: new Map(),
-              playersByTabId: new Map(),
-              playersBySessionId: new Map(),
-              joinOrder: [],
-              lastGameViews: new Map(),
-              overlayToken: generateOverlayViewToken(),
-              spectatorToken: generateSpectatorToken(),
-              overlayEditToken: generateOverlayControlToken(),
-              overlayTokenIssuedAt: roomCreatedAt,
-              overlayEditTokenIssuedAt: roomCreatedAt,
-              overlayControlInviteToken: generateOverlayControlInviteToken(),
-              overlayControlInviteIssuedAt: roomCreatedAt,
-              spectatorInvites: new Map(),
-              overlayOverrides: {},
-            };
-            rooms.set(room.code, room);
-            if (DEV_LOGS) {
-              console.log(`[dev] room created code=${room.code} scenario=${room.scenarioMeta.id}`);
-            }
-            logRoomLifecycle("created", room.code, {
-              scenario: room.scenarioMeta.id,
-              phase: room.phase,
-            });
-            const player = attachPlayer(room, payload, ws);
-            printOverlayInfo(
-              room.code,
-              room.overlayToken,
-              room.overlayEditToken,
-              room.overlayControlInviteToken,
-              room.overlayOverrides?.overlayUrlParams,
-              room.spectatorToken
-            );
-            updateRulesetIfAuto(room);
-            logRoomLifecycle("joined", room.code, {
-              player: payload.name,
-              count: room.players.size,
-              phase: room.phase,
-            });
-            broadcastRoomState(room);
-            return;
-          }
-
-          if (!payload.roomCode) {
-            logProtocol("hello rejected", { reason: "missing_roomCode" });
-            sendLocalizedError(ws, {
-              key: "error.roomCodeRequired",
-            });
-            return;
-          }
-
-          const room = rooms.get(payload.roomCode.toUpperCase());
-          if (!room) {
-            logProtocol("hello rejected", { reason: "room_not_found", roomCode: payload.roomCode.toUpperCase() });
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          if (payload.locale) {
-            room.settings.cardLocale = normalizeCardLocale(payload.locale);
-          }
-
-          // Overlay Control websocket must never create a separate "CONTROL" player.
-          // Bind companion socket either by overlayEditToken or by current control player's token.
-          const controlPlayerForRoom = room.players.get(room.controlId);
-          const controlPlayerToken = String(controlPlayerForRoom?.token ?? "");
-          const helloPlayerToken = String(payload.playerToken ?? "");
-          const isOverlayControlCompanionByToken =
-            payload.name === "CONTROL" &&
-            Boolean(helloPlayerToken) &&
-            (helloPlayerToken === room.overlayEditToken || helloPlayerToken === controlPlayerToken);
-          if (isOverlayControlCompanionByToken) {
-            const controlPlayer = room.players.get(room.controlId);
-            if (!controlPlayer) {
-              sendLocalizedError(ws, {
-                key: "error.controlPlayerNotFoundInRoom",
-                room,
-              });
-              return;
-            }
-            connectionInfo.set(ws, { roomCode: room.code, playerId: controlPlayer.playerId });
-            send(ws, {
-              type: "helloAck",
-              payload: { playerId: controlPlayer.playerId, playerToken: controlPlayer.token },
-            });
-            send(ws, { type: "roomState", payload: buildRoomState(room) });
-            if (room.phase === "game" && room.session) {
-              try {
-                const payloadView =
-                  room.lastGameViews?.get(controlPlayer.playerId) ??
-                  localizeGameViewForLocale(
-                    room.session.getGameView(controlPlayer.playerId),
-                    getRoomCardLocale(room),
-                    room.scenarioId
-                  );
-                send(ws, { type: "gameView", payload: payloadView });
-              } catch {
-                // ignore transient gameView errors for companion sockets
-              }
-            }
-            return;
-          }
-
-          let existing: Player | undefined;
-          if (IDENTITY_MODE === "dev_tab") {
-            existing = findPlayerByTabId(room, payload.tabId);
-          } else {
-            existing = findPlayerByToken(room, payload.playerToken);
-            if (!existing) {
-              existing = findPlayerBySessionId(room, payload.sessionId);
-            }
-          }
-
-          // Overlay Control may connect with the same control token while the creator
-          // is already connected in the main app. Keep the primary player socket intact,
-          // but still allow the companion socket to authenticate for CONTROL actions.
-          const existingPlayer = existing;
-          const isCompanionControlSocket =
-            payload.name === "CONTROL" &&
-            Boolean(payload.playerToken) &&
-            existingPlayer !== undefined &&
-            existingPlayer.connected &&
-            Boolean(existingPlayer.ws) &&
-            existingPlayer.ws !== ws;
-          if (isCompanionControlSocket && existingPlayer) {
-            connectionInfo.set(ws, { roomCode: room.code, playerId: existingPlayer.playerId });
-            send(ws, {
-              type: "helloAck",
-              payload: { playerId: existingPlayer.playerId, playerToken: existingPlayer.token },
-            });
-            send(ws, { type: "roomState", payload: buildRoomState(room) });
-            if (room.phase === "game" && room.session) {
-              try {
-                const payloadView =
-                  room.lastGameViews?.get(existingPlayer.playerId) ??
-                  localizeGameViewForLocale(
-                    room.session.getGameView(existingPlayer.playerId),
-                    getRoomCardLocale(room),
-                    room.scenarioId
-                  );
-                send(ws, { type: "gameView", payload: payloadView });
-              } catch {
-                // ignore transient gameView errors for companion sockets
-              }
-            }
-            return;
-          }
-
-          if (existing?.leftBunker) {
-            if (
-              existing.kickedAt &&
-              Date.now() - existing.kickedAt <= RECONNECT_GRACE_AFTER_KICK_MS
-            ) {
-              // allow reconnect during grace window
-            } else {
-              sendReconnectForbidden(ws, room);
-              return;
-            }
-          }
-
-          if (existing && room.phase === "game") {
-            const status = getScenarioStatus(room, existing.playerId);
-            if (status === "eliminated" && existing.disconnectedAt) {
-              if (Date.now() - existing.disconnectedAt > DISCONNECT_GRACE_MS) {
-                sendReconnectForbidden(ws, room);
-                return;
-              }
-            }
-          }
-          if (existing?.disconnectedAt) {
-            const remainingMs = computeKickRemainingMs(existing);
-            if (remainingMs <= 0) {
-              markPlayerLeftBunker(room, existing);
-              sendLocalizedError(ws, {
-                key: "error.leftBunkerRejoinAsNew",
-                room,
-                code: "LEFT_BUNKER",
-              });
-              return;
-            }
-          }
-
-          if (!existing && room.phase === "lobby" && room.players.size >= getEffectiveMaxPlayers(room)) {
-            const maxPlayers = getEffectiveMaxPlayers(room);
-            sendLocalizedError(ws, {
-              key: "error.roomFull",
-              room,
-              code: "ROOM_FULL",
-              vars: { maxPlayers },
-              extra: { maxPlayers },
-            });
-            return;
-          }
-
-          if (!existing && room.phase === "game") {
-            devLog("reconnect failed: player not found", { room: room.code });
-            sendLocalizedError(ws, {
-              key: "error.playerRestoreFailedRejoin",
-              room,
-              code: "PLAYER_RESTORE_FAILED",
-            });
-            return;
-          }
-
-          const wasDisconnected = Boolean(existing?.disconnectedAt);
-          const player = attachPlayer(room, payload, ws, existing);
-          devLog("player resolved", { room: room.code, playerId: player.playerId, existing: Boolean(existing) });
-          updateRulesetIfAuto(room);
-          logRoomLifecycle(existing ? "reconnected" : "joined", room.code, {
-            player: player.name,
-            count: room.players.size,
-            phase: room.phase,
-          });
-          broadcastRoomState(room);
-          if (room.phase === "game") {
-            sendGameView(room, player);
-            if (wasDisconnected) {
-              broadcastGameViews(room);
-            }
-          }
-          return;
-        }
-        case "resume": {
-          const payload = message.payload;
-          const room = rooms.get(payload.roomCode.toUpperCase());
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          const existing = findPlayerBySessionId(room, payload.sessionId);
-          if (!existing) {
-            sendLocalizedError(ws, {
-              key: "error.playerRestoreFailed",
-              room,
-              code: "PLAYER_RESTORE_FAILED",
-            });
-            return;
-          }
-
-          if (existing.leftBunker) {
-            if (
-              existing.kickedAt &&
-              Date.now() - existing.kickedAt <= RECONNECT_GRACE_AFTER_KICK_MS
-            ) {
-              // allow reconnect during grace window
-            } else {
-              sendReconnectForbidden(ws, room);
-              return;
-            }
-          }
-
-          if (room.phase === "game") {
-            const status = getScenarioStatus(room, existing.playerId);
-            if (status === "eliminated" && existing.disconnectedAt) {
-              if (Date.now() - existing.disconnectedAt > DISCONNECT_GRACE_MS) {
-                sendReconnectForbidden(ws, room);
-                return;
-              }
-            }
-          }
-
-          if (existing.disconnectedAt) {
-            const remainingMs = computeKickRemainingMs(existing);
-            if (remainingMs <= 0) {
-              markPlayerLeftBunker(room, existing);
-              sendLocalizedError(ws, {
-                key: "error.leftBunkerRejoinAsNew",
-                room,
-                code: "LEFT_BUNKER",
-              });
-              return;
-            }
-          }
-
-          const wasDisconnected = Boolean(existing.disconnectedAt);
-          const helloPayload: ClientHelloPayload = {
-            name: existing.name,
-            roomCode: room.code,
-            playerToken: existing.token,
-            tabId: existing.tabId,
-            sessionId: payload.sessionId,
-          };
-          const player = attachPlayer(room, helloPayload, ws, existing);
-          devLog("resume ok", { room: room.code, playerId: player.playerId });
-          updateRulesetIfAuto(room);
-          broadcastRoomState(room);
-          if (room.phase === "game") {
-            sendGameView(room, player);
-            if (wasDisconnected) {
-              broadcastGameViews(room);
-            }
-          }
-          return;
-        }
-        case "overlaySubscribe": {
-          const roomCode = message.payload.roomCode.toUpperCase();
-          const room = rooms.get(roomCode);
-          if (!room) {
-            send(ws, {
-              type: "overlayState",
-              payload: {
-                ok: false,
-                unauthorized: true,
-                message: tServerForRoom(undefined, "error.overlaySubscribeRoomNotFound"),
-              },
-            });
-            return;
-          }
-          const token = message.payload.token;
-          const role = getRoleForToken(room, token);
-          if (role === null || (role !== "VIEW" && !canControl(role))) {
-            send(ws, {
-              type: "overlayState",
-              payload: {
-                ok: false,
-                unauthorized: true,
-                roomCode,
-                message: tServerForRoom(room, "error.overlaySubscribeUnauthorized"),
-              },
-            });
-            return;
-          }
-          overlaySubscriptions.set(ws, { roomCode, role });
-          void sendOverlayState(room, ws, role);
-          return;
-        }
-        case "startGame": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          const role = getRoleForPlayer(room, info.playerId);
-          if (!canControl(role)) {
-            sendLocalizedError(ws, {
-              key: "error.onlyControlStartGame",
-              room,
-            });
-            return;
-          }
-          const result = startGameAsControl(room);
-          if (!result.ok) {
-            if (result.messageKey) {
-              sendLocalizedError(ws, {
-                key: result.messageKey,
-                room,
-                vars: result.messageVars,
-              });
-              return;
-            }
-            if (result.message) {
-              send(ws, { type: "error", payload: { message: result.message } });
-              return;
-            }
-            sendLocalizedError(ws, {
-              key: "error.startGameFailed",
-              room,
-            });
-            return;
-          }
-          return;
-        }
-        case "updateLocale": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          const nextLocale = normalizeCardLocale(message.payload.locale);
-          if (room.settings.cardLocale === nextLocale) {
-            return;
-          }
-          room.settings.cardLocale = nextLocale;
-          room.lastRoomState = undefined;
-          room.lastGameViews?.clear();
-          for (const player of room.players.values()) {
-            player.needsFullState = true;
-            player.needsFullGameView = true;
-          }
-          broadcastRoomState(room);
-          if (room.session) {
-            broadcastGameViews(room);
-          }
-          return;
-        }
-        case "updateSettings": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          if (room.phase !== "lobby") {
-            sendLocalizedError(ws, {
-              key: "error.settingsLobbyOnly",
-              room,
-            });
-            return;
-          }
-          const role = getRoleForPlayer(room, info.playerId);
-          if (!canControl(role)) {
-            sendLocalizedError(ws, {
-              key: "error.onlyControlChangeSettings",
-              room,
-            });
-            return;
-          }
-          const minAllowedPlayers = isClassicRoom(room) ? MIN_CLASSIC_PLAYERS : 2;
-          const nextMaxPlayers = clampInt(message.payload.maxPlayers, minAllowedPlayers, MAX_CLASSIC_PLAYERS);
-          if (nextMaxPlayers < room.players.size) {
-            sendLocalizedError(ws, {
-              key: "error.maxPlayersLowerThanCurrent",
-              room,
-            });
-            return;
-          }
-          room.settings = {
-			  ...message.payload,
-			  maxPlayers: nextMaxPlayers,
-			  forcedDisasterId: normalizeForcedDisasterId(
-				message.payload.forcedDisasterId,
-				room.disasterOptions
-			  ),
-			  cardLocale: normalizeCardLocale(message.payload.cardLocale),
-			};
-			broadcastRoomState(room);
-			return;
-        }
-        case "updateRules": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          if (!isClassicRoom(room)) {
-            sendLocalizedError(ws, {
-              key: "error.rulesClassicOnly",
-              room,
-            });
-            return;
-          }
-          if (room.phase !== "lobby") {
-            sendLocalizedError(ws, {
-              key: "error.rulesLobbyOnly",
-              room,
-            });
-            return;
-          }
-          const role = getRoleForPlayer(room, info.playerId);
-          if (!canControl(role)) {
-            sendLocalizedError(ws, {
-              key: "error.onlyControlChangeRules",
-              room,
-            });
-            return;
-          }
-
-          if (message.payload.mode === "auto") {
-            room.rulesOverriddenByHost = false;
-            room.rulesPresetCount = undefined;
-            room.ruleset = buildAutoRuleset(room.players.size);
-          } else {
-            const presetCount = clampInt(
-              message.payload.presetPlayerCount ?? room.rulesPresetCount ?? room.players.size,
-              4,
-              16
-            );
-            room.rulesOverriddenByHost = true;
-            room.rulesPresetCount = presetCount;
-            if (message.payload.manualConfig) {
-              const manualConfig = normalizeManualConfig(
-                message.payload.manualConfig,
-                presetCount
-              );
-              room.rulesPresetCount = manualConfig.seedTemplatePlayers ?? presetCount;
-              room.ruleset = buildManualRuleset(manualConfig, room.players.size);
-            } else {
-              const seedConfig = seedManualConfigFromPreset(presetCount);
-              room.ruleset = buildManualRuleset(seedConfig, room.players.size);
-            }
-          }
-          broadcastRoomState(room);
-          return;
-        }
-        case "requestHostTransfer": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          const role = getRoleForPlayer(room, info.playerId);
-          if (!canControl(role)) {
-            sendLocalizedError(ws, {
-              key: "error.onlyControlTransferRole",
-              room,
-            });
-            return;
-          }
-          const requestedTargetId = String(message.payload.targetPlayerId ?? "").trim();
-          if (requestedTargetId) {
-            if (requestedTargetId === room.hostId) {
-              sendLocalizedError(ws, {
-                key: "error.alreadyHost",
-                room,
-              });
-              return;
-            }
-            const requestedTarget = room.players.get(requestedTargetId);
-            if (!requestedTarget) {
-              sendLocalizedError(ws, {
-                key: "error.targetPlayerNotFound",
-                room,
-              });
-              return;
-            }
-            if (!requestedTarget.connected) {
-              sendLocalizedError(ws, {
-                key: "error.cannotTransferHostOffline",
-                room,
-              });
-              return;
-            }
-          }
-          const nextHostId = requestedTargetId || pickNextHost(room, room.hostId);
-          if (!nextHostId) {
-            sendLocalizedError(ws, {
-              key: "error.noOtherPlayerForHostTransfer",
-              room,
-            });
-            return;
-          }
-          transferHost(room, "manual", room.hostId, requestedTargetId || undefined);
-          return;
-        }
-        case "ping": {
-          send(ws, { type: "pong", payload: {} });
-          return;
-        }
-        case "kickFromLobby": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room) {
-            sendLocalizedError(ws, {
-              key: "error.roomNotFound",
-            });
-            return;
-          }
-          if (room.phase !== "lobby") {
-            sendLocalizedError(ws, {
-              key: "error.commandLobbyOnly",
-              room,
-            });
-            return;
-          }
-          const role = getRoleForPlayer(room, info.playerId);
-          if (!canControl(role)) {
-            sendLocalizedError(ws, {
-              key: "error.onlyControlKick",
-              room,
-            });
-            return;
-          }
-          const targetId = message.payload.targetPlayerId;
-          if (targetId === room.hostId) {
-            sendLocalizedError(ws, {
-              key: "error.cannotKickHost",
-              room,
-            });
-            return;
-          }
-          const target = room.players.get(targetId);
-          if (!target) {
-            sendLocalizedError(ws, {
-              key: "error.targetPlayerNotFound",
-              room,
-            });
-            return;
-          }
-          if (target.ws) {
-            try {
-              target.ws.close();
-            } catch {
-              // ignore
-            }
-          }
-          removeLobbyPlayer(room, targetId);
-          devLog("lobby kick", {
-            room: room.code,
-            targetId,
-            remaining: room.players.size,
-          });
-          if (rooms.has(room.code)) {
-            broadcastRoomState(room);
-          }
-          return;
-        }
-        case "revealCard":
-        case "vote":
-        case "finalizeVoting":
-        case "applySpecial":
-        case "revealWorldThreat":
-        case "setBunkerOutcome":
-        case "continueRound":
-        case "devSkipRound":
-        case "devKickPlayer":
-        case "devAddPlayer":
-        case "devRemovePlayer": {
-          const info = connectionInfo.get(ws);
-          if (!info) {
-            sendLocalizedError(ws, {
-              key: "error.notInRoom",
-            });
-            return;
-          }
-          const room = rooms.get(info.roomCode);
-          if (!room || !room.session) {
-            sendLocalizedError(ws, {
-              key: "error.gameNotFound",
-              room,
-            });
-            return;
-          }
-          const role = getRoleForPlayer(room, info.playerId);
-          const controlOnlyActions = new Set([
-            "finalizeVoting",
-            "devSkipRound",
-            "devKickPlayer",
-            "devAddPlayer",
-            "devRemovePlayer",
-          ]);
-          const continueRequiresControl =
-            message.type === "continueRound" && Boolean(room.settings.enablePresenterMode);
-          if ((controlOnlyActions.has(message.type) || continueRequiresControl) && !canControl(role)) {
-            sendLocalizedError(ws, {
-              key: "error.actionControlOnly",
-              room,
-              code: "PERMISSION_DENIED",
-            });
-            return;
-          }
-          if (
-            (message.type === "revealCard" ||
-              message.type === "vote" ||
-              message.type === "applySpecial" ||
-              message.type === "revealWorldThreat") &&
-            !canPlayerAction(role)
-          ) {
-            sendLocalizedError(ws, {
-              key: "error.actionPlayerPermission",
-              room,
-              code: "PERMISSION_DENIED",
-            });
-            return;
-          }
-
-          if (
-            (message.type === "devAddPlayer" || message.type === "devRemovePlayer") &&
-            !(DEV_SCENARIOS_ENABLED && room.scenarioMeta.devOnly)
-          ) {
-            sendLocalizedError(ws, {
-              key: "error.devCommandsOnlyDevScenarios",
-              room,
-            });
-            return;
-          }
-
-          if (message.type === "devSkipRound") {
-            if (IDENTITY_MODE !== "dev_tab") {
-              sendLocalizedError(ws, {
-                key: "error.devModeDisabled",
-                room,
-              });
-              return;
-            }
-            if (room.scenarioMeta.id !== CLASSIC_SCENARIO_ID) {
-              sendLocalizedError(ws, {
-                key: "error.commandClassicOnly",
-                room,
-              });
-              return;
-            }
-          }
-
-          if (message.type === "devKickPlayer") {
-            if (IDENTITY_MODE !== "dev_tab") {
-              sendLocalizedError(ws, {
-                key: "error.devModeDisabled",
-                room,
-              });
-              return;
-            }
-            if (room.scenarioMeta.id !== CLASSIC_SCENARIO_ID) {
-              sendLocalizedError(ws, {
-                key: "error.commandClassicOnly",
-                room,
-              });
-              return;
-            }
-          }
-
-          const action = message as ScenarioAction;
-          let actorId =
-            controlOnlyActions.has(message.type) || continueRequiresControl
-              ? resolveControlActorId(room, { preferredId: room.hostId, allowAnyPresentPlayer: true }) ||
-                room.hostId
-              : info.playerId;
-          if (
-            message.type === "continueRound" &&
-            canControl(role) &&
-            room.settings.continuePermission === "revealer_only"
-          ) {
-            const turnActorId = getCurrentTurnPlayerId(room);
-            actorId =
-              resolveControlActorId(room, {
-                preferredId: turnActorId || room.hostId,
-                allowAnyPresentPlayer: true,
-              }) || actorId;
-          }
-          if (message.type === "continueRound" && room.settings.continuePermission === "host_only") {
-            const canProxyContinueAsHost = info.playerId === room.hostId || canControl(role);
-            if (canProxyContinueAsHost) {
-              actorId =
-                resolveControlActorId(room, {
-                  preferredId: room.hostId,
-                  allowAnyPresentPlayer: true,
-                }) || actorId;
-            }
-          }
-          const result = room.session.handleAction(actorId, action);
-          if (result.error) {
-            send(ws, { type: "error", payload: { message: localizeScenarioMessageForRoom(room, result.error) } });
-            return;
-          }
-          if (result.stateChanged) {
-            broadcastGameViews(room);
-          }
-          return;
-        }
-        default: {
-          sendLocalizedError(ws, {
-            key: "error.unknownMessage",
-          });
-        }
-      }
+      routeClientMessage(ws, message, routerDeps);
     });
 
     ws.on("close", () => {
-      overlaySubscriptions.delete(ws);
-      const info = connectionInfo.get(ws);
-      if (!info) return;
-      const room = rooms.get(info.roomCode);
-      if (!room) return;
-      const player = room.players.get(info.playerId);
-      if (!player) return;
-      if (player.ws && player.ws !== ws) {
-        return;
-      }
-      connectionInfo.delete(ws);
-      if (room.phase === "lobby") {
-        removeLobbyPlayer(room, player.playerId);
-        devLog("lobby disconnect", {
-          room: room.code,
-          playerId: player.playerId,
-          remaining: room.players.size,
-        });
-        if (rooms.has(room.code)) {
-          broadcastRoomState(room);
-        }
-        return;
-      }
-      const status = room.phase === "game" ? getScenarioStatus(room, player.playerId) : undefined;
-      const isEliminated = status === "eliminated";
-      player.connected = false;
-      player.ws = undefined;
-      if (!player.leftBunker) {
-        if (!player.disconnectedAt) {
-          player.disconnectedAt = Date.now();
-          if (!isEliminated) {
-            const remainingMs = computeKickRemainingMs(player);
-            broadcastEvent(
-              room,
-              buildSystemEvent(
-                room,
-                "playerDisconnected",
-                tServerForRoom(room, "info.playerDisconnectedGrace", {
-                  playerName: player.name,
-                  remaining: formatRemaining(remainingMs),
-                })
-              )
-            );
-          }
-        }
-        if (!isEliminated) {
-          if (player.disconnectTimer) {
-            clearTimeout(player.disconnectTimer);
-          }
-          const remainingMs = computeKickRemainingMs(player);
-          if (remainingMs <= 0) {
-            markPlayerLeftBunker(room, player);
-          } else {
-            player.disconnectTimer = setTimeout(() => {
-              markPlayerLeftBunker(room, player);
-            }, remainingMs);
-            unrefTimer(player.disconnectTimer);
-          }
-          if (player.disconnectTicker) {
-            clearInterval(player.disconnectTicker);
-          }
-          player.disconnectTicker = setInterval(() => {
-            if (player.connected || player.leftBunker || !player.disconnectedAt) {
-              if (player.disconnectTicker) {
-                clearInterval(player.disconnectTicker);
-                player.disconnectTicker = undefined;
-              }
-              return;
-            }
-            const remainingMsTick = computeKickRemainingMs(player);
-            if (remainingMsTick <= 0) {
-              markPlayerLeftBunker(room, player);
-              return;
-            }
-            const remainingMinutes = Math.floor(remainingMsTick / 60000);
-            if (player.disconnectNotifiedMinutes === remainingMinutes) return;
-            player.disconnectNotifiedMinutes = remainingMinutes;
-            broadcastEvent(
-              room,
-              buildSystemEvent(
-                room,
-                "playerDisconnected",
-                tServerForRoom(room, "info.playerMissingGrace", {
-                  playerName: player.name,
-                  remaining: formatRemaining(remainingMsTick),
-                })
-              )
-            );
-          }, 60000);
-          unrefTimer(player.disconnectTicker);
-        }
-      }
-      if (room.phase === "game" && room.hostId === player.playerId) {
-        scheduleHostTransfer(room, "disconnect_timeout");
-      }
-      logRoomLifecycle("disconnected", room.code, {
-        player: player.name,
-        phase: room.phase,
-        connected: player.connected,
-      });
-      broadcastRoomState(room);
-      if (room.phase === "game") {
-        broadcastGameViews(room);
-      }
+      handleSocketClose(ws, socketCloseDeps);
     });
   });
 
@@ -6105,9 +4114,9 @@ async function main() {
       `Sensitive HTTP rate-limit: ${SENSITIVE_HTTP_RATE_LIMIT_ENABLED ? "enabled" : "disabled"} (max=${SENSITIVE_HTTP_RATE_LIMIT_MAX}, window=${SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS}ms)`
     );
     console.log(`Overlay token TTL: ${OVERLAY_TOKEN_TTL_MS > 0 ? `${OVERLAY_TOKEN_TTL_MS}ms` : "disabled"}`);
-    console.log(`Assets root: ${ASSETS_ROOT} (decks: ${deckCount}, source: ${assetsResolved.source})`);
+    console.log(`Assets root: ${ASSETS_ROOT} (decks: ${deckCount}, source: ${ASSETS_ROOT_SOURCE})`);
     if (SERVE_CLIENT) {
-      console.log(`Client dist: ${CLIENT_DIST} (source: ${clientResolved.source})`);
+      console.log(`Client dist: ${CLIENT_DIST} (source: ${CLIENT_DIST_SOURCE})`);
     }
     console.log(`Overlay assets: ${OVERLAY_PUBLIC_ROOT}`);
     console.log(`Loaded scenarios: ${availableScenarios.map((s) => s.meta.name).join(", ")}`);

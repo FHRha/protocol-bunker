@@ -23,20 +23,15 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
             var appBaseDir = Path.GetFullPath(AppContext.BaseDirectory);
             var repoRoot = FindRepoRoot(appBaseDir);
 
-            var candidates = BuildCandidateSettingsPaths(appBaseDir, repoRoot);
-            foreach (var path in candidates)
+            foreach (var candidate in BuildLoadCandidates(appBaseDir, repoRoot))
             {
-                var loaded = await TryLoadLauncherSettingsAsync(path, cancellationToken);
-                if (loaded is not null)
+                var loaded = candidate.Kind switch
                 {
-                    return loaded;
-                }
-            }
+                    SettingsSourceKind.LauncherSettings => await TryLoadLauncherSettingsAsync(candidate.Path, cancellationToken),
+                    SettingsSourceKind.PortableEnv => await TryLoadPortableEnvAsync(candidate.Path, cancellationToken),
+                    _ => null,
+                };
 
-            var portableCandidates = BuildCandidatePortableEnvPaths(appBaseDir, repoRoot);
-            foreach (var path in portableCandidates)
-            {
-                var loaded = await TryLoadPortableEnvAsync(path, cancellationToken);
                 if (loaded is not null)
                 {
                     return loaded;
@@ -101,26 +96,20 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
         }
     }
 
-    private static IEnumerable<string> BuildCandidateSettingsPaths(string appBaseDir, string? repoRoot)
+    private static IEnumerable<SettingsCandidate> BuildLoadCandidates(string appBaseDir, string? repoRoot)
     {
-        yield return Path.Combine(appBaseDir, "launcher.settings.json");
+        yield return new SettingsCandidate(SettingsSourceKind.LauncherSettings, Path.Combine(appBaseDir, "launcher.settings.json"));
+        yield return new SettingsCandidate(SettingsSourceKind.PortableEnv, Path.Combine(appBaseDir, "app", "portable.env"));
 
-        if (repoRoot is not null)
+        if (repoRoot is null)
         {
-            yield return Path.Combine(repoRoot, "launcher.settings.json");
-            yield return Path.Combine(repoRoot, "artifacts", "win-desktop", "Protocol-Bunker", "launcher.settings.json");
+            yield break;
         }
-    }
 
-    private static IEnumerable<string> BuildCandidatePortableEnvPaths(string appBaseDir, string? repoRoot)
-    {
-        yield return Path.Combine(appBaseDir, "app", "portable.env");
-
-        if (repoRoot is not null)
-        {
-            yield return Path.Combine(repoRoot, "app", "portable.env");
-            yield return Path.Combine(repoRoot, "artifacts", "win-desktop", "Protocol-Bunker", "app", "portable.env");
-        }
+        yield return new SettingsCandidate(SettingsSourceKind.LauncherSettings, Path.Combine(repoRoot, "launcher.settings.json"));
+        yield return new SettingsCandidate(SettingsSourceKind.PortableEnv, Path.Combine(repoRoot, "app", "portable.env"));
+        yield return new SettingsCandidate(SettingsSourceKind.LauncherSettings, Path.Combine(repoRoot, "artifacts", "win-desktop", "Protocol-Bunker", "launcher.settings.json"));
+        yield return new SettingsCandidate(SettingsSourceKind.PortableEnv, Path.Combine(repoRoot, "artifacts", "win-desktop", "Protocol-Bunker", "app", "portable.env"));
     }
 
     private static string ResolveWriteTargetPath(string appBaseDir, string? repoRoot)
@@ -317,5 +306,13 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
         public string? ViewToken { get; set; }
 
         public string? EditToken { get; set; }
+    }
+
+    private readonly record struct SettingsCandidate(SettingsSourceKind Kind, string Path);
+
+    private enum SettingsSourceKind
+    {
+        LauncherSettings,
+        PortableEnv,
     }
 }

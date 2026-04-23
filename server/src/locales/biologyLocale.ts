@@ -1,7 +1,7 @@
 import type { CardLocale, OverlayBiologyView, OverlayTagView } from "@bunker/shared";
-import biologyMetadataRaw from "../../locales/cards/biology-metadata.json" with { type: "json" };
-import traitsRuRaw from "../../locales/traits/ru.json" with { type: "json" };
-import traitsEnRaw from "../../locales/traits/en.json" with { type: "json" };
+import biologyMetadataRaw from "../../../locales/cards/biology-metadata.json" with { type: "json" };
+import traitsRuRaw from "../../../locales/traits/ru.json" with { type: "json" };
+import traitsEnRaw from "../../../locales/traits/en.json" with { type: "json" };
 
 type BiologyTraits = {
   sex?: string;

@@ -59,7 +59,7 @@ public sealed class DesktopRuntimeService : IRuntimeService
             SetLocalizedStatus(_statusDetailKey!, _statusDetailArgs);
         }
 
-        if (_process is not null && _process.HasExited)
+        if (_process is not null && IsProcessExitedOrDetached(_process))
         {
             CleanupExitedProcess();
         }
@@ -122,7 +122,7 @@ public sealed class DesktopRuntimeService : IRuntimeService
         await _lifecycleLock.WaitAsync(cancellationToken);
         try
         {
-            if (_process is not null && !_process.HasExited)
+            if (_process is not null && !IsProcessExitedOrDetached(_process))
             {
                 return new RuntimeActionResult(false, _localizationService.Get("runtime.action.already_running"));
             }
@@ -179,7 +179,15 @@ public sealed class DesktopRuntimeService : IRuntimeService
             process.Exited += (_, _) =>
             {
                 _runtimeState = RuntimeState.Stopped;
-                SetLocalizedStatus("runtime.status.exited_with_code", process.ExitCode);
+                if (TryGetExitCode(process, out var exitCode))
+                {
+                    SetLocalizedStatus("runtime.status.exited_with_code", exitCode);
+                }
+                else
+                {
+                    SetLocalizedStatus("runtime.status.stopped");
+                }
+
                 _detectedPort = null;
                 RaiseStateChanged();
             };
@@ -219,10 +227,10 @@ public sealed class DesktopRuntimeService : IRuntimeService
         await _lifecycleLock.WaitAsync(cancellationToken);
         try
         {
-            if (_process is null || _process.HasExited)
+            var process = _process;
+            if (process is null || IsProcessExitedOrDetached(process))
             {
-                CleanupExitedProcess();
-                return new RuntimeActionResult(false, _localizationService.Get("runtime.action.not_running"));
+                return CompleteStopAsStopped();
             }
 
             _runtimeState = RuntimeState.Stopping;
@@ -231,35 +239,35 @@ public sealed class DesktopRuntimeService : IRuntimeService
 
             try
             {
-                _process.StandardInput.WriteLine("exit");
-                _process.StandardInput.Flush();
-                _process.StandardInput.Close();
+                process.StandardInput.WriteLine("exit");
+                process.StandardInput.Flush();
+                process.StandardInput.Close();
             }
             catch
             {
                 // ignored
             }
 
-            var stopped = await WaitForExitWithTimeoutAsync(_process, 2500, cancellationToken);
+            var stopped = await WaitForExitWithTimeoutAsync(process, 2500, cancellationToken);
             if (!stopped)
             {
                 try
                 {
-                    _process.Kill(entireProcessTree: true);
+                    process.Kill(entireProcessTree: true);
                 }
                 catch
                 {
                     // ignored
                 }
 
-                await WaitForExitWithTimeoutAsync(_process, 2500, cancellationToken);
+                await WaitForExitWithTimeoutAsync(process, 2500, cancellationToken);
             }
 
-            CleanupExitedProcess();
-            _runtimeState = RuntimeState.Stopped;
-            SetLocalizedStatus("runtime.status.stopped");
-            RaiseStateChanged();
-            return new RuntimeActionResult(true, _localizationService.Get("runtime.action.stopped"));
+            return CompleteStopAsStopped();
+        }
+        catch (InvalidOperationException)
+        {
+            return CompleteStopAsStopped();
         }
         catch (Exception ex)
         {
@@ -571,6 +579,15 @@ public sealed class DesktopRuntimeService : IRuntimeService
         }
     }
 
+    private RuntimeActionResult CompleteStopAsStopped()
+    {
+        CleanupExitedProcess();
+        _runtimeState = RuntimeState.Stopped;
+        SetLocalizedStatus("runtime.status.stopped");
+        RaiseStateChanged();
+        return new RuntimeActionResult(true, _localizationService.Get("runtime.action.stopped"));
+    }
+
     private void RaiseStateChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
 
     private void SetLocalizedStatus(string key, params object[] args)
@@ -586,11 +603,37 @@ public sealed class DesktopRuntimeService : IRuntimeService
     {
         try
         {
-            return _process is { HasExited: false } ? _process.Id : null;
+            return _process is not null && !IsProcessExitedOrDetached(_process) ? _process.Id : null;
         }
         catch
         {
             return null;
+        }
+    }
+
+    private static bool IsProcessExitedOrDetached(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    private static bool TryGetExitCode(Process process, out int exitCode)
+    {
+        try
+        {
+            exitCode = process.ExitCode;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            exitCode = 0;
+            return false;
         }
     }
 
@@ -605,7 +648,7 @@ public sealed class DesktopRuntimeService : IRuntimeService
         }
         catch
         {
-            return process.HasExited;
+            return IsProcessExitedOrDetached(process);
         }
     }
 

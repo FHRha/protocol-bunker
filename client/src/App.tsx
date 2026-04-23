@@ -4,29 +4,52 @@ import type {
   GameEvent,
   GameSettings,
   GameView,
-  ManualRulesConfig,
   RoomState,
   ScenarioMeta,
 } from "@bunker/shared";
 import { BunkerClient, type ConnectionStatus } from "./wsClient";
 import { API_BASE, DEV_TAB_IDENTITY, IDENTITY_MODE, WS_URL } from "./config";
-import { clearPlayerToken, initTabIdentity, readPlayerToken, writePlayerToken } from "./storage";
+import { clearPlayerToken, initTabIdentity, writePlayerToken } from "./storage";
 import {
   getCurrentLocale,
-  setCurrentLocale,
   type LocaleCode,
   useUiLocaleNamespace,
 } from "./localization";
+import { getOrCreateSessionId } from "./session/storage";
+import type { RulesUpdatePayload, SessionIntent } from "./session/types";
+import { createSessionActions } from "./session/actions";
+import {
+  beginCreateSession,
+  beginJoinSession,
+  buildStoredReconnectIntent,
+  sendHelloWithIntent as sendSessionHelloWithIntent,
+  sendResume as sendSessionResume,
+} from "./session/connectionFlow";
+import { getRoomRouteTarget, hasRouteReconnectContext } from "./session/routing";
+import { handleConnectionStatus, handleServerMessage } from "./session/wsMessageHandlers";
 import Modal from "./components/Modal";
 import EyeIcon from "./components/EyeIcon";
 import AnimatedRouteContainer from "./components/AnimatedRouteContainer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ErrorScreen from "./components/ErrorScreen";
+import RouteIssuePanel from "./components/RouteIssuePanel";
 import HomePage from "./pages/HomePage";
 import LobbyPage from "./pages/LobbyPage";
 import GamePage from "./pages/GamePage";
 import SpectatorTablePage from "./pages/SpectatorTablePage";
 import { useUiLocaleNamespacesActivation } from "./localization/useUiLocaleNamespacesActivation";
+import { useAppUiSideEffects } from "./hooks/useAppUiSideEffects";
+import { useViewportFlags } from "./hooks/useViewportFlags";
+import { usePopoverDismissal } from "./hooks/usePopoverDismissal";
+import {
+  buildConnectionDisplay,
+  buildRoleLabel,
+  buildRoomCodeDisplay,
+  buildToastViews,
+  getDevKickCandidates,
+  getTransferHostCandidates,
+  type UiToast,
+} from "./app/derivedUi";
 
 const THEME_STORAGE_KEY = "bunker.theme";
 const STREAMER_MODE_KEY = "bunker.streamerMode";
@@ -43,8 +66,6 @@ const SHOW_HINTS_KEY = "bunker.showHints";
 const TOAST_DURATION_KEY = "bunker.toastDurationMs";
 const MAX_EVENTS = 20;
 const SNAPSHOT_TIMEOUT_MS = 8000;
-const SESSION_ID_KEY = "bunker.sessionId";
-
 type ThemeMode =
   | "dark-mint"
   | "light-paper"
@@ -54,19 +75,6 @@ type ThemeMode =
 type ToastPosition = "top-right" | "top-left" | "bottom-right" | "bottom-left";
 type UiScale = "90" | "100" | "110";
 type ToastDuration = "3000" | "4000" | "6000";
-type UiToast = { id: string; message: string; variant: "danger" | "success" | "info" };
-type RulesUpdatePayload = {
-  mode: "auto" | "manual";
-  presetPlayerCount?: number;
-  manualConfig?: ManualRulesConfig;
-};
-
-type SessionIntent =
-  | { mode: "create"; name: string; scenarioId: string; locale: LocaleCode; tabId?: string }
-  | { mode: "join"; name: string; roomCode: string; playerToken?: string; tabId?: string }
-  | { mode: "reconnect"; name: string; roomCode: string; playerToken?: string; tabId?: string };
-
-
 function getInitialTheme(): ThemeMode {
   if (typeof window === "undefined") return "dark-mint";
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -204,18 +212,6 @@ function isSuspiciousLabel(value: string): boolean {
 
 function safeLabel(value: string, fallback: string): string {
   return isSuspiciousLabel(value) ? fallback : value;
-}
-
-function getOrCreateSessionId(useSessionStorage: boolean): string {
-  const storage = useSessionStorage ? window.sessionStorage : window.localStorage;
-  const existing = storage.getItem(SESSION_ID_KEY);
-  if (existing) return existing;
-  const generated =
-    typeof window.crypto?.randomUUID === "function"
-      ? window.crypto.randomUUID()
-      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  storage.setItem(SESSION_ID_KEY, generated);
-  return generated;
 }
 
 export default function App() {
@@ -370,12 +366,7 @@ export default function App() {
   const [transferHostTargetId, setTransferHostTargetId] = useState("");
   const [transferHostAgree, setTransferHostAgree] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== "undefined" ? window.matchMedia("(max-width: 1250px)").matches : false
-  );
-  const [isMobileNarrow, setIsMobileNarrow] = useState(
-    typeof window !== "undefined" ? window.matchMedia("(max-width: 600px)").matches : false
-  );
+  const { isMobile, isMobileNarrow } = useViewportFlags();
   const [mobileDossierError, setMobileDossierError] = useState<string | null>(null);
   const THEME_OPTIONS: Array<{ id: ThemeMode; label: string }> = useMemo(
     () => [
@@ -419,32 +410,65 @@ export default function App() {
   const showDevIdentityBadge = roomState ? Boolean(roomState.isDev) : DEV_TAB_IDENTITY;
   const wsInteractive = connectionStatus === "connected";
   const toastDurationMs = Number(toastDuration);
-  const roleLabel = isControl ? appLocale.roleControl : isHost ? appLocale.roleHost : appLocale.rolePlayer;
-  const statusLabel =
-    connectionStatus === "connected"
-      ? appLocale.statusOnline
-      : connectionStatus === "reconnecting"
-        ? appLocale.statusReconnecting
-        : appLocale.statusOffline;
-  const statusClass =
-    connectionStatus === "connected"
-      ? "online"
-      : connectionStatus === "reconnecting"
-        ? "reconnecting"
-        : "offline";
-  const statusHint =
-    connectionStatus === "reconnecting"
-      ? appLocale.statusReconnectHint
-      : connectionStatus === "disconnected"
-        ? appLocale.statusOfflineHint
-        : null;
-  const devKickCandidates =
-    gameView?.public.players.filter(
-      (player) => player.status === "alive" && player.playerId !== playerId
-    ) ?? [];
-  const transferHostCandidates =
-    roomState?.players.filter((player) => player.playerId !== roomState.hostId) ?? [];
+  const roleLabel = buildRoleLabel({
+    isControl: Boolean(isControl),
+    isHost: Boolean(isHost),
+    roleControl: appLocale.roleControl,
+    roleHost: appLocale.roleHost,
+    rolePlayer: appLocale.rolePlayer,
+  });
+  const connectionDisplay = buildConnectionDisplay(connectionStatus, {
+    statusOnline: appLocale.statusOnline,
+    statusReconnecting: appLocale.statusReconnecting,
+    statusOffline: appLocale.statusOffline,
+    statusReconnectHint: appLocale.statusReconnectHint,
+    statusOfflineHint: appLocale.statusOfflineHint,
+  });
+  const devKickCandidates = getDevKickCandidates(gameView, playerId);
+  const transferHostCandidates = getTransferHostCandidates(roomState);
   const devSkipRoundButtonLabel = safeLabel(appLocale.devSkipRoundButton, "DEV");
+
+  useAppUiSideEffects({
+    keys: {
+      theme: THEME_STORAGE_KEY,
+      streamerMode: STREAMER_MODE_KEY,
+      showRoomCode: SHOW_ROOM_CODE_KEY,
+      toastPosition: TOAST_POSITION_KEY,
+      uiScale: UI_SCALE_KEY,
+      reduceMotion: REDUCE_MOTION_KEY,
+      confirmDangerousActions: CONFIRM_DANGEROUS_KEY,
+      confirmExitGame: CONFIRM_EXIT_KEY,
+      compactMode: COMPACT_MODE_KEY,
+      autoCopyRoomCode: AUTO_COPY_ROOM_CODE_KEY,
+      showSpectatorLinks: SHOW_SPECTATOR_LINKS_KEY,
+      showHints: SHOW_HINTS_KEY,
+      toastDuration: TOAST_DURATION_KEY,
+    },
+    appTitle: appNs.t("appTitle"),
+    theme,
+    streamerMode,
+    showRoomCode,
+    setShowRoomCode,
+    toastPosition,
+    uiScale,
+    reduceMotion,
+    confirmDangerousActions,
+    confirmExitGame,
+    toastDuration,
+    compactMode,
+    autoCopyRoomCode,
+    showSpectatorLinks,
+    showHints,
+    locale,
+  });
+
+  usePopoverDismissal({
+    routeKey: `${location.pathname}\n${location.search}`,
+    settingsMenuRef,
+    themeMenuRef,
+    setSettingsMenuOpen,
+    setThemeMenuOpen,
+  });
 
   const clearSnapshotTimer = () => {
     if (snapshotTimerRef.current) {
@@ -508,81 +532,33 @@ export default function App() {
       "Game not found",
     ]);
 
-  const buildHelloPayload = (intent: SessionIntent) => {
-    const effectiveSessionId = sessionIdRef.current ?? sessionId ?? undefined;
-    if (intent.mode === "create") {
-	  return {
-		name: intent.name,
-		create: true,
-		scenarioId: intent.scenarioId,
-		locale: intent.locale,
-		tabId: intent.tabId,
-		sessionId: effectiveSessionId,
-	  };
-	}
-    return {
-      name: intent.name,
-      roomCode: intent.roomCode,
-      playerToken: intent.playerToken,
-      tabId: intent.tabId,
-      sessionId: effectiveSessionId,
-      locale,
-    };
-  };
-
   const sendHelloWithIntent = async (intent: SessionIntent) => {
-    ensureSessionId();
-    const payload = buildHelloPayload(intent);
-    startSnapshotWait(true);
-    lastHelloAtRef.current = Date.now();
-    if (IDENTITY_MODE !== "prod") {
-      console.log("[dev] hello sent", intent);
-    }
-    await client.connect();
-    client.send({ type: "hello", payload });
-  };
-
-  const getResumePayload = () => {
-    const roomCode =
-      roomStateRef.current?.roomCode ??
-      new URLSearchParams(location.search).get("room") ??
-      localStorage.getItem("bunker.lastRoomCode") ??
-      "";
-    const sessionIdValue = sessionIdRef.current ?? sessionId ?? "";
-    if (!roomCode || !sessionIdValue) return null;
-    return { roomCode: roomCode.toUpperCase(), sessionId: sessionIdValue };
+    await sendSessionHelloWithIntent(intent, {
+      client,
+      locale,
+      sessionId,
+      sessionIdRef,
+      ensureSessionId,
+      startSnapshotWait,
+      lastHelloAtRef,
+    });
   };
 
   const sendResume = async () => {
-    ensureSessionId();
-    const payload = getResumePayload();
-    if (!payload) return;
-    const expectGameView =
-      roomStateRef.current?.phase === "game" || location.pathname.startsWith("/game");
-    startSnapshotWait(expectGameView);
-    lastHelloAtRef.current = Date.now();
-    if (IDENTITY_MODE !== "prod") {
-      console.log("[dev] resume sent", payload.roomCode);
-    }
-    await client.connect(true);
-    client.send({ type: "resume", payload });
+    await sendSessionResume({
+      client,
+      sessionId,
+      sessionIdRef,
+      roomStateRef,
+      locationPathname: location.pathname,
+      locationSearch: location.search,
+      ensureSessionId,
+      startSnapshotWait,
+      lastHelloAtRef,
+    });
   };
 
 
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
-  useEffect(() => {
-  document.title = appNs.t("appTitle");
-  }, [appNs, locale]);
-
-  useEffect(() => {
-    setCurrentLocale(locale);
-    document.documentElement.lang = locale;
-  }, [locale]);
 
   useEffect(() => {
     if (connectionStatus !== "connected") return;
@@ -592,63 +568,6 @@ export default function App() {
       // ignore transient reconnect race
     }
   }, [client, connectionStatus, locale]);
-
-  useEffect(() => {
-    localStorage.setItem(STREAMER_MODE_KEY, streamerMode ? "1" : "0");
-    if (!streamerMode) {
-      setShowRoomCode(true);
-      return;
-    }
-    if (localStorage.getItem(SHOW_ROOM_CODE_KEY) === null) {
-      setShowRoomCode(false);
-    }
-  }, [streamerMode]);
-
-  useEffect(() => {
-    localStorage.setItem(SHOW_ROOM_CODE_KEY, showRoomCode ? "1" : "0");
-  }, [showRoomCode]);
-
-  useEffect(() => {
-    localStorage.setItem(TOAST_POSITION_KEY, toastPosition);
-  }, [toastPosition]);
-
-  useEffect(() => {
-    localStorage.setItem(UI_SCALE_KEY, uiScale);
-    document.documentElement.dataset.uiScale = uiScale;
-  }, [uiScale]);
-
-  useEffect(() => {
-    localStorage.setItem(REDUCE_MOTION_KEY, reduceMotion ? "1" : "0");
-    document.documentElement.dataset.motion = reduceMotion ? "off" : "on";
-  }, [reduceMotion]);
-
-  useEffect(() => {
-    localStorage.setItem(CONFIRM_DANGEROUS_KEY, confirmDangerousActions ? "1" : "0");
-  }, [confirmDangerousActions]);
-
-  useEffect(() => {
-    localStorage.setItem(CONFIRM_EXIT_KEY, confirmExitGame ? "1" : "0");
-  }, [confirmExitGame]);
-
-  useEffect(() => {
-    localStorage.setItem(TOAST_DURATION_KEY, toastDuration);
-  }, [toastDuration]);
-
-  useEffect(() => {
-    localStorage.setItem(COMPACT_MODE_KEY, compactMode ? "1" : "0");
-  }, [compactMode]);
-
-  useEffect(() => {
-    localStorage.setItem(AUTO_COPY_ROOM_CODE_KEY, autoCopyRoomCode ? "1" : "0");
-  }, [autoCopyRoomCode]);
-
-  useEffect(() => {
-    localStorage.setItem(SHOW_SPECTATOR_LINKS_KEY, showSpectatorLinks ? "1" : "0");
-  }, [showSpectatorLinks]);
-
-  useEffect(() => {
-    localStorage.setItem(SHOW_HINTS_KEY, showHints ? "1" : "0");
-  }, [showHints]);
 
   useEffect(
     () => () => {
@@ -712,78 +631,6 @@ export default function App() {
       }
     })();
   }, [autoCopyRoomCode, isControl, isLobbyRoute, roomState?.roomCode]);
-
-  useEffect(() => {
-    setSettingsMenuOpen(false);
-    setThemeMenuOpen(false);
-  }, [location.pathname, location.search]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (settingsMenuRef.current && !settingsMenuRef.current.contains(target)) {
-        setSettingsMenuOpen(false);
-      }
-      if (themeMenuRef.current && !themeMenuRef.current.contains(target)) {
-        setThemeMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSettingsMenuOpen(false);
-        setThemeMenuOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const query = window.matchMedia("(max-width: 1250px)");
-    const update = (match: MediaQueryList | MediaQueryListEvent) => {
-      setIsMobile("matches" in match ? match.matches : query.matches);
-    };
-    update(query);
-    if (query.addEventListener) {
-      query.addEventListener("change", update);
-      return () => query.removeEventListener("change", update);
-    }
-    query.addListener(update);
-    return () => query.removeListener(update);
-  }, []);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const query = window.matchMedia("(max-width: 600px)");
-    const update = (match: MediaQueryList | MediaQueryListEvent) => {
-      setIsMobileNarrow("matches" in match ? match.matches : query.matches);
-    };
-    update(query);
-    if (query.addEventListener) {
-      query.addEventListener("change", update);
-      return () => query.removeEventListener("change", update);
-    }
-    query.addListener(update);
-    return () => query.removeListener(update);
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const html = document.documentElement;
-    const body = document.body;
-    if (isMobile) {
-      html.classList.add("viewport-compact");
-      body.classList.add("viewport-compact");
-    } else {
-      html.classList.remove("viewport-compact");
-      body.classList.remove("viewport-compact");
-    }
-  }, [isMobile]);
 
   useEffect(() => {
     roomStateRef.current = roomState;
@@ -877,6 +724,12 @@ export default function App() {
     return false;
   };
 
+  const sessionActions = createSessionActions({
+    client,
+    clearAppErrors,
+    ensureWsInteractive,
+  });
+
   const applyRoomStatePatch = (patch: Partial<RoomState>) => {
     setRoomState((prev) => {
       if (!prev) {
@@ -907,152 +760,47 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribeMessage = client.onMessage((message) => {
-      switch (message.type) {
-        case "helloAck":
-          setPlayerId(message.payload.playerId);
-          setPlayerToken(message.payload.playerToken);
-          if (IDENTITY_MODE !== "prod") {
-            console.log("[dev] helloAck", { playerId: message.payload.playerId });
-          }
-          if (DEV_TAB_IDENTITY) {
-            console.log("[dev] tabId/playerId", { tabId, playerId: message.payload.playerId });
-          }
-          return;
-        case "roomState":
-          setRoomState(message.payload);
-          clearAppErrors();
-          if (IDENTITY_MODE !== "prod") {
-            console.log("[dev] roomState", message.payload.roomCode, message.payload.phase);
-          }
-          awaitingRoomStateRef.current = false;
-          if (message.payload.phase === "lobby") {
-            setGameView(null);
-            clearSnapshotTimer();
-          } else if (gameViewRef.current) {
-            clearSnapshotTimer();
-          }
-          return;
-        case "gameView":
-          setGameView(message.payload);
-          clearAppErrors();
-          setMobileDossierError(null);
-          dossierActionRef.current = false;
-          if (IDENTITY_MODE !== "prod") {
-            console.log("[dev] gameView", message.payload.phase, message.payload.round);
-            if (message.payload.postGame?.outcome) {
-              console.log("[dev] postGame outcome", message.payload.postGame.outcome);
-            }
-          }
-          awaitingGameViewRef.current = false;
-          if (roomStateRef.current?.phase === "game") {
-            clearSnapshotTimer();
-          }
-          return;
-        case "statePatch": {
-          if (message.payload.roomState) {
-            applyRoomStatePatch(message.payload.roomState);
-          }
-          if (message.payload.gameView) {
-            applyGameViewPatch(message.payload.gameView);
-          }
-          return;
-        }
-        case "gameEvent":
-          pushEvent(message.payload);
-          return;
-        case "hostChanged": {
-          const newHostId = message.payload.newHostId;
-          setRoomState((prev) => (prev ? { ...prev, hostId: newHostId } : prev));
-          if (newHostId === playerId) {
-            clearAppErrors();
-            pushUiToast(appLocale.hostChangedYou, "success");
-            return;
-          }
-          const candidate =
-            roomStateRef.current?.players.find((player) => player.playerId === newHostId) ??
-            gameViewRef.current?.public.players.find((player) => player.playerId === newHostId);
-          pushUiToast(appLocale.hostChangedOther(candidate?.name ?? appLocale.genericPlayer), "info");
-          return;
-        }
-        case "error": {
-          const msg = message.payload.message;
-          const code = message.payload.code;
-          const maxPlayers = message.payload.maxPlayers;
-          const isPermissionError =
-            code === "PERMISSION_DENIED" ||
-            messageIncludesAny(msg, [
-              "action is available only for control role",
-              "insufficient permissions for player action",
-              "only control can",
-              "only host can",
-              "only presenter can",
-            ]);
-          if (isMobileNarrow && dossierActionRef.current) {
-            setMobileDossierError(msg);
-            dossierActionRef.current = false;
-            return;
-          }
-          if (isPermissionError && connectionStatus === "connected") {
-            clearAppErrors();
-            pushUiToast(msg, "danger");
-            return;
-          }
-          if (
-            code === "ROOM_FULL" ||
-            messageIncludesAny(msg, [appLocale.roomFullUnknown, "room is full"])
-          ) {
-            const roomFullMessage =
-              typeof maxPlayers === "number" && Number.isFinite(maxPlayers)
-                ? appLocale.roomFull(maxPlayers)
-                : appLocale.roomFullUnknown;
-            pushUiToast(roomFullMessage, "danger");
-            hardResetSession({ clearLastRoom: true });
-            navigate("/");
-            return;
-          }
-          setErrorMessage(msg);
-          if (code === "RECONNECT_FORBIDDEN") {
-            hardResetSession({ clearLastRoom: true, preserveError: true });
-            navigate("/");
-            return;
-          }
-          if (code === "LEFT_BUNKER" || messageIncludesAny(msg, ["left bunker"])) {
-            hardResetSession({ clearLastRoom: true, preserveError: true });
-            navigate("/");
-            return;
-          }
-          if (isReconnectError(msg, code)) {
-            setFatalErrorMessage(msg);
-            // Keep token/session for quick retry; clear only on explicit "left bunker" timeout.
-            hardResetSession({ preserveError: true });
-            navigate("/");
-          }
-          return;
-        }
-        default:
-          return;
-      }
+      handleServerMessage(message, {
+        appLocale,
+        connectionStatus,
+        isMobileNarrow,
+        playerId,
+        tabId,
+        awaitingRoomStateRef,
+        awaitingGameViewRef,
+        dossierActionRef,
+        gameViewRef,
+        roomStateRef,
+        setPlayerId,
+        setPlayerToken,
+        setRoomState,
+        setGameView,
+        setMobileDossierError,
+        setErrorMessage,
+        setFatalErrorMessage,
+        clearAppErrors,
+        clearSnapshotTimer,
+        applyRoomStatePatch,
+        applyGameViewPatch,
+        pushEvent,
+        pushUiToast,
+        messageIncludesAny,
+        isReconnectError,
+        hardResetSession,
+        navigateHome: () => navigate("/"),
+      });
     });
 
     const unsubscribeStatus = client.onStatus((status, error) => {
-      if (IDENTITY_MODE !== "prod") {
-        console.log("[dev] ws status", status, error ?? "");
-      }
-      setConnectionStatus(status);
-      setLastWsError(error ?? null);
-      if (status === "reconnecting") {
-        if (roomStateRef.current || intentRef.current) {
-          reconnectPendingRef.current = true;
-        }
-      }
-      if (status === "connected" && reconnectPendingRef.current) {
-        reconnectPendingRef.current = false;
-        if (roomStateRef.current) {
-          void sendResume();
-        } else if (intentRef.current) {
-          void sendHelloWithIntent(intentRef.current);
-        }
-      }
+      handleConnectionStatus(status, error, {
+        intentRef,
+        reconnectPendingRef,
+        roomStateRef,
+        setConnectionStatus,
+        setLastWsError,
+        sendHelloWithIntent,
+        sendResume,
+      });
     });
 
     return () => {
@@ -1062,20 +810,17 @@ export default function App() {
   }, [client, isMobileNarrow]);
 
   useEffect(() => {
-    const roomCode = roomState?.roomCode;
-    const phase = roomState?.phase;
-    if (!roomCode || !phase) return;
+    const target = getRoomRouteTarget(roomState);
+    if (!target) return;
     if (isSpectateRoute) return;
 
-    const targetPath = phase === "lobby" ? "/lobby" : "/game";
-    const targetSearch = `?room=${encodeURIComponent(roomCode)}`;
     const currentSearch = location.search || "";
 
-    if (location.pathname === targetPath && currentSearch === targetSearch) {
+    if (location.pathname === target.pathname && currentSearch === target.search) {
       return;
     }
 
-    navigate(`${targetPath}${targetSearch}`, { replace: true });
+    navigate(`${target.pathname}${target.search}`, { replace: true });
   }, [
     isSpectateRoute,
     location.pathname,
@@ -1093,29 +838,14 @@ export default function App() {
   }, [roomState, playerToken]);
 
   useEffect(() => {
-    if (roomState || playerId) return;
-    const roomFromUrl = new URLSearchParams(location.search).get("room");
-    const hasRoomInUrl = Boolean(roomFromUrl);
-    const shouldAttempt =
-      hasRoomInUrl || location.pathname.startsWith("/game") || location.pathname.startsWith("/lobby");
-    if (!shouldAttempt) return;
-
-    const roomCode = (roomFromUrl ?? localStorage.getItem("bunker.lastRoomCode") ?? "")
-      .trim()
-      .toUpperCase();
-    const name = localStorage.getItem("bunker.playerName") ?? "";
-    if (!roomCode || !name) return;
-
-    const token = IDENTITY_MODE === "prod" ? readPlayerToken(roomCode) : undefined;
-    const effectiveTabId = IDENTITY_MODE === "dev_tab" ? tabId : undefined;
-    if (IDENTITY_MODE === "dev_tab" && !effectiveTabId) return;
-    const intent: SessionIntent = {
-      mode: "reconnect",
-      name,
-      roomCode,
-      playerToken: token,
-      tabId: effectiveTabId,
-    };
+    const intent = buildStoredReconnectIntent({
+      locationPathname: location.pathname,
+      locationSearch: location.search,
+      playerId,
+      roomState,
+      tabId,
+    });
+    if (!intent) return;
     intentRef.current = intent;
     void sendHelloWithIntent(intent).catch(() => {
       setFatalErrorMessage(appLocale.errorReconnectNetwork);
@@ -1160,68 +890,33 @@ export default function App() {
   }, []);
 
   const handleCreate = async (name: string, scenarioId: string) => {
-    clearAppErrors();
-    localStorage.setItem("bunker.playerName", name);
-    let effectiveTabId = tabId;
-    if (DEV_TAB_IDENTITY && !effectiveTabId) {
-      effectiveTabId = await initTabIdentity();
-      if (effectiveTabId) {
-        setTabId(effectiveTabId);
-      }
-    }
-    if (DEV_TAB_IDENTITY && !effectiveTabId) {
-      setFatalErrorMessage(appLocale.errorReconnectNetwork);
-      return;
-    }
-    const intent: SessionIntent = {
-	  mode: "create",
-	  name,
-	  scenarioId,
-	  locale,
-	  tabId: DEV_TAB_IDENTITY ? effectiveTabId : undefined,
-	};
-    intentRef.current = intent;
-    try {
-      await sendHelloWithIntent(intent);
-    } catch {
-      setFatalErrorMessage(appLocale.errorReconnectNetwork);
-    }
+    await beginCreateSession(name, scenarioId, {
+      locale,
+      tabId,
+      setTabId,
+      setFatalErrorMessage,
+      errorReconnectNetwork: appLocale.errorReconnectNetwork,
+      clearAppErrors,
+      sendHello: sendHelloWithIntent,
+      intentRef,
+    });
   };
 
   const handleJoin = async (name: string, roomCode: string) => {
-    clearAppErrors();
-    localStorage.setItem("bunker.playerName", name);
-    let effectiveTabId = tabId;
-    if (DEV_TAB_IDENTITY && !effectiveTabId) {
-      effectiveTabId = await initTabIdentity();
-      if (effectiveTabId) {
-        setTabId(effectiveTabId);
-      }
-    }
-    const token = DEV_TAB_IDENTITY ? undefined : readPlayerToken(roomCode);
-    if (DEV_TAB_IDENTITY && !effectiveTabId) {
-      setFatalErrorMessage(appLocale.errorReconnectNetwork);
-      return;
-    }
-    const intent: SessionIntent = {
-      mode: "join",
-      name,
-      roomCode,
-      playerToken: token,
-      tabId: DEV_TAB_IDENTITY ? effectiveTabId : undefined,
-    };
-    intentRef.current = intent;
-    try {
-      await sendHelloWithIntent(intent);
-    } catch {
-      setFatalErrorMessage(appLocale.errorReconnectNetwork);
-    }
+    await beginJoinSession(name, roomCode, {
+      locale,
+      tabId,
+      setTabId,
+      setFatalErrorMessage,
+      errorReconnectNetwork: appLocale.errorReconnectNetwork,
+      clearAppErrors,
+      sendHello: sendHelloWithIntent,
+      intentRef,
+    });
   };
 
   const handleStart = () => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "startGame", payload: {} });
+    sessionActions.start();
   };
 
   const confirmDangerousAction = async (message: string): Promise<boolean> => {
@@ -1241,21 +936,15 @@ export default function App() {
   };
 
   const handleRevealCard = (cardId: string) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "revealCard", payload: { cardId } });
+    sessionActions.revealCard(cardId);
   };
 
   const handleVote = (targetPlayerId: string) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "vote", payload: { targetPlayerId } });
+    sessionActions.vote(targetPlayerId);
   };
 
   const handleApplySpecial = (specialInstanceId: string, payload?: Record<string, unknown>) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "applySpecial", payload: { specialInstanceId, payload } });
+    sessionActions.applySpecial(specialInstanceId, payload);
   };
 
   const markDossierSpecialAction = () => {
@@ -1269,88 +958,61 @@ export default function App() {
   };
 
   const handleFinalizeVoting = () => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "finalizeVoting", payload: {} });
+    sessionActions.finalizeVoting();
   };
 
   const handleContinueRound = () => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "continueRound", payload: {} });
+    sessionActions.continueRound();
   };
 
   const handleRevealWorldThreat = (index: number) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "revealWorldThreat", payload: { index } });
+    sessionActions.revealWorldThreat(index);
   };
 
   const handleSetBunkerOutcome = (outcome: "survived" | "failed") => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    if (IDENTITY_MODE !== "prod") {
-      console.log("[dev] setBunkerOutcome", outcome);
-    }
-    client.send({ type: "setBunkerOutcome", payload: { outcome } });
+    sessionActions.setBunkerOutcome(outcome);
   };
 
   const handleDevSkipRound = async () => {
-    if (!ensureWsInteractive()) return;
     if (!(await confirmDangerousAction(appLocale.confirmSkipRound))) return;
-    clearAppErrors();
-    client.send({ type: "devSkipRound", payload: {} });
+    sessionActions.devSkipRound();
   };
 
   const handleDevKickPlayer = async () => {
-    if (!ensureWsInteractive()) return;
     if (!devKickTargetId) return;
     if (!devKickAgree) return;
-    clearAppErrors();
-    client.send({ type: "devKickPlayer", payload: { targetPlayerId: devKickTargetId } });
+    if (!sessionActions.devKickPlayer(devKickTargetId)) return;
     setDevKickModalOpen(false);
     setDevKickTargetId("");
     setDevKickAgree(false);
   };
 
   const handleUpdateSettings = (settings: GameSettings) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "updateSettings", payload: settings });
+    sessionActions.updateSettings(settings);
   };
 
   const handleUpdateRules = (payload: RulesUpdatePayload) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "updateRules", payload });
+    sessionActions.updateRules(payload);
   };
 
   const handleKickFromLobby = async (
     targetPlayerId: string,
     options?: { skipConfirm?: boolean }
   ) => {
-    if (!ensureWsInteractive()) return;
     if (!options?.skipConfirm) {
       if (!(await confirmDangerousAction(appLocale.confirmKickFromLobby))) return;
     }
-    clearAppErrors();
-    client.send({ type: "kickFromLobby", payload: { targetPlayerId } });
+    sessionActions.kickFromLobby(targetPlayerId);
   };
 
   const handleRequestHostTransfer = async (
     targetPlayerId?: string,
     options?: { skipConfirm?: boolean }
   ) => {
-    if (!ensureWsInteractive()) return;
     if (!options?.skipConfirm) {
       if (!(await confirmDangerousAction(appLocale.confirmTransferHost))) return;
     }
-    clearAppErrors();
-    const normalizedTargetId = String(targetPlayerId ?? "").trim();
-    client.send({
-      type: "requestHostTransfer",
-      payload: normalizedTargetId ? { targetPlayerId: normalizedTargetId } : {},
-    });
+    sessionActions.requestHostTransfer(targetPlayerId);
   };
 
   const openTransferHostModal = () => {
@@ -1369,15 +1031,11 @@ export default function App() {
   };
 
   const handleDevAddPlayer = (name?: string) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "devAddPlayer", payload: { name } });
+    sessionActions.devAddPlayer(name);
   };
 
   const handleDevRemovePlayer = (targetPlayerId?: string) => {
-    if (!ensureWsInteractive()) return;
-    clearAppErrors();
-    client.send({ type: "devRemovePlayer", payload: { targetPlayerId } });
+    sessionActions.devRemovePlayer(targetPlayerId);
   };
 
   const performExitGame = () => {
@@ -1460,48 +1118,31 @@ export default function App() {
     }
   };
 
-  const visibleUiToasts = isMobile ? uiToasts.slice(-1) : uiToasts;
-  const visibleToasts = isMobile ? toasts.slice(-2) : toasts;
-  const mobileToasts = isMobile
-    ? [
-        ...visibleUiToasts.map((toast) => ({
-          id: `ui-${toast.id}`,
-          title: appLocale.notificationTitle,
-          message: toast.message,
-          variant: toast.variant ?? "",
-          onClose: () => removeUiToast(toast.id),
-        })),
-        ...visibleToasts.map((toast) => {
-          const variant =
-            toast.kind === "playerDisconnected" || toast.kind === "playerLeftBunker"
-              ? "danger"
-              : toast.kind === "playerReconnected"
-                ? "success"
-                : "";
-          return {
-            id: `event-${toast.id}`,
-            title: appLocale.toastKind(toast.kind),
-            message: toast.message,
-            variant,
-            onClose: () => removeToast(toast.id),
-          };
-        }),
-      ]
-    : [];
-  const roomCodeHidden = Boolean(roomState && isLobbyRoute && streamerMode && !showRoomCode);
-  const roomCodeLabel = roomState
-    ? appLocale.roomPill(roomCodeHidden ? appLocale.hiddenValue : roomState.roomCode)
-    : "";
-  const roomCodeFromUrl = new URLSearchParams(location.search).get("room")?.trim().toUpperCase() ?? "";
-  const storedPlayerName =
-    typeof window !== "undefined" ? (localStorage.getItem("bunker.playerName") ?? "").trim() : "";
+  const { visibleUiToasts, visibleEventToasts, mobileToasts } = buildToastViews({
+    isMobile,
+    uiToasts,
+    eventToasts: toasts,
+    notificationTitle: appLocale.notificationTitle,
+    toastKind: appLocale.toastKind,
+    removeUiToast,
+    removeEventToast: removeToast,
+  });
+  const roomCodeDisplay = buildRoomCodeDisplay({
+    roomState,
+    isLobbyRoute,
+    streamerMode,
+    showRoomCode,
+    hiddenValue: appLocale.hiddenValue,
+    roomPill: appLocale.roomPill,
+  });
   const isExactLobbyRoute = location.pathname === "/lobby";
   const isExactGameRoute = location.pathname === "/game";
-  const hasReconnectContext =
-    Boolean(roomState) ||
-    Boolean(playerId) ||
-    Boolean(intentRef.current) ||
-    (Boolean(roomCodeFromUrl) && Boolean(storedPlayerName));
+  const hasReconnectContext = hasRouteReconnectContext({
+    roomState,
+    playerId,
+    intentExists: Boolean(intentRef.current),
+    locationSearch: location.search,
+  });
   const showErrorScreen = Boolean(fatalErrorMessage && (isLobbyRoute || isGameRoute));
   const showRoomRouteIssue =
     (isExactLobbyRoute || isExactGameRoute) && !showErrorScreen && !hasReconnectContext;
@@ -1511,18 +1152,13 @@ export default function App() {
     navigate("/");
   };
   const renderRouteIssueScreen = (message: string) => (
-    <section className="panel game-loading forbiddenStatePanel">
-      <div className="forbiddenStateCard" role="alert">
-        <div className="forbiddenStateEyebrow">{appNs.t("appTitle")}</div>
-        <h3 className="forbiddenStateTitle">{appLocale.routeIssueTitle}</h3>
-        <p className="forbiddenStateMessage">{message}</p>
-        <div className="forbiddenStateActions">
-          <button type="button" className="forbiddenStateButton" onClick={exitToMenu}>
-            {appLocale.errorScreenExitToMenu}
-          </button>
-        </div>
-      </div>
-    </section>
+    <RouteIssuePanel
+      appTitle={appNs.t("appTitle")}
+      title={appLocale.routeIssueTitle}
+      message={message}
+      exitLabel={appLocale.errorScreenExitToMenu}
+      onExit={exitToMenu}
+    />
   );
 
   return (
@@ -1536,8 +1172,8 @@ export default function App() {
           {showDevIdentityBadge ? <span className="pill">{appLocale.devBadge}</span> : null}
           {showConnectionStatus ? (
             <>
-              <span className={`status ${statusClass}`}>{statusLabel}</span>
-              {statusHint ? <span className="status-hint">{statusHint}</span> : null}
+              <span className={`status ${connectionDisplay.className}`}>{connectionDisplay.label}</span>
+              {connectionDisplay.hint ? <span className="status-hint">{connectionDisplay.hint}</span> : null}
               {lastWsError ? <span className="status-error">{lastWsError}</span> : null}
               {showRolePillCompact ? <span className="pill role-pill role-pill-mobile">{roleLabel}</span> : null}
             </>
@@ -1573,10 +1209,10 @@ export default function App() {
             {roomState && !isSpectateRoute ? (
               <div className={`topbar-room${isLobbyRoute ? " topbar-room-lobby" : ""}`}>
                 <span
-                  className={`topbar-room-code${roomCodeHidden ? " maskedText" : ""}`}
-                  title={roomCodeHidden ? appLocale.showSecret : roomState.roomCode}
+                  className={`topbar-room-code${roomCodeDisplay.hidden ? " maskedText" : ""}`}
+                  title={roomCodeDisplay.hidden ? appLocale.showSecret : roomState.roomCode}
                 >
-                  {roomCodeLabel}
+                  {roomCodeDisplay.label}
                 </span>
                 <span>{appLocale.scenarioPill(roomState.scenarioMeta.name)}</span>
                 {isLobbyRoute ? (
@@ -1584,11 +1220,11 @@ export default function App() {
                     <button
                       type="button"
                       className="ghost iconButton"
-                      aria-label={roomCodeHidden ? appLocale.showSecret : appLocale.hideSecret}
-                      title={roomCodeHidden ? appLocale.showSecret : appLocale.hideSecret}
+                      aria-label={roomCodeDisplay.hidden ? appLocale.showSecret : appLocale.hideSecret}
+                      title={roomCodeDisplay.hidden ? appLocale.showSecret : appLocale.hideSecret}
                       onClick={() => setShowRoomCode((prev) => !prev)}
                     >
-                      <EyeIcon open={!roomCodeHidden} />
+                      <EyeIcon open={!roomCodeDisplay.hidden} />
                     </button>
                     <button type="button" className="ghost button-small" onClick={handleCopyRoomCode}>
                       {roomCodeCopied ? appLocale.copiedButton : appLocale.copyButton}
@@ -1892,7 +1528,7 @@ export default function App() {
               </button>
             </div>
           ))}
-          {visibleToasts.map((toast) => {
+          {visibleEventToasts.map((toast) => {
             const variant =
               toast.kind === "playerDisconnected" || toast.kind === "playerLeftBunker"
                 ? "danger"
@@ -2169,4 +1805,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-

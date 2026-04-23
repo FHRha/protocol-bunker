@@ -8,10 +8,10 @@ import {
 } from "@bunker/shared";
 import { useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import { API_BASE } from "../config";
-import EyeIcon from "../components/EyeIcon";
 import InfoTip from "../components/InfoTip";
 import RulesModal from "../components/RulesModal";
 import Modal from "../components/Modal";
+import { OverlayLinkRow } from "../lobby/OverlayLinkRow";
 import {
   buildRevealPlan,
   clampInt,
@@ -100,10 +100,6 @@ function fallbackCopy(value: string): boolean {
   }
   document.body.removeChild(area);
   return ok;
-}
-
-function maskValue(value: string, hidden: boolean, hiddenLabel: string): string {
-  return hidden ? hiddenLabel : value;
 }
 
 function hasSuspiciousPlayerNameChars(value: string): boolean {
@@ -569,9 +565,6 @@ export default function LobbyPage({
   const showLanLinks = overlayLinks?.showLanLinks ?? true;
   const copyLabel = (key: string) =>
     copiedKey === key ? lobbyLocale.copiedButton : lobbyLocale.copyButton;
-
-  const maskSecret = (value: string, hidden: boolean) =>
-    maskValue(value, hidden, lobbyLocale.hiddenValue);
 
   const settings = draft ?? roomState.settings;
   const disasterOptions = roomState.disasterOptions ?? [];
@@ -1312,90 +1305,48 @@ export default function LobbyPage({
                       </div>
                       <div className="obs-links-list">
                         {showLanLinks ? (
-                          <div className="obs-link-row">
-                            <div className="obs-link-main">
-                              <div className="obs-link-label">LAN</div>
-                              <div
-                                className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
-                                title={spectatorHidden ? lobbyLocale.showSecret : spectatorUrlLan || lobbyLocale.obsLinksUnavailable}
-                              >
-                                {maskSecret(spectatorUrlLan || "—", spectatorHidden)}
-                              </div>
-                            </div>
-                            <div className="secret-actions">
-                              <button
-                                type="button"
-                                className="ghost iconButton"
-                                aria-label={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                                title={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                                onClick={() => setShowSpectatorLink((prev) => !prev)}
-                              >
-                                <EyeIcon open={!spectatorHidden} />
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost button-small"
-                                disabled={!spectatorUrlLan}
-                                onClick={() =>
-                                  spectatorUrlLan && window.open(spectatorUrlLan, "_blank", "noopener,noreferrer")
-                                }
-                              >
-                                {lobbyLocale.openButton}
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost button-small"
-                                disabled={!spectatorUrlLan}
-                                onClick={() => {
-                                  void copySpectatorLink("lan");
-                                }}
-                              >
-                                {copyLabel("spectatorLan")}
-                              </button>
-                            </div>
-                          </div>
+                          <OverlayLinkRow
+                            label="LAN"
+                            value={spectatorUrlLan}
+                            hidden={spectatorHidden}
+                            hiddenValueLabel={lobbyLocale.hiddenValue}
+                            unavailableLabel={lobbyLocale.obsLinksUnavailable}
+                            showSecretLabel={lobbyLocale.showSecret}
+                            hideSecretLabel={lobbyLocale.hideSecret}
+                            openButtonLabel={lobbyLocale.openButton}
+                            copyButtonLabel={copyLabel("spectatorLan")}
+                            onToggleHidden={() => setShowSpectatorLink((prev) => !prev)}
+                            onOpen={() => {
+                              if (spectatorUrlLan) {
+                                window.open(spectatorUrlLan, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                            onCopy={() => {
+                              void copySpectatorLink("lan");
+                            }}
+                            disableOpen={!spectatorUrlLan}
+                            disableCopy={!spectatorUrlLan}
+                          />
                         ) : null}
                         {spectatorUrlExternal ? (
-                          <div className="obs-link-row">
-                            <div className="obs-link-main">
-                              <div className="obs-link-label">{lobbyLocale.externalLabel}</div>
-                              <div
-                                className={`secret-value obs-link-value${spectatorHidden ? " maskedText" : ""}`}
-                                title={spectatorHidden ? lobbyLocale.showSecret : spectatorUrlExternal}
-                              >
-                                {maskSecret(spectatorUrlExternal, spectatorHidden)}
-                              </div>
-                            </div>
-                            <div className="secret-actions">
-                              <button
-                                type="button"
-                                className="ghost iconButton"
-                                aria-label={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                                title={spectatorHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                                onClick={() => setShowSpectatorLink((prev) => !prev)}
-                              >
-                                <EyeIcon open={!spectatorHidden} />
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost button-small"
-                                onClick={() =>
-                                  spectatorUrlExternal && window.open(spectatorUrlExternal, "_blank", "noopener,noreferrer")
-                                }
-                              >
-                                {lobbyLocale.openButton}
-                              </button>
-                              <button
-                                type="button"
-                                className="ghost button-small"
-                                onClick={() => {
-                                  void copySpectatorLink("external");
-                                }}
-                              >
-                                {copyLabel("spectatorExternal")}
-                              </button>
-                            </div>
-                          </div>
+                          <OverlayLinkRow
+                            label={lobbyLocale.externalLabel}
+                            value={spectatorUrlExternal}
+                            hidden={spectatorHidden}
+                            hiddenValueLabel={lobbyLocale.hiddenValue}
+                            unavailableLabel={lobbyLocale.obsLinksUnavailable}
+                            showSecretLabel={lobbyLocale.showSecret}
+                            hideSecretLabel={lobbyLocale.hideSecret}
+                            openButtonLabel={lobbyLocale.openButton}
+                            copyButtonLabel={copyLabel("spectatorExternal")}
+                            onToggleHidden={() => setShowSpectatorLink((prev) => !prev)}
+                            onOpen={() => {
+                              window.open(spectatorUrlExternal, "_blank", "noopener,noreferrer");
+                            }}
+                            onCopy={() => {
+                              void copySpectatorLink("external");
+                            }}
+                          />
                         ) : showHints ? (
                           <div className="muted linksSectionHint">{lobbyLocale.externalLinksHint}</div>
                         ) : null}
@@ -1407,86 +1358,48 @@ export default function LobbyPage({
                     <h4 className="linksSectionTitle">{lobbyLocale.obsOverlayViewSectionTitle}</h4>
                     <div className="obs-links-list">
                       {showLanLinks ? (
-                        <div className="obs-link-row">
-                          <div className="obs-link-main">
-                            <div className="obs-link-label">LAN</div>
-                            <div
-                              className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
-                              title={overlayViewHidden ? lobbyLocale.showSecret : overlayViewUrlLan}
-                            >
-                              {maskSecret(overlayViewUrlLan || "—", overlayViewHidden)}
-                            </div>
-                          </div>
-                          <div className="secret-actions">
-                            <button
-                              type="button"
-                              className="ghost iconButton"
-                              aria-label={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              title={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              onClick={() => setShowOverlayView((prev) => !prev)}
-                            >
-                              <EyeIcon open={!overlayViewHidden} />
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              disabled={!overlayViewUrlLan}
-                              onClick={() =>
-                                overlayViewUrlLan && window.open(overlayViewUrlLan, "_blank", "noopener,noreferrer")
-                              }
-                            >
-                              {lobbyLocale.openButton}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              disabled={!overlayViewUrlLan}
-                              onClick={() => copyText(overlayViewUrlLan, "overlayViewLan")}
-                            >
-                              {copyLabel("overlayViewLan")}
-                            </button>
-                          </div>
-                        </div>
+                        <OverlayLinkRow
+                          label="LAN"
+                          value={overlayViewUrlLan}
+                          hidden={overlayViewHidden}
+                          hiddenValueLabel={lobbyLocale.hiddenValue}
+                          unavailableLabel={lobbyLocale.obsLinksUnavailable}
+                          showSecretLabel={lobbyLocale.showSecret}
+                          hideSecretLabel={lobbyLocale.hideSecret}
+                          openButtonLabel={lobbyLocale.openButton}
+                          copyButtonLabel={copyLabel("overlayViewLan")}
+                          onToggleHidden={() => setShowOverlayView((prev) => !prev)}
+                          onOpen={() => {
+                            if (overlayViewUrlLan) {
+                              window.open(overlayViewUrlLan, "_blank", "noopener,noreferrer");
+                            }
+                          }}
+                          onCopy={() => {
+                            void copyText(overlayViewUrlLan, "overlayViewLan");
+                          }}
+                          disableOpen={!overlayViewUrlLan}
+                          disableCopy={!overlayViewUrlLan}
+                        />
                       ) : null}
                       {overlayViewUrlExternal ? (
-                        <div className="obs-link-row">
-                          <div className="obs-link-main">
-                            <div className="obs-link-label">{lobbyLocale.externalLabel}</div>
-                            <div
-                              className={`secret-value obs-link-value${overlayViewHidden ? " maskedText" : ""}`}
-                              title={overlayViewHidden ? lobbyLocale.showSecret : overlayViewUrlExternal}
-                            >
-                              {maskSecret(overlayViewUrlExternal || "—", overlayViewHidden)}
-                            </div>
-                          </div>
-                          <div className="secret-actions">
-                            <button
-                              type="button"
-                              className="ghost iconButton"
-                              aria-label={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              title={overlayViewHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              onClick={() => setShowOverlayView((prev) => !prev)}
-                            >
-                              <EyeIcon open={!overlayViewHidden} />
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              onClick={() =>
-                                overlayViewUrlExternal && window.open(overlayViewUrlExternal, "_blank", "noopener,noreferrer")
-                              }
-                            >
-                              {lobbyLocale.openButton}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              onClick={() => copyText(overlayViewUrlExternal, "overlayViewExternal")}
-                            >
-                              {copyLabel("overlayViewExternal")}
-                            </button>
-                          </div>
-                        </div>
+                        <OverlayLinkRow
+                          label={lobbyLocale.externalLabel}
+                          value={overlayViewUrlExternal}
+                          hidden={overlayViewHidden}
+                          hiddenValueLabel={lobbyLocale.hiddenValue}
+                          unavailableLabel={lobbyLocale.obsLinksUnavailable}
+                          showSecretLabel={lobbyLocale.showSecret}
+                          hideSecretLabel={lobbyLocale.hideSecret}
+                          openButtonLabel={lobbyLocale.openButton}
+                          copyButtonLabel={copyLabel("overlayViewExternal")}
+                          onToggleHidden={() => setShowOverlayView((prev) => !prev)}
+                          onOpen={() => {
+                            window.open(overlayViewUrlExternal, "_blank", "noopener,noreferrer");
+                          }}
+                          onCopy={() => {
+                            void copyText(overlayViewUrlExternal, "overlayViewExternal");
+                          }}
+                        />
                       ) : showHints ? (
                         <div className="muted linksSectionHint">{lobbyLocale.externalLinksHint}</div>
                       ) : null}
@@ -1497,92 +1410,48 @@ export default function LobbyPage({
                     <h4 className="linksSectionTitle">{lobbyLocale.obsOverlayControlSectionTitle}</h4>
                     <div className="obs-links-list">
                       {showLanLinks ? (
-                        <div className="obs-link-row">
-                          <div className="obs-link-main">
-                            <div className="obs-link-label">LAN</div>
-                            <div
-                              className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
-                              title={overlayControlHidden ? lobbyLocale.showSecret : overlayControlUrlLan}
-                            >
-                              {maskSecret(overlayControlUrlLan || "—", overlayControlHidden)}
-                            </div>
-                          </div>
-                          <div className="secret-actions">
-                            <button
-                              type="button"
-                              className="ghost iconButton"
-                              aria-label={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              title={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              onClick={() => setShowOverlayControl((prev) => !prev)}
-                            >
-                              <EyeIcon open={!overlayControlHidden} />
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              disabled={!overlayControlUrlLan}
-                              onClick={() =>
-                                overlayControlUrlLan &&
-                                window.open(overlayControlUrlLan, "_blank", "noopener,noreferrer")
-                              }
-                            >
-                              {lobbyLocale.openButton}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              disabled={!overlayControlUrlLan}
-                                onClick={() => {
-                                  void copyFreshOverlayControlInvite("lan");
-                                }}
-                            >
-                              {copyLabel("overlayControlLan")}
-                            </button>
-                          </div>
-                        </div>
+                        <OverlayLinkRow
+                          label="LAN"
+                          value={overlayControlUrlLan}
+                          hidden={overlayControlHidden}
+                          hiddenValueLabel={lobbyLocale.hiddenValue}
+                          unavailableLabel={lobbyLocale.obsLinksUnavailable}
+                          showSecretLabel={lobbyLocale.showSecret}
+                          hideSecretLabel={lobbyLocale.hideSecret}
+                          openButtonLabel={lobbyLocale.openButton}
+                          copyButtonLabel={copyLabel("overlayControlLan")}
+                          onToggleHidden={() => setShowOverlayControl((prev) => !prev)}
+                          onOpen={() => {
+                            if (overlayControlUrlLan) {
+                              window.open(overlayControlUrlLan, "_blank", "noopener,noreferrer");
+                            }
+                          }}
+                          onCopy={() => {
+                            void copyFreshOverlayControlInvite("lan");
+                          }}
+                          disableOpen={!overlayControlUrlLan}
+                          disableCopy={!overlayControlUrlLan}
+                        />
                       ) : null}
                       {overlayControlUrlExternal ? (
-                        <div className="obs-link-row">
-                          <div className="obs-link-main">
-                            <div className="obs-link-label">{lobbyLocale.externalLabel}</div>
-                            <div
-                              className={`secret-value obs-link-value${overlayControlHidden ? " maskedText" : ""}`}
-                              title={overlayControlHidden ? lobbyLocale.showSecret : overlayControlUrlExternal}
-                            >
-                              {maskSecret(overlayControlUrlExternal || "—", overlayControlHidden)}
-                            </div>
-                          </div>
-                          <div className="secret-actions">
-                            <button
-                              type="button"
-                              className="ghost iconButton"
-                              aria-label={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              title={overlayControlHidden ? lobbyLocale.showSecret : lobbyLocale.hideSecret}
-                              onClick={() => setShowOverlayControl((prev) => !prev)}
-                            >
-                              <EyeIcon open={!overlayControlHidden} />
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              onClick={() =>
-                                overlayControlUrlExternal &&
-                                window.open(overlayControlUrlExternal, "_blank", "noopener,noreferrer")
-                              }
-                            >
-                              {lobbyLocale.openButton}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost button-small"
-                              onClick={() => {
-                                void copyFreshOverlayControlInvite("external");
-                              }}
-                            >
-                              {copyLabel("overlayControlExternal")}
-                            </button>
-                          </div>
-                        </div>
+                        <OverlayLinkRow
+                          label={lobbyLocale.externalLabel}
+                          value={overlayControlUrlExternal}
+                          hidden={overlayControlHidden}
+                          hiddenValueLabel={lobbyLocale.hiddenValue}
+                          unavailableLabel={lobbyLocale.obsLinksUnavailable}
+                          showSecretLabel={lobbyLocale.showSecret}
+                          hideSecretLabel={lobbyLocale.hideSecret}
+                          openButtonLabel={lobbyLocale.openButton}
+                          copyButtonLabel={copyLabel("overlayControlExternal")}
+                          onToggleHidden={() => setShowOverlayControl((prev) => !prev)}
+                          onOpen={() => {
+                            window.open(overlayControlUrlExternal, "_blank", "noopener,noreferrer");
+                          }}
+                          onCopy={() => {
+                            void copyFreshOverlayControlInvite("external");
+                          }}
+                        />
                       ) : showHints ? (
                         <div className="muted linksSectionHint">{lobbyLocale.externalLinksHint}</div>
                       ) : null}

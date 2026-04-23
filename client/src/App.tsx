@@ -27,7 +27,6 @@ import {
 } from "./session/connectionFlow";
 import { getRoomRouteTarget, hasRouteReconnectContext } from "./session/routing";
 import { handleConnectionStatus, handleServerMessage } from "./session/wsMessageHandlers";
-import Modal from "./components/Modal";
 import EyeIcon from "./components/EyeIcon";
 import AnimatedRouteContainer from "./components/AnimatedRouteContainer";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -42,6 +41,9 @@ import { useAppUiSideEffects } from "./hooks/useAppUiSideEffects";
 import { useViewportFlags } from "./hooks/useViewportFlags";
 import { usePopoverDismissal } from "./hooks/usePopoverDismissal";
 import {
+  AppModalLayer,
+} from "./app/AppModalLayer";
+import {
   buildConnectionDisplay,
   buildRoleLabel,
   buildRoomCodeDisplay,
@@ -50,136 +52,28 @@ import {
   getTransferHostCandidates,
   type UiToast,
 } from "./app/derivedUi";
-
-const THEME_STORAGE_KEY = "bunker.theme";
-const STREAMER_MODE_KEY = "bunker.streamerMode";
-const SHOW_ROOM_CODE_KEY = "bunker.showRoomCode";
-const TOAST_POSITION_KEY = "bunker.toastPosition";
-const UI_SCALE_KEY = "bunker.uiScale";
-const REDUCE_MOTION_KEY = "bunker.reduceMotion";
-const CONFIRM_DANGEROUS_KEY = "bunker.confirmDangerousActions";
-const CONFIRM_EXIT_KEY = "bunker.confirmExitGame";
-const COMPACT_MODE_KEY = "bunker.compactMode";
-const AUTO_COPY_ROOM_CODE_KEY = "bunker.autoCopyRoomCode";
-const SHOW_SPECTATOR_LINKS_KEY = "bunker.showSpectatorLinks";
-const SHOW_HINTS_KEY = "bunker.showHints";
-const TOAST_DURATION_KEY = "bunker.toastDurationMs";
+import {
+  getInitialAutoCopyRoomCode,
+  getInitialCompactMode,
+  getInitialConfirmDangerousActions,
+  getInitialConfirmExitGame,
+  getInitialReduceMotion,
+  getInitialShowHints,
+  getInitialShowRoomCode,
+  getInitialShowSpectatorLinks,
+  getInitialStreamerMode,
+  getInitialTheme,
+  getInitialToastDuration,
+  getInitialToastPosition,
+  getInitialUiScale,
+  type ThemeMode,
+  type ToastDuration,
+  type ToastPosition,
+  type UiScale,
+  UI_STORAGE_KEYS,
+} from "./app/uiPreferences";
 const MAX_EVENTS = 20;
 const SNAPSHOT_TIMEOUT_MS = 8000;
-type ThemeMode =
-  | "dark-mint"
-  | "light-paper"
-  | "cyber-amber"
-  | "steel-blue"
-  | "crimson-night";
-type ToastPosition = "top-right" | "top-left" | "bottom-right" | "bottom-left";
-type UiScale = "90" | "100" | "110";
-type ToastDuration = "3000" | "4000" | "6000";
-function getInitialTheme(): ThemeMode {
-  if (typeof window === "undefined") return "dark-mint";
-  const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  if (
-    stored === "dark-mint" ||
-    stored === "light-paper" ||
-    stored === "cyber-amber" ||
-    stored === "steel-blue" ||
-    stored === "crimson-night"
-  ) {
-    return stored;
-  }
-  if (stored === "dark") return "dark-mint";
-  if (stored === "light") return "light-paper";
-  return "dark-mint";
-}
-
-function getInitialStreamerMode(): boolean {
-  if (typeof window === "undefined") return true;
-  return localStorage.getItem(STREAMER_MODE_KEY) !== "0";
-}
-
-function getInitialShowRoomCode(): boolean {
-  if (typeof window === "undefined") return false;
-  const stored = localStorage.getItem(SHOW_ROOM_CODE_KEY);
-  if (stored === "1") return true;
-  if (stored === "0") return false;
-  return localStorage.getItem(STREAMER_MODE_KEY) === "0";
-}
-
-function getInitialToastPosition(): ToastPosition {
-  if (typeof window === "undefined") return "top-right";
-  const stored = localStorage.getItem(TOAST_POSITION_KEY);
-  if (
-    stored === "top-right" ||
-    stored === "top-left" ||
-    stored === "bottom-right" ||
-    stored === "bottom-left"
-  ) {
-    return stored;
-  }
-  return "top-right";
-}
-
-function getInitialUiScale(): UiScale {
-  if (typeof window === "undefined") return "100";
-  const stored = localStorage.getItem(UI_SCALE_KEY);
-  if (stored === "90" || stored === "100" || stored === "110") {
-    return stored;
-  }
-  return "100";
-}
-
-function getInitialReduceMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(REDUCE_MOTION_KEY) === "1";
-}
-
-function getInitialConfirmDangerousActions(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored = localStorage.getItem(CONFIRM_DANGEROUS_KEY);
-  if (stored === "0") return false;
-  return true;
-}
-
-function getInitialConfirmExitGame(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored = localStorage.getItem(CONFIRM_EXIT_KEY);
-  if (stored === "0") return false;
-  return true;
-}
-
-function getInitialToastDuration(): ToastDuration {
-  if (typeof window === "undefined") return "4000";
-  const stored = localStorage.getItem(TOAST_DURATION_KEY);
-  if (stored === "3000" || stored === "4000" || stored === "6000") return stored;
-  return "4000";
-}
-
-function getInitialCompactMode(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored = localStorage.getItem(COMPACT_MODE_KEY);
-  if (stored === "0") return false;
-  if (stored === "1") return true;
-  return true;
-}
-
-function getInitialAutoCopyRoomCode(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(AUTO_COPY_ROOM_CODE_KEY) === "1";
-}
-
-function getInitialShowSpectatorLinks(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored = localStorage.getItem(SHOW_SPECTATOR_LINKS_KEY);
-  if (stored === "0") return false;
-  return true;
-}
-
-function getInitialShowHints(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored = localStorage.getItem(SHOW_HINTS_KEY);
-  if (stored === "0") return false;
-  return true;
-}
 
 function fallbackCopy(value: string): boolean {
   if (typeof document === "undefined") return false;
@@ -429,21 +323,7 @@ export default function App() {
   const devSkipRoundButtonLabel = safeLabel(appLocale.devSkipRoundButton, "DEV");
 
   useAppUiSideEffects({
-    keys: {
-      theme: THEME_STORAGE_KEY,
-      streamerMode: STREAMER_MODE_KEY,
-      showRoomCode: SHOW_ROOM_CODE_KEY,
-      toastPosition: TOAST_POSITION_KEY,
-      uiScale: UI_SCALE_KEY,
-      reduceMotion: REDUCE_MOTION_KEY,
-      confirmDangerousActions: CONFIRM_DANGEROUS_KEY,
-      confirmExitGame: CONFIRM_EXIT_KEY,
-      compactMode: COMPACT_MODE_KEY,
-      autoCopyRoomCode: AUTO_COPY_ROOM_CODE_KEY,
-      showSpectatorLinks: SHOW_SPECTATOR_LINKS_KEY,
-      showHints: SHOW_HINTS_KEY,
-      toastDuration: TOAST_DURATION_KEY,
-    },
+    keys: UI_STORAGE_KEYS,
     appTitle: appNs.t("appTitle"),
     theme,
     streamerMode,
@@ -1646,161 +1526,41 @@ export default function App() {
         </AnimatedRouteContainer>
       </main>
 
-      <Modal
-        open={Boolean(dangerConfirmMessage)}
-        title={appLocale.confirmActionTitle}
-        onClose={() => resolveDangerousActionConfirm(false)}
-        dismissible={true}
-      >
-        <div className="muted">{dangerConfirmMessage}</div>
-        <div className="modal-actions">
-          <button className="ghost" onClick={() => resolveDangerousActionConfirm(false)}>
-            {appLocale.modalCancel}
-          </button>
-          <button className="primary" onClick={() => resolveDangerousActionConfirm(true)}>
-            {appLocale.modalApply}
-          </button>
-        </div>
-      </Modal>
-
-      <Modal
-        open={Boolean(
-          transferHostModalOpen && roomState && isControl && !isSpectateRoute && !isLobbyRoute
-        )}
-        title={appLocale.transferHostTitle}
-        onClose={() => {
+      <AppModalLayer
+        locale={appLocale}
+        dangerConfirmMessage={dangerConfirmMessage}
+        onResolveDangerConfirm={resolveDangerousActionConfirm}
+        transferHostOpen={transferHostModalOpen}
+        transferHostEnabled={Boolean(roomState && isControl && !isSpectateRoute && !isLobbyRoute)}
+        transferHostCandidates={transferHostCandidates}
+        transferHostTargetId={transferHostTargetId}
+        transferHostAgree={transferHostAgree}
+        onTransferHostTargetIdChange={setTransferHostTargetId}
+        onTransferHostAgreeChange={setTransferHostAgree}
+        onCloseTransferHost={() => {
           setTransferHostModalOpen(false);
           setTransferHostAgree(false);
         }}
-        dismissible={true}
-      >
-        {transferHostCandidates.length === 0 ? (
-          <div className="muted">{appLocale.transferHostSelectPlaceholder}</div>
-        ) : (
-          <>
-            <label className="topbar-menu-field">
-              <span>{appLocale.transferHostSelectLabel}</span>
-              <select
-                value={transferHostTargetId}
-                onChange={(event) => setTransferHostTargetId(event.target.value)}
-              >
-                {transferHostCandidates.map((player) => (
-                  <option key={player.playerId} value={player.playerId}>
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="topbar-menu-checkbox">
-              <input
-                type="checkbox"
-                checked={transferHostAgree}
-                onChange={(event) => setTransferHostAgree(event.target.checked)}
-              />
-              <span>{appLocale.transferHostAgreeLabel}</span>
-            </label>
-            <div className="modal-actions">
-              <button
-                className="ghost"
-                onClick={() => {
-                  setTransferHostModalOpen(false);
-                  setTransferHostAgree(false);
-                }}
-              >
-                {appLocale.modalCancel}
-              </button>
-              <button
-                className="primary"
-                disabled={!transferHostTargetId || !transferHostAgree}
-                onClick={handleTransferHostFromModal}
-              >
-                {appLocale.transferHostButton}
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      <Modal
-        open={exitConfirmModalOpen}
-        title={appLocale.exitConfirmTitle}
-        onClose={() => setExitConfirmModalOpen(false)}
-        dismissible={true}
-      >
-        <div className="muted">{appLocale.exitConfirmText}</div>
-        <div className="modal-actions">
-          <button className="ghost" onClick={() => setExitConfirmModalOpen(false)}>
-            {appLocale.modalCancel}
-          </button>
-          <button
-            className="primary"
-            onClick={() => {
-              setExitConfirmModalOpen(false);
-              performExitGame();
-            }}
-          >
-            {appLocale.exitButton}
-          </button>
-        </div>
-      </Modal>
-
-      <Modal
-        open={devKickModalOpen && showDevKick}
-        title={appLocale.devKickTitle}
-        onClose={() => {
+        onSubmitTransferHost={handleTransferHostFromModal}
+        exitConfirmOpen={exitConfirmModalOpen}
+        onCloseExitConfirm={() => setExitConfirmModalOpen(false)}
+        onConfirmExit={() => {
+          setExitConfirmModalOpen(false);
+          performExitGame();
+        }}
+        devKickOpen={devKickModalOpen && showDevKick}
+        devKickCandidates={devKickCandidates}
+        devKickTargetId={devKickTargetId}
+        devKickAgree={devKickAgree}
+        onDevKickTargetIdChange={setDevKickTargetId}
+        onDevKickAgreeChange={setDevKickAgree}
+        onCloseDevKick={() => {
           setDevKickModalOpen(false);
           setDevKickTargetId("");
           setDevKickAgree(false);
         }}
-        dismissible={true}
-      >
-        {devKickCandidates.length === 0 ? (
-          <div className="muted">{appLocale.devKickNoTargets}</div>
-        ) : (
-          <>
-            <select
-              value={devKickTargetId}
-              onChange={(event) => setDevKickTargetId(event.target.value)}
-            >
-              <option value="" disabled>
-                {appLocale.devKickSelectPlaceholder}
-              </option>
-              {devKickCandidates.map((player) => (
-                <option key={player.playerId} value={player.playerId}>
-                  {player.name}
-                </option>
-              ))}
-            </select>
-            <div className="modal-actions">
-              <button
-                className="ghost"
-                onClick={() => {
-                  setDevKickModalOpen(false);
-                  setDevKickTargetId("");
-                  setDevKickAgree(false);
-                }}
-              >
-                {appLocale.modalCancel}
-              </button>
-              <label className="topbar-menu-checkbox">
-                <input
-                  type="checkbox"
-                  checked={devKickAgree}
-                  onChange={(event) => setDevKickAgree(event.target.checked)}
-                />
-                <span>{appLocale.devKickAgreeLabel}</span>
-              </label>
-              <button
-                className="primary"
-                disabled={!devKickTargetId || !devKickAgree}
-                onClick={handleDevKickPlayer}
-              >
-                {appLocale.devKickConfirm}
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
+        onSubmitDevKick={handleDevKickPlayer}
+      />
     </div>
     </ErrorBoundary>
   );

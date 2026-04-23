@@ -1,293 +1,145 @@
 # Core Refactor Execution Backlog
 
-## Назначение
-
-Это более жёсткий execution backlog поверх общего плана из `core-refactor-plan.md`.
-
-Здесь фиксируется:
-- что делать по фазам;
-- какой результат должен быть в конце фазы;
-- какие файлы являются главной целью;
-- что проверять перед переходом к следующей фазе.
-
 ## Phase Status
+- `Phase 1` - `complete`
+- `Phase 2` - `complete`
+- `Phase 3` - `complete`
+- `Phase 4` - `complete`
+- `Phase 5` - `complete`
+- `Phase 6` - `complete`
+- `Phase 7` - `complete`
+- `Phase 8` - `complete`
+- `Phase 9` - `partial`
+- `Phase 10` - `partial`
+- `Phase 11` - `partial`
+- `Phase 12` - `partial`
+- `Phase 13` - `partial`
+- `Phase 14` - `not started`
 
-- `Phase 1` — `complete`
-- `Phase 2` — `complete`
-- `Phase 3` — `complete`
-- `Phase 4` — `complete`
-- `Phase 5` — `complete`
-- `Phase 6` — `complete`
-- `Phase 7` — `complete`
-- `Phase 8` — `complete`
-- `Phase 9` — `partial`
-- `Phase 10` — `partial`
-- `Phase 11` — `partial`
-- `Phase 12` — `partial`
-- `Phase 13` — `partial`
-- `Phase 14` — `not started`
+## What Is Already Done
+- `server/src/index.ts` is no longer the original giant mixed entrypoint
+- server code is already split across:
+  - `server/src/bootstrap/`
+  - `server/src/config/`
+  - `server/src/rooms/`
+  - `server/src/ws/`
+  - `server/src/sessions/`
+  - `server/src/game/`
+  - `server/src/actions/`
+  - `server/src/presenters/`
+  - `server/src/assets/`
+  - `server/src/locales/`
+- `shared/` is already reorganized around canonical contracts
+- client has already extracted:
+  - `client/src/session/`
+  - `client/src/hooks/`
+  - `client/src/app/derivedUi.ts`
+  - `client/src/game/categoryPresentation.ts`
+  - `client/src/lobby/rulesMath.ts`
 
-## Phase 1. Current-State Mapping
-
-Цель:
-- зафиксировать карту текущих зон ответственности;
-- понять, что именно режем первым;
-- выделить критичные flow, которые нельзя ломать.
-
-Главные файлы:
-- `server/src/index.ts`
-- `client/src/App.tsx`
-- `client/src/pages/GamePage.tsx`
-- `client/src/pages/LobbyPage.tsx`
-- `shared/` по фактическим transport/domain контрактам
-
-Результат фазы:
-- документ с картой монолитов;
-- список server-блоков для первого выноса;
-- список client-блоков для первого выноса;
-- список критичных flow для проверки после каждого следующего этапа.
-
-Гейт выхода:
-- понятно, какие переносы делать сначала;
-- нет архитектурной неопределённости по первым 2-3 шагам рефакторинга.
-
-## Phase 2. Server Bootstrap And Config Split
-
-Цель:
-- сделать `server/src/index.ts` тоньше без изменения поведения;
-- отделить bootstrap и config resolution от runtime/game логики.
-
-Главные цели:
-- вынести env/config resolution;
-- вынести server bootstrap;
-- оставить в `index.ts` только entry wiring.
-
-Целевые папки:
-- `server/src/bootstrap/`
-- `server/src/config/`
-
-Гейт выхода:
-- `index.ts` больше не несёт на себе env/config plumbing;
-- запуск сервера читается отдельно от gameplay/runtime деталей.
-
-## Phase 3. Rooms Layer Extraction
-
-Цель:
-- отделить room lifecycle от общего server entry потока.
-
-Главные цели:
-- room registry;
-- room creation/destruction;
-- lobby player attach/remove;
-- inactive room cleanup.
-
-Целевые папки:
-- `server/src/rooms/`
-
-Гейт выхода:
-- операции с комнатами не размазаны по нескольким несвязанным блокам;
-- room lifecycle читается как самостоятельный слой.
-
-## Phase 4. WS Transport And Routing Split
-
-Цель:
-- отделить websocket transport от игровой логики.
-
-Главные цели:
-- connection setup;
-- incoming message parse/validation;
-- routing;
-- outgoing dispatch.
-
-Целевые папки:
-- `server/src/ws/`
-
-Гейт выхода:
-- transport и game logic не сидят в одном giant block;
-- обработчики не зависят напрямую от низкоуровневой websocket-обвязки.
-
-## Phase 5. Session Identity And Reconnect Split
-
-Цель:
-- собрать identity/session/reconnect/host-transfer в явный слой.
-
-Главные цели:
-- player identity;
-- reconnect token/session binding;
-- host transfer;
-- disconnect grace logic.
-
-Целевые папки:
-- `server/src/sessions/`
-
-Гейт выхода:
-- reconnect и host transfer имеют явные точки входа;
-- session-логика не размазана по transport/rooms/actions.
-
-## Phase 6. Game Actions And Orchestration Split
-
-Цель:
-- разделить orchestration матча и обработчики конкретных действий.
-
-Главные цели:
-- `startGame`;
-- lobby/game action dispatch;
-- control-only actions;
-- classic/manual rules transitions;
-- scenario action handling.
-
-Целевые папки:
-- `server/src/game/`
-- `server/src/actions/`
-
-Гейт выхода:
-- новые action-ветки можно добавлять без правки огромного switch-блока;
-- orchestration и handlers читаются по отдельности.
-
-## Phase 7. Outbound State And Presenter Split
-
-Цель:
-- отделить domain state от transport/presenter assembly.
-
-Главные цели:
-- `buildRoomState`;
-- `sendGameView`;
-- `broadcastRoomState`;
-- `broadcastGameViews`;
-- overlay/state projection.
-
-Целевые папки:
-- `server/src/presenters/`
-- `server/src/mappers/`
-
-Гейт выхода:
-- outbound payload assembly локализован в одном месте;
-- проще контролировать видимость чувствительных данных.
-
-## Phase 8. Shared Contract Canonicalization
-
-Цель:
-- сделать `shared/` единой точкой правды для контрактов.
-
-Главные цели:
-- client->server events;
-- server->client events;
-- room/game/session payloads;
-- role/stage/status enums;
-- общие transport shape.
-
-Гейт выхода:
-- один сетевой смысл = один канонический контракт;
-- дубли и почти-дубли вычищены.
+## Remaining Work By Phase
 
 ## Phase 9. Contract Hygiene Pass
+Goal:
+- remove leftover duplicate normalization and shaping logic across layers
 
-Цель:
-- убрать межслойные дубли и рассинхрон helper-логики.
+Main targets:
+- role / permission checks
+- event-name consistency
+- payload-shaping helpers
+- duplicated normalization helpers
+- localization leaking into contract/domain decisions
 
-Главные цели:
-- normalization helpers;
-- role/permission helpers;
-- payload shaping helpers;
-- event-name consistency;
-- отделение localization от contract/domain logic.
-
-Гейт выхода:
-- нет явных дублей одной и той же contract-логики в `server` и `client`.
+Exit gate:
+- one meaning should have one canonical helper or contract path
 
 ## Phase 10. Client Session And App Split
+Goal:
+- reduce `client/src/App.tsx` to a true composition root
 
-Цель:
-- снять с `client/src/App.tsx` session/runtime orchestration.
+Main targets:
+- continue moving UI preference and shell concerns out of `App.tsx`
+- keep session orchestration out of rendering-heavy sections
+- keep topbar/settings/modal logic separated from route composition
 
-Главные цели:
-- create/join/reconnect flow;
-- ws lifecycle;
-- retry/reconnect path;
-- route gating;
-- app-level session state.
+Current progress:
+- session flow already partially extracted
+- app UI side-effects already extracted
+- modal layer extracted
+- UI preference initialization extracted
 
-Целевые папки:
-- `client/src/session/`
-- `client/src/state/` или `client/src/stores/`
-
-Гейт выхода:
-- `App.tsx` становится composition root, а не центром всей app-логики.
+Exit gate:
+- `App.tsx` mostly wires routes, page props, and top-level state boundaries
 
 ## Phase 11. Client Actions And Selectors Split
+Goal:
+- make UI components know less about transport and side-effect paths
 
-Цель:
-- вынести action dispatch и derived logic из верхнего компонента.
+Main targets:
+- continue extracting client actions
+- continue extracting derived selectors/mappers
+- reduce prop/event boilerplate wired inline in page shells
 
-Главные цели:
-- game actions;
-- lobby actions;
-- control actions;
-- derived selectors;
-- server payload -> UI mapping.
-
-Целевые папки:
-- `client/src/actions/`
-- `client/src/selectors/`
-- `client/src/mappers/`
-
-Гейт выхода:
-- UI-компоненты меньше знают про transport и side-effects.
+Exit gate:
+- derived UI logic is not scattered through top-level page components
 
 ## Phase 12. GamePage Split
+Goal:
+- split `client/src/pages/GamePage.tsx` into clear feature blocks
 
-Цель:
-- разрезать `client/src/pages/GamePage.tsx` на feature-блоки.
+Main targets:
+- world section / world modal
+- special-dialog flow
+- vote modal
+- dossier/reveal blocks
+- post-game and mobile-only world UI
 
-Главные цели:
-- player panel;
-- voting;
-- round/status blocks;
-- result/reveal blocks;
-- control/dev fragments.
-
-Гейт выхода:
-- `GamePage.tsx` остаётся shell-страницей;
-- крупные блоки живут отдельно.
+Exit gate:
+- `GamePage.tsx` becomes a shell that composes feature sections
 
 ## Phase 13. LobbyPage Split
+Goal:
+- split `client/src/pages/LobbyPage.tsx` into clear feature blocks
 
-Цель:
-- разрезать `client/src/pages/LobbyPage.tsx` на feature-блоки.
+Main targets:
+- overlay/spectator links section
+- rules/settings section
+- player-management controls
+- transfer/kick related blocks
 
-Главные цели:
-- player list;
-- invite/info blocks;
-- host/control actions;
-- room settings sections.
-
-Гейт выхода:
-- `LobbyPage.tsx` перестаёт быть монолитом;
-- transport/session детали не размазаны по lobby JSX.
+Exit gate:
+- `LobbyPage.tsx` becomes a shell rather than one large mixed page file
 
 ## Phase 14. Cleanup And Documentation Pass
+Goal:
+- remove transitional debris after the refactor
 
-Цель:
-- убрать transitional мусор после распила.
+Main targets:
+- remove obsolete helpers
+- rename ambiguous leftovers
+- update internal docs to current architecture
+- collapse temporary abstractions that are no longer needed
 
-Главные цели:
-- удалить временные helper’ы;
-- дочистить нейминг;
-- обновить внутреннюю dev-документацию;
-- схлопнуть устаревшие промежуточные слои.
+Exit gate:
+- the new structure reads cleanly without needing old giant-file history
 
-Гейт выхода:
-- новая структура читается без знания старого giant-file layout.
+## Current Recommended Order
+1. Finish `Phase 9`
+2. Continue `Phase 10`
+3. Continue `Phase 11`
+4. Continue `Phase 12`
+5. Continue `Phase 13`
+6. Finish `Phase 14`
 
-## Общая проверка между фазами
-
-- typecheck / build по затронутой части;
-- целевые тесты по затронутой области;
-- ручная проверка:
-  - create room;
-  - join room;
-  - reconnect;
-  - host transfer;
-  - start game;
-  - базовые game actions;
-  - room/game state delivery клиенту.
+## Verification Between Slices
+- `pnpm -C client typecheck`
+- `pnpm -C shared typecheck`
+- `pnpm -C server typecheck`
+- `pnpm -C scenarios build`
+- targeted manual checks for:
+  - create room
+  - join room
+  - reconnect
+  - host transfer
+  - start game
+  - reveal / vote / continue flow

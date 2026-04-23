@@ -134,7 +134,7 @@
   "hintContinueRound": "Нажмите «Продолжить», чтобы передать ход.",
   "hintWaitTurn": "Дождитесь своего хода.",
   "hintRevealThreats": "Раскрывайте угрозы в центральной зоне.",
-  "hintDecideOutcome": "Выберите исход: бункер выжил или пал.",
+  "hintDecideOutcome": "Все угрозы раскрыты. Ведущий, выберите исход партии: какое будущее ждёт бункер.",
   "toastPosTopRight": "Сверху справа",
   "toastPosTopLeft": "Сверху слева",
   "toastPosBottomRight": "Снизу справа",

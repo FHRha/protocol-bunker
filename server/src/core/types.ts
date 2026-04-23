@@ -75,6 +75,8 @@ export interface Room {
   sessionPlayerIds?: Set<string>;
   lastRoomState?: RoomState;
   lastGameViews?: Map<string, ReturnType<ScenarioSession["getGameView"]>>;
+  roomStateRevision: number;
+  gameViewRevisions: Map<string, number>;
   overlayToken: OverlayViewToken;
   spectatorToken: SpectatorToken;
   overlayEditToken: OverlayControlToken;

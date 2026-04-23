@@ -35,6 +35,8 @@ export async function sendHelloWithIntent(intent: SessionIntent, deps: SendHello
 
 type SendResumeDeps = {
   client: BunkerClient;
+  locale: LocaleCode;
+  tabId: string | undefined;
   sessionId: string | null;
   sessionIdRef: MutableRefObject<string | null>;
   roomStateRef: MutableRefObject<RoomState | null>;
@@ -47,16 +49,37 @@ type SendResumeDeps = {
 
 export async function sendResume(deps: SendResumeDeps): Promise<void> {
   deps.ensureSessionId();
+  const roomCode =
+    deps.roomStateRef.current?.roomCode ??
+    new URLSearchParams(deps.locationSearch).get("room") ??
+    localStorage.getItem("bunker.lastRoomCode");
+  if (!roomCode) return;
+  const expectGameView =
+    deps.roomStateRef.current?.phase === "game" || deps.locationPathname.startsWith("/game");
+  if (IDENTITY_MODE === "dev_tab") {
+    const name = localStorage.getItem("bunker.playerName") ?? "Player";
+    if (!deps.tabId || !name.trim()) return;
+    deps.startSnapshotWait(expectGameView);
+    deps.lastHelloAtRef.current = Date.now();
+    console.log("[dev] resume as hello sent", roomCode);
+    await deps.client.connect(true);
+    deps.client.send({
+      type: "hello",
+      payload: {
+        name,
+        roomCode: roomCode.toUpperCase(),
+        tabId: deps.tabId,
+        sessionId: deps.sessionIdRef.current ?? deps.sessionId ?? undefined,
+        locale: deps.locale,
+      },
+    });
+    return;
+  }
   const payload = buildResumePayload({
-    roomCode:
-      deps.roomStateRef.current?.roomCode ??
-      new URLSearchParams(deps.locationSearch).get("room") ??
-      localStorage.getItem("bunker.lastRoomCode"),
+    roomCode,
     sessionId: deps.sessionIdRef.current ?? deps.sessionId,
   });
   if (!payload) return;
-  const expectGameView =
-    deps.roomStateRef.current?.phase === "game" || deps.locationPathname.startsWith("/game");
   deps.startSnapshotWait(expectGameView);
   deps.lastHelloAtRef.current = Date.now();
   if (IDENTITY_MODE !== "prod") {

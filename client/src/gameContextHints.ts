@@ -58,6 +58,15 @@ export function buildGameContextHints(params: BuildGameHintsParams, textSource: 
     return hints;
   }
 
+  if (params.postGameActive && params.canDecidePostGameOutcome) {
+    pushHint(hints, {
+      id: "decide-outcome",
+      text: textSource.hintDecideOutcome,
+      level: "action",
+    });
+    return hints;
+  }
+
   if (params.youStatus !== "alive") {
     pushHint(hints, {
       id: "observer-mode",
@@ -148,15 +157,6 @@ export function buildGameContextHints(params: BuildGameHintsParams, textSource: 
     });
   }
 
-  if (params.postGameActive && params.canDecidePostGameOutcome) {
-    pushHint(hints, {
-      id: "decide-outcome",
-      text: textSource.hintDecideOutcome,
-      level: "action",
-    });
-  }
-
   return hints.slice(0, 2);
 }
-
 

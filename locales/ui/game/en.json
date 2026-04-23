@@ -83,7 +83,7 @@
   "gameLoadingTitle": "Loading",
   "gameStatusTitle": "Game status",
   "hintContinueRound": "Press Continue to pass the turn.",
-  "hintDecideOutcome": "Choose outcome: bunker survived or failed.",
+  "hintDecideOutcome": "All threats are revealed. Host, choose the match outcome: what future awaits the bunker.",
   "hintFinalizeVoteHost": "Host can finalize voting.",
   "hintFinalizeVoteWait": "Wait for host to finalize voting.",
   "hintObserverMode": "Observer mode: player actions are disabled.",

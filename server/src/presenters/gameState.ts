@@ -70,14 +70,21 @@ export function broadcastOverlayState(room: Room, deps: GameStatePresenterDeps):
 }
 
 export function broadcastRoomState(room: Room, deps: GameStatePresenterDeps): void {
-  const roomState = deps.buildRoomState(room);
+  room.roomStateRevision += 1;
+  const roomState = {
+    ...deps.buildRoomState(room),
+    revision: room.roomStateRevision,
+  };
   const patch = deps.diffTopLevel(room.lastRoomState, roomState);
   for (const player of room.players.values()) {
     if (!player.ws) continue;
     if (player.needsFullState || !room.lastRoomState) {
       deps.send(player.ws, { type: "roomState", payload: roomState });
     } else if (patch) {
-      deps.send(player.ws, { type: "statePatch", payload: { roomState: patch } });
+      deps.send(player.ws, {
+        type: "statePatch",
+        payload: { roomState: patch, roomStateRevision: room.roomStateRevision },
+      });
     }
   }
   room.lastRoomState = roomState;
@@ -117,8 +124,11 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
         leftBunker: roomPlayer?.leftBunker ?? entry.status === "left_bunker",
       };
     });
+    const nextRevision = (room.gameViewRevisions.get(player.playerId) ?? 0) + 1;
+    room.gameViewRevisions.set(player.playerId, nextRevision);
     const payload = {
       ...view,
+      revision: nextRevision,
       public: {
         ...view.public,
         players: enrichedPlayers,
@@ -136,7 +146,10 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
     } else {
       const patch = deps.diffTopLevel(lastView, localizedPayload);
       if (patch) {
-        deps.send(player.ws, { type: "statePatch", payload: { gameView: patch } });
+        deps.send(player.ws, {
+          type: "statePatch",
+          payload: { gameView: patch, gameViewRevision: nextRevision },
+        });
       }
       player.needsFullGameView = false;
     }

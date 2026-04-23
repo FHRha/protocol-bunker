@@ -127,6 +127,7 @@ export interface DisasterOption {
 }
 
 export interface RoomState {
+  revision?: number;
   roomCode: string;
   players: PlayerSummary[];
   hostId: string;
@@ -145,6 +146,8 @@ export interface RoomState {
 export interface StatePatchPayload {
   roomState?: Partial<RoomState>;
   gameView?: Partial<GameView>;
+  roomStateRevision?: number;
+  gameViewRevision?: number;
 }
 
 export interface PublicCategorySlot {
@@ -223,6 +226,7 @@ export interface RoundRulesView {
 }
 
 export interface GameView {
+  revision?: number;
   phase: ScenarioPhase;
   round: number;
   categoryOrder: string[];
@@ -371,6 +375,7 @@ export const PublicPlayerViewSchema = z.object({
 });
 
 export const RoomStateSchema = z.object({
+  revision: z.number().int().nonnegative().optional(),
   roomCode: z.string(),
   players: z.array(PlayerSummarySchema),
   hostId: z.string(),
@@ -434,6 +439,7 @@ export const RoundRulesViewSchema = z.object({
 });
 
 export const GameViewSchema = z.object({
+  revision: z.number().int().nonnegative().optional(),
   phase: ScenarioPhaseSchema,
   round: z.number().int().nonnegative(),
   categoryOrder: z.array(z.string()),
@@ -482,4 +488,6 @@ export const GameViewSchema = z.object({
 export const StatePatchPayloadSchema = z.object({
   roomState: RoomStateSchema.partial().optional(),
   gameView: GameViewSchema.partial().optional(),
+  roomStateRevision: z.number().int().nonnegative().optional(),
+  gameViewRevision: z.number().int().nonnegative().optional(),
 });

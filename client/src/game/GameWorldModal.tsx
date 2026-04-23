@@ -108,7 +108,6 @@ export function GameWorldModal({
                       }
                     }}
                   >
-                    <div className="world-slot-header">{gameText.t("worldKindBunker")}</div>
                     <div className="world-slot-media">
                       <CardTile src={revealed ? faceUrl : backUrl} fallback={label} />
                     </div>
@@ -154,6 +153,9 @@ export function GameWorldModal({
               className="world-column world-column-right world-column-grid"
               style={{ "--card-rows": Math.max(1, Math.ceil(visibleWorldThreats.length / 2)) } as CSSProperties}
             >
+              {showThreatModifier ? (
+                <div className="world-threat-modifier world-threat-modifier--deck">{threatModifierText}</div>
+              ) : null}
               {visibleWorldThreats.map((card, index) => {
                 const isSoloLast = visibleWorldThreats.length % 2 === 1 && index === visibleWorldThreats.length - 1;
                 const label = gameLocale.worldThreatCard(index + 1);
@@ -202,7 +204,6 @@ export function GameWorldModal({
                     role={canReveal || revealed ? "button" : undefined}
                     tabIndex={canReveal || revealed ? 0 : -1}
                   >
-                    <div className="world-slot-header">{gameText.t("worldKindThreat")}</div>
                     <div className="world-slot-media">
                       <CardTile src={revealed ? faceUrl : backUrl} fallback={label} />
                     </div>
@@ -219,12 +220,11 @@ export function GameWorldModal({
               <div className="world-detail-overlay" onClick={onCloseWorldDetail}>
                 <div className="world-detail-card" onClick={(event) => event.stopPropagation()}>
                   <div className="world-detail-header">
-                    <div className="world-detail-kind">{worldDetail.kind}</div>
+                    <div className="world-detail-title">{worldDetail.title}</div>
                     <button className="icon-button" onClick={onCloseWorldDetail} aria-label={gameText.t("closeButton")}>
                       x
                     </button>
                   </div>
-                  <div className="world-detail-title">{worldDetail.title}</div>
                   <div className="world-detail-media">
                     {worldDetail.imageUrl ? (
                       <img src={worldDetail.imageUrl} alt={worldDetail.label} loading="lazy" decoding="async" />

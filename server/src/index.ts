@@ -1905,6 +1905,17 @@ function localizeGameViewForLocale(
     imgUrl: localizeAssetUrl(card.imgUrl, locale),
   }));
   const handLabelByInstanceId = new Map(localizedHand.map((card) => [card.instanceId, card.labelShort] as const));
+  const localizedThreatModifier = view.public.threatModifier
+    ? {
+        ...view.public.threatModifier,
+        reasons: view.public.threatModifier.reasons.map((reason, index) => {
+          const cardId = view.public.threatModifier?.reasonCardIds?.[index];
+          return cardId
+            ? localizeCardLabel(cardId, reason, locale)
+            : localizeScenarioMessage(reason, locale, scenarioId);
+        }),
+      }
+    : view.public.threatModifier;
 
   return {
     ...view,
@@ -1945,14 +1956,7 @@ function localizeGameViewForLocale(
       resolutionNote: view.public.resolutionNote
         ? localizeScenarioMessage(view.public.resolutionNote, locale, scenarioId)
         : view.public.resolutionNote,
-      threatModifier: view.public.threatModifier
-        ? {
-            ...view.public.threatModifier,
-            reasons: view.public.threatModifier.reasons.map((reason) =>
-              localizeScenarioMessage(reason, locale, scenarioId)
-            ),
-          }
-        : view.public.threatModifier,
+      threatModifier: localizedThreatModifier,
       players: view.public.players.map((player) => ({
         ...player,
         revealedCards: player.revealedCards.map((card) => ({

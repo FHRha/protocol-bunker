@@ -280,9 +280,7 @@ export function AppSettingsPopover({
                   className={`topbar-locale-option${localeCode === "ru" ? " selected" : ""}`}
                   onClick={() => setLocale("ru")}
                 >
-                  <span className="topbar-locale-flag" aria-hidden="true">
-                    RU
-                  </span>
+                  <span className="topbar-locale-flag topbar-locale-flag--ru" aria-hidden="true" />
                   <span>{locale.localeRu}</span>
                 </button>
                 <button
@@ -290,9 +288,7 @@ export function AppSettingsPopover({
                   className={`topbar-locale-option${localeCode === "en" ? " selected" : ""}`}
                   onClick={() => setLocale("en")}
                 >
-                  <span className="topbar-locale-flag" aria-hidden="true">
-                    EN
-                  </span>
+                  <span className="topbar-locale-flag topbar-locale-flag--en" aria-hidden="true" />
                   <span>{locale.localeEnBeta}</span>
                 </button>
               </div>

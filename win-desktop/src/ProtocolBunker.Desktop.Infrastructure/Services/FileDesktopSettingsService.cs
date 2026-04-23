@@ -106,6 +106,7 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
             yield break;
         }
 
+        yield return new SettingsCandidate(SettingsSourceKind.LauncherSettings, Path.Combine(repoRoot, ".cache", "desktop", "launcher.settings.json"));
         yield return new SettingsCandidate(SettingsSourceKind.LauncherSettings, Path.Combine(repoRoot, "launcher.settings.json"));
         yield return new SettingsCandidate(SettingsSourceKind.PortableEnv, Path.Combine(repoRoot, "app", "portable.env"));
         yield return new SettingsCandidate(SettingsSourceKind.LauncherSettings, Path.Combine(repoRoot, "artifacts", "win-desktop", "Protocol-Bunker", "launcher.settings.json"));

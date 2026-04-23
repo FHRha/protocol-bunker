@@ -46,6 +46,8 @@ export function createLobbyRoom(options: CreateLobbyRoomOptions): Room {
     playersBySessionId: new Map(),
     joinOrder: [],
     lastGameViews: new Map(),
+    roomStateRevision: 0,
+    gameViewRevisions: new Map(),
     overlayToken: options.generateOverlayViewToken(),
     spectatorToken: options.generateSpectatorToken(),
     overlayEditToken: options.generateOverlayControlToken(),

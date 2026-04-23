@@ -134,7 +134,7 @@
   "hintContinueRound": "Press Continue to pass the turn.",
   "hintWaitTurn": "Wait for your turn.",
   "hintRevealThreats": "Reveal threats in the center area.",
-  "hintDecideOutcome": "Choose outcome: bunker survived or failed.",
+  "hintDecideOutcome": "All threats are revealed. Host, choose the match outcome: what future awaits the bunker.",
   "toastPosTopRight": "Top right",
   "toastPosTopLeft": "Top left",
   "toastPosBottomRight": "Bottom right",

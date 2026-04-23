@@ -717,6 +717,43 @@ describe("Special conditions contract", () => {
     expect(targetAfter?.labelShort).toBe(sourceBefore);
   });
 
+  it("redeals revealed cards without duplicating cards", () => {
+    const redealBaggage = readImplementedSpecials().find(
+      (entry) =>
+        entry.effect.type === "redealAllRevealed" && String(entry.effect.params?.category ?? "") === "baggage"
+    );
+    expect(redealBaggage).toBeTruthy();
+    if (!redealBaggage) return;
+
+    const session = classicScenario.createSession(makeContext(6));
+    for (const playerId of ["p1", "p2", "p3", "p4"]) {
+      ensureRevealForPlayerDeck(session, playerId, DECK_BAGGAGE);
+    }
+
+    const before = ["p1", "p2", "p3", "p4"].flatMap((playerId) =>
+      getRevealedDeckCards(session, playerId, DECK_BAGGAGE).map((card) => card.labelShort)
+    );
+    expect(new Set(before).size).toBe(before.length);
+
+    const result = session.handleAction("p1", {
+      type: "adminApplySpecial",
+      payload: {
+        actorPlayerId: "p1",
+        specialId: redealBaggage.id,
+        payload: {},
+      },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.stateChanged).toBe(true);
+
+    const after = ["p1", "p2", "p3", "p4"].flatMap((playerId) =>
+      getRevealedDeckCards(session, playerId, DECK_BAGGAGE).map((card) => card.labelShort)
+    );
+    expect(after).toHaveLength(before.length);
+    expect(new Set(after).size).toBe(after.length);
+    expect(new Set(after)).toEqual(new Set(before));
+  });
+
   for (const special of secretOnEliminateSpecials) {
     it(`runtime secret_onEliminate trigger works [dev]: ${special.title}`, () => {
       assertSecretOnEliminateRuntime(devScenario.createSession, special);

@@ -2135,7 +2135,11 @@ export const scenario: ScenarioModule = {
           }
           if (revealedSlots.length === 0) return scenarioError("classic.auto.060");
 
-          const shuffled = [...revealedSlots];
+          const shuffled = revealedSlots.map((card) => ({
+            id: card.id,
+            labelShort: card.labelShort,
+            missing: card.missing,
+          }));
           for (let i = shuffled.length - 1; i > 0; i -= 1) {
             const j = Math.floor(rng() * (i + 1));
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];

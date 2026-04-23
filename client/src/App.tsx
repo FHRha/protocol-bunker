@@ -281,6 +281,8 @@ export default function App() {
   const awaitingGameViewRef = useRef(false);
   const roomStateRef = useRef<RoomState | null>(null);
   const gameViewRef = useRef<GameView | null>(null);
+  const roomStateRevisionRef = useRef(0);
+  const gameViewRevisionRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
   const lastHelloAtRef = useRef<number | null>(null);
   const reconnectPendingRef = useRef(false);
@@ -429,6 +431,8 @@ export default function App() {
   const sendResume = async () => {
     await sendSessionResume({
       client,
+      locale,
+      tabId,
       sessionId,
       sessionIdRef,
       roomStateRef,
@@ -613,12 +617,18 @@ export default function App() {
   });
 
   const applyRoomStatePatch = (patch: Partial<RoomState>) => {
+    const patchRevision = patch.revision;
+    if (typeof patchRevision === "number" && patchRevision <= roomStateRevisionRef.current) {
+      return;
+    }
     setRoomState((prev) => {
       if (!prev) {
         void sendResume();
         return prev;
       }
-      return { ...prev, ...patch };
+      const next = { ...prev, ...patch };
+      roomStateRevisionRef.current = next.revision ?? patchRevision ?? roomStateRevisionRef.current;
+      return next;
     });
     awaitingRoomStateRef.current = false;
     if (!awaitingGameViewRef.current) {
@@ -627,12 +637,18 @@ export default function App() {
   };
 
   const applyGameViewPatch = (patch: Partial<GameView>) => {
+    const patchRevision = patch.revision;
+    if (typeof patchRevision === "number" && patchRevision <= gameViewRevisionRef.current) {
+      return;
+    }
     setGameView((prev) => {
       if (!prev) {
         void sendResume();
         return prev;
       }
-      return { ...prev, ...patch };
+      const next = { ...prev, ...patch };
+      gameViewRevisionRef.current = next.revision ?? patchRevision ?? gameViewRevisionRef.current;
+      return next;
     });
     awaitingGameViewRef.current = false;
     if (!awaitingRoomStateRef.current) {
@@ -653,6 +669,8 @@ export default function App() {
         dossierActionRef,
         gameViewRef,
         roomStateRef,
+        gameViewRevisionRef,
+        roomStateRevisionRef,
         setPlayerId,
         setPlayerToken,
         setRoomState,
@@ -1096,6 +1114,7 @@ export default function App() {
                 >
                   {roomCodeDisplay.label}
                 </span>
+                {showRolePillCompact ? <span className="pill role-pill topbar-room-role">{roleLabel}</span> : null}
                 <span>{appLocale.scenarioPill(roomState.scenarioMeta.name)}</span>
                 {isLobbyRoute ? (
                   <div className="topbar-room-controls">

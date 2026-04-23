@@ -4,6 +4,7 @@ import { computeNeighbors, getTargetCandidates } from "@bunker/shared";
 import { getCurrentLocale, useUiLocaleNamespace, useUiLocaleNamespacesActivation } from "../localization";
 import TableLayout from "../components/TableLayout";
 import DossierMiniCard from "../components/DossierMiniCard";
+import Modal from "../components/Modal";
 import { getCardBackUrl, getCardFaceUrl, preloadCategoryBacks } from "../cards";
 import { buildGameContextHints, type BuildGameHintsParams } from "../gameContextHints";
 import {
@@ -1980,7 +1981,7 @@ export default function GamePage({
                               key={category}
                               src={faceUrl ?? backUrl}
                               fallback={category}
-                              overlayLabel={specialRevealed ? (special?.title ?? category) : undefined}
+                              overlayLabel={isDevScenario && specialRevealed ? (special?.title ?? category) : undefined}
                             />
                           );
                         }
@@ -2189,6 +2190,143 @@ export default function GamePage({
         worldDetail={worldDetail}
         onCloseWorldDetail={() => setWorldDetail(null)}
       />
+      <Modal
+        open={isMobile && mobileDeckModal !== null && !!world}
+        title={gameText.t("worldModalTitle")}
+        onClose={() => {
+          setMobileDeckModal(null);
+          setWorldDetail(null);
+        }}
+        dismissible={true}
+        className="mobile-deck-modal"
+      >
+        {world && mobileDeckModal ? (
+          <div className="mobile-deck-body">
+            {mobileDeckModal === "bunker" ? (
+              <div className="mobile-deck-grid">
+                {world.bunker.map((card, index) => {
+                  const label = gameLocale.worldBunkerCard(index + 1);
+                  const revealed = card.isRevealed;
+                  const imageUrl = revealed ? getWorldImage(card.imageId) : undefined;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      className="mobile-deck-card"
+                      disabled={!revealed}
+                      onClick={() => {
+                        if (!revealed) return;
+                        openWorldDetail({
+                          kind: gameText.t("worldKindBunker"),
+                          title: card.title || label,
+                          description: card.description,
+                          imageUrl,
+                          label,
+                        });
+                      }}
+                    >
+                      <CardTile src={imageUrl ?? getCardBackUrl("bunker", cardLocale)} fallback={label} />
+                      <div className="mobile-deck-title">{revealed ? card.title || label : label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {mobileDeckModal === "disaster" ? (
+              <button
+                type="button"
+                className="mobile-deck-card mobile-deck-card--single"
+                onClick={() =>
+                  openWorldDetail({
+                    kind: gameText.t("worldKindDisaster"),
+                    title: world.disaster.title,
+                    description: world.disaster.description,
+                    imageUrl: getWorldImage(world.disaster.imageId),
+                    label: gameText.t("worldKindDisaster"),
+                  })
+                }
+              >
+                <div className="mobile-deck-title">{world.disaster.title}</div>
+                <CardTile src={getWorldImage(world.disaster.imageId)} fallback={gameText.t("worldKindDisaster")} />
+              </button>
+            ) : null}
+            {mobileDeckModal === "threat" ? (
+              <>
+                {showThreatModifier ? (
+                  <div className="world-threat-modifier mobile-threat-modifier">{threatModifierText}</div>
+                ) : null}
+                <div className="mobile-deck-grid">
+                  {visibleWorldThreats.map((card, index) => {
+                  const label = gameLocale.worldThreatCard(index + 1);
+                  const revealed = card.isRevealed;
+                  const imageUrl = revealed ? getWorldImage(card.imageId) : undefined;
+                  const canReveal = canRevealThreats && !revealed;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      className="mobile-deck-card"
+                      disabled={!revealed && !canReveal}
+                      onClick={() => {
+                        if (!revealed && canReveal) {
+                          onRevealWorldThreat(index);
+                          return;
+                        }
+                        if (!revealed) return;
+                        openWorldDetail({
+                          kind: gameText.t("worldKindThreat"),
+                          title: card.title || label,
+                          description: card.description,
+                          imageUrl,
+                          label,
+                        });
+                      }}
+                    >
+                      <CardTile src={imageUrl ?? getCardBackUrl("threat", cardLocale)} fallback={label} />
+                      <div className="mobile-deck-title">{revealed ? card.title || label : label}</div>
+                      {canReveal && showHints ? <div className="mobile-deck-hint">{gameText.t("worldHintTapToReveal")}</div> : null}
+                    </button>
+                  );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {worldDetail ? (
+              <div className="world-detail-overlay" onClick={() => setWorldDetail(null)}>
+                <div className="world-detail-card" onClick={(event) => event.stopPropagation()}>
+                  <div className="world-detail-header">
+                    <div className="world-detail-title">{worldDetail.title}</div>
+                    <button className="icon-button" onClick={() => setWorldDetail(null)} aria-label={gameText.t("closeButton")}>
+                      x
+                    </button>
+                  </div>
+                  <div className="world-detail-media">
+                    {worldDetail.imageUrl ? (
+                      <img src={worldDetail.imageUrl} alt={worldDetail.label} loading="lazy" decoding="async" />
+                    ) : (
+                      <div className="world-detail-fallback">{worldDetail.label}</div>
+                    )}
+                  </div>
+                  {!worldDetail.imageUrl && worldDetail.description ? (
+                    <div className="world-detail-text">{worldDetail.description}</div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="mobile-deck-footer">
+          <button
+            className="ghost"
+            onClick={() => {
+              setMobileDeckModal(null);
+              setWorldDetail(null);
+            }}
+          >
+            {gameText.t("closeButton")}
+          </button>
+        </div>
+      </Modal>
 
       {postGame?.outcome ? (
         <div className="postgame-overlay" role="dialog" aria-modal="true">

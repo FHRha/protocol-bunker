@@ -1,4 +1,6 @@
 import type { GameSettings } from "@bunker/shared";
+import type { KeyboardEvent } from "react";
+import { useEffect, useState } from "react";
 import InfoTip from "../components/InfoTip";
 
 interface DisasterOption {
@@ -75,6 +77,50 @@ export function LobbySettingsCard({
   updateField,
   updateAutomationMode,
 }: LobbySettingsCardProps) {
+  const [revealSecondsInput, setRevealSecondsInput] = useState(String(settings.revealDiscussionSeconds));
+  const [preVoteSecondsInput, setPreVoteSecondsInput] = useState(String(settings.preVoteDiscussionSeconds));
+  const [postVoteSecondsInput, setPostVoteSecondsInput] = useState(String(settings.postVoteDiscussionSeconds));
+  const [maxPlayersInput, setMaxPlayersInput] = useState(String(settings.maxPlayers));
+
+  useEffect(() => {
+    setRevealSecondsInput(String(settings.revealDiscussionSeconds));
+  }, [settings.revealDiscussionSeconds]);
+
+  useEffect(() => {
+    setPreVoteSecondsInput(String(settings.preVoteDiscussionSeconds));
+  }, [settings.preVoteDiscussionSeconds]);
+
+  useEffect(() => {
+    setPostVoteSecondsInput(String(settings.postVoteDiscussionSeconds));
+  }, [settings.postVoteDiscussionSeconds]);
+
+  useEffect(() => {
+    setMaxPlayersInput(String(settings.maxPlayers));
+  }, [settings.maxPlayers]);
+
+  const commitNumberField = <K extends keyof GameSettings>(
+    key: K,
+    rawValue: string,
+    fallback: GameSettings[K],
+    normalize: (value: number) => GameSettings[K]
+  ) => {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) {
+      if (key === "revealDiscussionSeconds") setRevealSecondsInput(String(fallback));
+      if (key === "preVoteDiscussionSeconds") setPreVoteSecondsInput(String(fallback));
+      if (key === "postVoteDiscussionSeconds") setPostVoteSecondsInput(String(fallback));
+      if (key === "maxPlayers") setMaxPlayersInput(String(fallback));
+      return;
+    }
+    updateField(key, normalize(value));
+  };
+
+  const blurOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.currentTarget.blur();
+    }
+  };
+
   return (
     <section className="lobbyCard lobbyCard--settings settingsCard">
       <div className="lobbyCardHeader">
@@ -97,8 +143,17 @@ export function LobbySettingsCard({
                     type="number"
                     min={5}
                     max={600}
-                    value={settings.revealDiscussionSeconds}
-                    onChange={(event) => updateField("revealDiscussionSeconds", Number(event.target.value))}
+                    value={revealSecondsInput}
+                    onChange={(event) => setRevealSecondsInput(event.target.value)}
+                    onBlur={() =>
+                      commitNumberField(
+                        "revealDiscussionSeconds",
+                        revealSecondsInput,
+                        settings.revealDiscussionSeconds,
+                        (value) => Math.max(5, Math.min(600, value))
+                      )
+                    }
+                    onKeyDown={blurOnEnter}
                   />
                 </div>
               </label>
@@ -114,8 +169,17 @@ export function LobbySettingsCard({
                     type="number"
                     min={5}
                     max={600}
-                    value={settings.preVoteDiscussionSeconds}
-                    onChange={(event) => updateField("preVoteDiscussionSeconds", Number(event.target.value))}
+                    value={preVoteSecondsInput}
+                    onChange={(event) => setPreVoteSecondsInput(event.target.value)}
+                    onBlur={() =>
+                      commitNumberField(
+                        "preVoteDiscussionSeconds",
+                        preVoteSecondsInput,
+                        settings.preVoteDiscussionSeconds,
+                        (value) => Math.max(5, Math.min(600, value))
+                      )
+                    }
+                    onKeyDown={blurOnEnter}
                   />
                 </div>
               </label>
@@ -131,8 +195,17 @@ export function LobbySettingsCard({
                     type="number"
                     min={5}
                     max={600}
-                    value={settings.postVoteDiscussionSeconds}
-                    onChange={(event) => updateField("postVoteDiscussionSeconds", Number(event.target.value))}
+                    value={postVoteSecondsInput}
+                    onChange={(event) => setPostVoteSecondsInput(event.target.value)}
+                    onBlur={() =>
+                      commitNumberField(
+                        "postVoteDiscussionSeconds",
+                        postVoteSecondsInput,
+                        settings.postVoteDiscussionSeconds,
+                        (value) => Math.max(5, Math.min(600, value))
+                      )
+                    }
+                    onKeyDown={blurOnEnter}
                   />
                 </div>
               </label>
@@ -244,10 +317,17 @@ export function LobbySettingsCard({
                     type="number"
                     min={minPlayersLimit}
                     max={16}
-                    value={settings.maxPlayers}
-                    onChange={(event) =>
-                      updateField("maxPlayers", Math.max(minPlayersLimit, Math.min(16, Number(event.target.value))) as GameSettings["maxPlayers"])
+                    value={maxPlayersInput}
+                    onChange={(event) => setMaxPlayersInput(event.target.value)}
+                    onBlur={() =>
+                      commitNumberField(
+                        "maxPlayers",
+                        maxPlayersInput,
+                        settings.maxPlayers,
+                        (value) => Math.max(minPlayersLimit, Math.min(16, value)) as GameSettings["maxPlayers"]
+                      )
                     }
+                    onKeyDown={blurOnEnter}
                   />
                   <small className="muted">{text.maxPlayersHint}</small>
                 </div>

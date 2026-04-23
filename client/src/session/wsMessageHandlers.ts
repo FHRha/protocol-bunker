@@ -25,6 +25,8 @@ export type ServerMessageHandlerDeps = {
   dossierActionRef: MutableRefObject<boolean>;
   gameViewRef: MutableRefObject<GameView | null>;
   roomStateRef: MutableRefObject<RoomState | null>;
+  gameViewRevisionRef: MutableRefObject<number>;
+  roomStateRevisionRef: MutableRefObject<number>;
   setPlayerId: Dispatch<SetStateAction<string | null>>;
   setPlayerToken: Dispatch<SetStateAction<string | null>>;
   setRoomState: Dispatch<SetStateAction<RoomState | null>>;
@@ -57,6 +59,7 @@ export function handleServerMessage(message: ServerMessage, deps: ServerMessageH
       }
       return;
     case "roomState":
+      deps.roomStateRevisionRef.current = message.payload.revision ?? deps.roomStateRevisionRef.current;
       deps.setRoomState(message.payload);
       deps.clearAppErrors();
       if (IDENTITY_MODE !== "prod") {
@@ -71,6 +74,7 @@ export function handleServerMessage(message: ServerMessage, deps: ServerMessageH
       }
       return;
     case "gameView":
+      deps.gameViewRevisionRef.current = message.payload.revision ?? deps.gameViewRevisionRef.current;
       deps.setGameView(message.payload);
       deps.clearAppErrors();
       deps.setMobileDossierError(null);
@@ -88,10 +92,16 @@ export function handleServerMessage(message: ServerMessage, deps: ServerMessageH
       return;
     case "statePatch":
       if (message.payload.roomState) {
-        deps.applyRoomStatePatch(message.payload.roomState);
+        deps.applyRoomStatePatch({
+          ...message.payload.roomState,
+          revision: message.payload.roomState.revision ?? message.payload.roomStateRevision,
+        });
       }
       if (message.payload.gameView) {
-        deps.applyGameViewPatch(message.payload.gameView);
+        deps.applyGameViewPatch({
+          ...message.payload.gameView,
+          revision: message.payload.gameView.revision ?? message.payload.gameViewRevision,
+        });
       }
       return;
     case "gameEvent":

@@ -1,4 +1,5 @@
 import type { ManualRulesConfig } from "@bunker/shared";
+import { useEffect, useState } from "react";
 
 interface LobbyManualTexts {
   manualModeTitle: string;
@@ -62,6 +63,55 @@ export function LobbyManualRulesCard({
   manualVotesSum,
   wsHint,
 }: LobbyManualRulesCardProps) {
+  const [bunkerSlotsInput, setBunkerSlotsInput] = useState(String(manualConfig.bunkerSlots));
+  const [targetRevealsInput, setTargetRevealsInput] = useState(String(manualConfig.targetReveals));
+  const [roundVoteInputs, setRoundVoteInputs] = useState(() => manualConfig.votesByRound.map(String));
+
+  useEffect(() => {
+    setBunkerSlotsInput(String(manualConfig.bunkerSlots));
+  }, [manualConfig.bunkerSlots]);
+
+  useEffect(() => {
+    setTargetRevealsInput(String(manualConfig.targetReveals));
+  }, [manualConfig.targetReveals]);
+
+  useEffect(() => {
+    setRoundVoteInputs(manualConfig.votesByRound.map(String));
+  }, [manualConfig.votesByRound]);
+
+  const commitBunkerSlots = () => {
+    const value = Number(bunkerSlotsInput);
+    if (!Number.isFinite(value)) {
+      setBunkerSlotsInput(String(manualConfig.bunkerSlots));
+      return;
+    }
+    updateManualConfig({ bunkerSlots: value });
+  };
+
+  const commitTargetReveals = () => {
+    const value = Number(targetRevealsInput);
+    if (!Number.isFinite(value)) {
+      setTargetRevealsInput(String(manualConfig.targetReveals));
+      return;
+    }
+    updateManualConfig({ targetReveals: value });
+  };
+
+  const commitVotesSchedule = () => {
+    updateManualConfig({ votesByRound: parseVotesSchedule(manualVotesInput) });
+  };
+
+  const commitRoundVotes = (index: number) => {
+    const value = Number(roundVoteInputs[index]);
+    if (!Number.isFinite(value)) {
+      setRoundVoteInputs(manualConfig.votesByRound.map(String));
+      return;
+    }
+    const next = [...manualConfig.votesByRound];
+    next[index] = value;
+    updateManualConfig({ votesByRound: next });
+  };
+
   return (
     <section className="lobbyCard lobbyCard--manual manualCard">
       <div className="lobbyCardHeader">
@@ -93,8 +143,14 @@ export function LobbyManualRulesCard({
                   type="number"
                   min={1}
                   max={16}
-                  value={manualConfig.bunkerSlots}
-                  onChange={(event) => updateManualConfig({ bunkerSlots: Number(event.target.value) })}
+                  value={bunkerSlotsInput}
+                  onChange={(event) => setBunkerSlotsInput(event.target.value)}
+                  onBlur={commitBunkerSlots}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </label>
               <div className="manualRequiredVotes" aria-live="polite">
@@ -103,8 +159,12 @@ export function LobbyManualRulesCard({
               <label className="manualRevealTargetField">
                 <span>{text.manualRevealsRequiredLabel}</span>
                 <select
-                  value={manualConfig.targetReveals}
-                  onChange={(event) => updateManualConfig({ targetReveals: Number(event.target.value) })}
+                  value={targetRevealsInput}
+                  onChange={(event) => {
+                    setTargetRevealsInput(event.target.value);
+                    updateManualConfig({ targetReveals: Number(event.target.value) });
+                  }}
+                  onBlur={commitTargetReveals}
                 >
                   <option value={5}>5</option>
                   <option value={6}>6</option>
@@ -160,9 +220,13 @@ export function LobbyManualRulesCard({
                 type="text"
                 value={manualVotesInput}
                 onChange={(event) => {
-                  const value = event.target.value;
-                  setManualVotesInput(value);
-                  updateManualConfig({ votesByRound: parseVotesSchedule(value) });
+                  setManualVotesInput(event.target.value);
+                }}
+                onBlur={commitVotesSchedule}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                  }
                 }}
               />
             </label>
@@ -175,11 +239,17 @@ export function LobbyManualRulesCard({
                     type="number"
                     min={0}
                     max={9}
-                    value={votes}
+                    value={roundVoteInputs[index] ?? String(votes)}
                     onChange={(event) => {
-                      const next = [...manualConfig.votesByRound];
-                      next[index] = Number(event.target.value);
-                      updateManualConfig({ votesByRound: next });
+                      const next = [...roundVoteInputs];
+                      next[index] = event.target.value;
+                      setRoundVoteInputs(next);
+                    }}
+                    onBlur={() => commitRoundVotes(index)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
                     }}
                   />
                 </label>

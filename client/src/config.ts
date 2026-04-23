@@ -67,7 +67,7 @@ export const IDENTITY_MODE: IdentityMode = runtimeMode
       ? envMode
       : envLegacyDevFlag || runtimeLegacyDevFlag
         ? "dev_tab"
-        : "prod"
+        : "dev_tab"
     : "prod";
 
 export const DEV_TAB_IDENTITY = IDENTITY_MODE === "dev_tab";

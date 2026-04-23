@@ -760,6 +760,46 @@ export default function LobbyPage({
             votesLabel={votesLabel}
             votesValue={votesValue}
           />
+          {canControl && isClassic && rulesMode === "manual" ? (
+            <LobbyManualRulesCard
+              text={{
+                manualModeTitle: lobbyLocale.manualModeTitle,
+                rulesPresetLabel: lobbyLocale.rulesPresetLabel,
+                manualFillFromTemplate: lobbyLocale.manualFillFromTemplate,
+                manualBunkerSlotsLabel: lobbyLocale.manualBunkerSlotsLabel,
+                manualVotesRequired: lobbyLocale.manualVotesRequired,
+                manualRevealsRequiredLabel: lobbyLocale.manualRevealsRequiredLabel,
+                manualRevealsRecommended: lobbyLocale.manualRevealsRecommended,
+                manualRevealsWarning: lobbyLocale.manualRevealsWarning,
+                manualRevealsPlanLabel: lobbyLocale.manualRevealsPlanLabel,
+                votesByRoundLabel: lobbyLocale.votesByRoundLabel,
+                manualRoundAdd: lobbyLocale.manualRoundAdd,
+                manualRoundRemove: lobbyLocale.manualRoundRemove,
+                manualGenerate: lobbyLocale.manualGenerate,
+                manualVotesFormatHint: lobbyLocale.manualVotesFormatHint,
+                manualVotesSumHint: lobbyLocale.manualVotesSumHint,
+                manualAdjust: lobbyLocale.manualAdjust,
+              }}
+              controlsDisabled={controlsDisabled}
+              manualTemplatePlayers={manualTemplatePlayers}
+              setManualTemplatePlayers={setManualTemplatePlayers}
+              rulesPresetOptions={lobbyLocale.rulesPresetOptions}
+              fillManualFromTemplate={fillManualFromTemplate}
+              manualConfig={manualConfig}
+              requiredVotes={requiredVotes}
+              manualRevealNotRecommended={manualRevealNotRecommended}
+              revealPlanText={revealPlanText}
+              updateManualConfig={updateManualConfig}
+              manualVotesInput={manualVotesInput}
+              setManualVotesInput={setManualVotesInput}
+              parseVotesSchedule={parseVotesSchedule}
+              generateVotesByDefault={generateVotesByDefault}
+              fitVotesByTotal={fitVotesByTotal}
+              manualVotesMismatch={manualVotesMismatch}
+              manualVotesSum={manualVotesSum}
+              wsHint={wsHint}
+            />
+          ) : null}
         </div>
 
         <div className="lobbyRightColumn">
@@ -813,46 +853,6 @@ export default function LobbyPage({
             updateField={updateField}
             updateAutomationMode={updateAutomationMode}
           />
-          {canControl && isClassic && rulesMode === "manual" ? (
-            <LobbyManualRulesCard
-              text={{
-                manualModeTitle: lobbyLocale.manualModeTitle,
-                rulesPresetLabel: lobbyLocale.rulesPresetLabel,
-                manualFillFromTemplate: lobbyLocale.manualFillFromTemplate,
-                manualBunkerSlotsLabel: lobbyLocale.manualBunkerSlotsLabel,
-                manualVotesRequired: lobbyLocale.manualVotesRequired,
-                manualRevealsRequiredLabel: lobbyLocale.manualRevealsRequiredLabel,
-                manualRevealsRecommended: lobbyLocale.manualRevealsRecommended,
-                manualRevealsWarning: lobbyLocale.manualRevealsWarning,
-                manualRevealsPlanLabel: lobbyLocale.manualRevealsPlanLabel,
-                votesByRoundLabel: lobbyLocale.votesByRoundLabel,
-                manualRoundAdd: lobbyLocale.manualRoundAdd,
-                manualRoundRemove: lobbyLocale.manualRoundRemove,
-                manualGenerate: lobbyLocale.manualGenerate,
-                manualVotesFormatHint: lobbyLocale.manualVotesFormatHint,
-                manualVotesSumHint: lobbyLocale.manualVotesSumHint,
-                manualAdjust: lobbyLocale.manualAdjust,
-              }}
-              controlsDisabled={controlsDisabled}
-              manualTemplatePlayers={manualTemplatePlayers}
-              setManualTemplatePlayers={setManualTemplatePlayers}
-              rulesPresetOptions={lobbyLocale.rulesPresetOptions}
-              fillManualFromTemplate={fillManualFromTemplate}
-              manualConfig={manualConfig}
-              requiredVotes={requiredVotes}
-              manualRevealNotRecommended={manualRevealNotRecommended}
-              revealPlanText={revealPlanText}
-              updateManualConfig={updateManualConfig}
-              manualVotesInput={manualVotesInput}
-              setManualVotesInput={setManualVotesInput}
-              parseVotesSchedule={parseVotesSchedule}
-              generateVotesByDefault={generateVotesByDefault}
-              fitVotesByTotal={fitVotesByTotal}
-              manualVotesMismatch={manualVotesMismatch}
-              manualVotesSum={manualVotesSum}
-              wsHint={wsHint}
-            />
-          ) : null}
         </div>
         {canControl ? (
           <LobbyObsCard

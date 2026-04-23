@@ -43,11 +43,21 @@ export const CLIENT_DIST = clientResolved.path;
 export const OVERLAY_PUBLIC_ROOT = overlayPublicResolved;
 export const ASSETS_ROOT_SOURCE = assetsResolved.source;
 export const CLIENT_DIST_SOURCE = clientResolved.source;
+const identityModeRaw = process.env.BUNKER_IDENTITY_MODE?.trim().toLowerCase();
+const runningFromSource =
+  import.meta.url.includes("/src/") ||
+  import.meta.url.includes("\\src\\") ||
+  process.argv.some((arg) => arg.replace(/\\/g, "/").endsWith("src/index.ts"));
+const runningDevScript = process.env.npm_lifecycle_event === "dev";
 export const IDENTITY_MODE: IdentityMode =
-  process.env.BUNKER_IDENTITY_MODE?.trim().toLowerCase() === "dev_tab" ||
-  envFlag(process.env.DEV_NEW_PLAYER_PER_TAB)
-    ? "dev_tab"
-    : "prod";
+  identityModeRaw === "prod"
+    ? "prod"
+    : identityModeRaw === "dev_tab" ||
+        envFlag(process.env.DEV_NEW_PLAYER_PER_TAB) ||
+        runningFromSource ||
+        runningDevScript
+      ? "dev_tab"
+      : "prod";
 export const DEV_LOGS = IDENTITY_MODE === "dev_tab" || envFlag(process.env.BUNKER_DEV_LOGS);
 export const DEV_SCENARIOS_ENABLED =
   IDENTITY_MODE === "dev_tab" || envFlag(process.env.BUNKER_ENABLE_DEV_SCENARIOS);

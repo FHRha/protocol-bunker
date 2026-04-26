@@ -35,7 +35,13 @@ export interface HandleSocketCloseOptions {
   getScenarioStatus: (room: Room, playerId: string) => string | undefined;
   computeKickRemainingMs: (player: Player, now?: number) => number;
   broadcastEvent: (room: Room, event: GameEvent) => void;
-  buildSystemEvent: (room: Room, kind: GameEvent["kind"], message: string) => GameEvent;
+  buildSystemEvent: (
+    room: Room,
+    kind: GameEvent["kind"],
+    message: string,
+    messageKey?: string,
+    messageVars?: Record<string, string | number>
+  ) => GameEvent;
   tServerForRoom: (room: Room | undefined, key: string, vars?: Record<string, unknown>) => string;
   formatRemaining: (ms: number) => string;
   markPlayerLeftBunker: (room: Room, player: Player) => void;
@@ -149,7 +155,9 @@ export function handleSocketClose(ws: WebSocket, options: HandleSocketCloseOptio
             options.tServerForRoom(room, "info.playerDisconnectedGrace", {
               playerName: player.name,
               remaining: options.formatRemaining(remainingMs),
-            })
+            }),
+            "info.playerDisconnectedGrace",
+            { playerName: player.name, remaining: options.formatRemaining(remainingMs) }
           )
         );
       }
@@ -194,7 +202,9 @@ export function handleSocketClose(ws: WebSocket, options: HandleSocketCloseOptio
             options.tServerForRoom(room, "info.playerMissingGrace", {
               playerName: player.name,
               remaining: options.formatRemaining(remainingMsTick),
-            })
+            }),
+            "info.playerMissingGrace",
+            { playerName: player.name, remaining: options.formatRemaining(remainingMsTick) }
           )
         );
       }, 60000);

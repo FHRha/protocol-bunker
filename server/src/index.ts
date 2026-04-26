@@ -63,7 +63,6 @@ import { buildRoomState as buildRoomStateProjection } from "./presenters/roomSta
 import { createLobbyRoom } from "./rooms/factory.js";
 import {
   buildSystemEvent,
-  broadcastEvent,
   formatRemaining,
   getCurrentTurnPlayerId,
   getEffectiveMaxPlayers,
@@ -1779,12 +1778,16 @@ function localizeWorldCardForLocale<T extends { id: string; title: string; descr
   locale: CardLocaleCode
 ): T {
   const lookupAssetId = card.imageId ?? card.id;
+  const localizedImageId = lookupAssetId.split("/").some((part) => part.toLowerCase() === "decks")
+    ? resolveLocalizedAssetId(lookupAssetId, locale)
+    : undefined;
   const localizedText = getDisasterTextByAssetId(lookupAssetId, locale) ?? card.text;
   return {
     ...card,
+    id: localizedImageId ?? card.id,
     title: localizeCardLabel(lookupAssetId, card.title, locale),
     description: localizeCardLabel(lookupAssetId, card.description, locale),
-    imageId: resolveLocalizedAssetId(card.imageId, locale),
+    imageId: localizedImageId,
     ...(localizedText ? { text: localizedText } : {}),
   };
 }
@@ -1864,6 +1867,27 @@ function localizeSpecialConditionForLocale(
   };
 }
 
+function resolveSpecialConditionIdFromAssetId(assetId: string | undefined): string | undefined {
+  const raw = String(assetId ?? "").trim().replace(/^\/+/, "");
+  if (!raw) return undefined;
+  const parts = raw.split("/").filter(Boolean);
+  const specialIndex = parts.findIndex((part) => part.toLowerCase() === "special");
+  if (specialIndex < 0 || specialIndex >= parts.length - 1) return undefined;
+  return parts.slice(specialIndex).join("/");
+}
+
+function localizeSpecialConditionTitleFromAsset(
+  scenarioId: string | undefined,
+  assetId: string | undefined,
+  fallback: string,
+  locale: CardLocaleCode
+): string {
+  const specialId = resolveSpecialConditionIdFromAssetId(assetId);
+  if (!specialId) return fallback;
+  const localized = localizeSpecialConditionField(scenarioId, specialId, "title", fallback, locale);
+  return localized || fallback;
+}
+
 function localizeGameViewForLocale(
   view: ReturnType<ScenarioSession["getGameView"]>,
   locale: CardLocaleCode,
@@ -1920,8 +1944,10 @@ function localizeGameViewForLocale(
   return {
     ...view,
     categoryOrder: view.categoryOrder.map((category) => normalizeViewCategoryKey(category)),
-    lastStageText: view.lastStageText
-      ? localizeScenarioMessage(view.lastStageText, locale, scenarioId)
+    lastStageText: view.lastStageTextKey
+      ? localizeScenarioMessage(view.lastStageTextKey, locale, scenarioId, view.lastStageTextVars)
+      : view.lastStageText
+        ? localizeScenarioMessage(view.lastStageText, locale, scenarioId, view.lastStageTextVars)
       : view.lastStageText,
     world: localizeWorldStateForLocale(view.world, locale),
     you: {
@@ -1949,11 +1975,15 @@ function localizeGameViewForLocale(
         : view.public.roundRules,
       votesPublic: view.public.votesPublic?.map((vote) => ({
         ...vote,
-        reason: vote.reason
-          ? localizeScenarioMessage(vote.reason, locale, scenarioId)
+        reason: vote.reasonKey
+          ? localizeScenarioMessage(vote.reasonKey, locale, scenarioId, vote.reasonVars)
+          : vote.reason
+          ? localizeScenarioMessage(vote.reason, locale, scenarioId, vote.reasonVars)
           : vote.reason,
       })),
-      resolutionNote: view.public.resolutionNote
+      resolutionNote: view.public.resolutionNoteKey
+        ? localizeScenarioMessage(view.public.resolutionNoteKey, locale, scenarioId)
+        : view.public.resolutionNote
         ? localizeScenarioMessage(view.public.resolutionNote, locale, scenarioId)
         : view.public.resolutionNote,
       threatModifier: localizedThreatModifier,
@@ -1963,27 +1993,52 @@ function localizeGameViewForLocale(
           ...card,
           labelShort: localizeCardLabel(card.id, card.labelShort ?? "", locale),
         })),
-        categories: player.categories.map((slot) => ({
-          ...slot,
-          category: normalizeViewCategoryKey(slot.category),
-          cards: slot.cards.map((card) => ({
-            ...card,
-            labelShort: localizeCardLabel(
-              resolveAssetIdFromImageUrl(card.imgUrl),
-              card.labelShort,
-              locale
-            ),
-            imgUrl: localizeAssetUrl(card.imgUrl, locale),
-          })),
-        })),
+        categories: player.categories.map((slot) => {
+          const category = normalizeViewCategoryKey(slot.category);
+          return {
+            ...slot,
+            category,
+            cards: slot.cards.map((card) => {
+              const assetId = resolveAssetIdFromImageUrl(card.imgUrl);
+              return {
+                ...card,
+                labelShort:
+                  category === "special"
+                    ? localizeSpecialConditionTitleFromAsset(scenarioId, assetId, card.labelShort, locale)
+                    : localizeCardLabel(assetId, card.labelShort, locale),
+                imgUrl: localizeAssetUrl(card.imgUrl, locale),
+              };
+            }),
+          };
+        }),
       })),
     },
   };
 }
 
-const getRoomCardLocale = (room: Room): CardLocaleCode => normalizeCardLocale(room.settings.cardLocale);
+function localizeGameEventForLocale(event: GameEvent, locale: CardLocaleCode, scenarioId?: string): GameEvent {
+  const vars = event.messageVars as Record<string, string | number> | undefined;
+  if (event.messageKey) {
+    const message =
+      event.messageKey.startsWith("info.") || event.messageKey.startsWith("error.")
+        ? tServer(normalizeServerLocale(locale), event.messageKey, vars)
+        : (() => {
+            const localized = localizeScenarioMessage(event.messageKey, locale, scenarioId, vars);
+            return localized === event.messageKey
+              ? localizeScenarioMessage(event.message, locale, scenarioId, vars)
+              : localized;
+          })();
+    return { ...event, message };
+  }
+  return {
+    ...event,
+    message: localizeScenarioMessage(event.message, locale, scenarioId, vars),
+  };
+}
+
+const getPlayerCardLocale = (player?: Player): CardLocaleCode => normalizeCardLocale(player?.locale);
 const getOverlayLocale = (room: Room): CardLocaleCode =>
-  normalizeCardLocale(room.overlayOverrides?.overlayUrlParams?.lang ?? getRoomCardLocale(room));
+  normalizeCardLocale(room.overlayOverrides?.overlayUrlParams?.lang ?? DEFAULT_ASSET_LOCALE);
 
 function resolveBackDeckAssetPath(fileName: string, requestedLocaleRaw?: string): string | null {
   const safeFileName = path.basename(fileName);
@@ -2028,7 +2083,6 @@ const DEFAULT_SETTINGS: GameSettings = {
   maxPlayers: 12,
   finalThreatReveal: "host",
   forcedDisasterId: "random",
-  cardLocale: "ru",
 };
 
 let roomCleanupTimer: ReturnType<typeof setInterval> | undefined;
@@ -2042,10 +2096,9 @@ const cleanupInactiveRooms = createCleanupInactiveRooms({
 
 const generateRoomCode = () => generateRoomCodeState();
 
-function buildRoomState(room: Room): RoomState {
-  return buildRoomStateProjection(room, {
+function buildRoomState(room: Room, locale: CardLocaleCode): RoomState {
+  return buildRoomStateProjection(room, locale, {
     disconnectGraceMs: DISCONNECT_GRACE_MS,
-    getRoomCardLocale,
     localizeWorldStateForLocale,
     localizeDisasterOptionsForLocale,
   });
@@ -2651,7 +2704,7 @@ function buildOverlayPresenterState(room: Room) {
   try {
     const anchorId = room.players.has(room.hostId) ? room.hostId : room.joinOrder[0];
     if (!anchorId) return base;
-    const locale = getRoomCardLocale(room);
+    const locale = getOverlayLocale(room);
     const view = localizeGameViewForLocale(room.session.getGameView(anchorId), locale, room.scenarioId);
     const votesByPlayer = new Map((view.public.votesPublic ?? []).map((vote) => [vote.voterId, vote.status]));
     const voteTargetNameByVoter = new Map(
@@ -2849,7 +2902,7 @@ function buildOverlayPresenterState(room: Room) {
 }
 
 async function buildOverlayControlState(room: Room) {
-  const roomLocale = getRoomCardLocale(room);
+  const roomLocale = getOverlayLocale(room);
   const overlayState = await getOverlayState(room);
   const overlayCategories = buildOverlayCategories(roomLocale);
   const categoriesMap = new Map<string, string>();
@@ -2880,10 +2933,10 @@ async function buildOverlayControlState(room: Room) {
 
   return {
     roomCode: room.code,
-    cardLocale: getRoomCardLocale(room),
+    cardLocale: roomLocale,
     categories,
     players,
-    deckCatalog: localizeControlDeckCatalogForLocale(controlDeckCatalog, getRoomCardLocale(room)),
+    deckCatalog: localizeControlDeckCatalogForLocale(controlDeckCatalog, roomLocale),
     overrides: room.overlayOverrides ?? {},
     overlayState: overlayState ?? undefined,
     presenterModeEnabled: Boolean(room.settings.enablePresenterMode),
@@ -2991,8 +3044,8 @@ function tServerForRoom(
   return tServerForRoomPresenter(messagePresenterDeps, room, key, vars);
 }
 
-function localizeScenarioMessageForRoom(room: Room, message: string): string {
-  return localizeScenarioMessage(message, normalizeServerLocale(room.settings.cardLocale), room.scenarioId);
+function localizeScenarioMessageForPlayer(room: Room, playerId: string, message: string): string {
+  return localizeScenarioMessage(message, getPlayerCardLocale(room.players.get(playerId)), room.scenarioId);
 }
 
 function sendLocalizedError(
@@ -3023,7 +3076,7 @@ const gameStatePresenterDeps = {
   buildRoomState,
   diffTopLevel,
   localizeGameViewForLocale,
-  getRoomCardLocale,
+  getPlayerCardLocale,
   devLog,
 };
 
@@ -3177,7 +3230,15 @@ const updateRulesetIfAutoRuntime = (room: Room): void =>
     buildAutoRuleset,
     buildManualRuleset,
   });
-const broadcastEventRuntime = (room: Room, event: GameEvent): void => broadcastEvent(room, event, send);
+const broadcastEventRuntime = (room: Room, event: GameEvent): void => {
+  for (const player of room.players.values()) {
+    if (!player.ws || player.ws.readyState !== WebSocket.OPEN) continue;
+    send(player.ws, {
+      type: "gameEvent",
+      payload: localizeGameEventForLocale(event, getPlayerCardLocale(player), room.scenarioId),
+    });
+  }
+};
 
 async function main() {
   const runtimeContext = await createRuntimeContext({
@@ -3762,6 +3823,11 @@ async function main() {
     const { lanOrigin } = buildLinkOrigins(requestOrigin);
     const publicResolution = await resolvePublicBase(LISTEN_PORT);
     logPublicBaseResolution(publicResolution);
+    const requestedLocale = normalizeCardLocale(payload.locale);
+    const overlayQueryParams = {
+      lang: requestedLocale,
+      ...(room.overlayOverrides?.overlayUrlParams ?? {}),
+    };
     const links = buildLinkSet({
       lanBase: lanOrigin,
       publicBase: publicResolution.base,
@@ -3770,7 +3836,7 @@ async function main() {
       spectatorViewToken: room.spectatorToken,
       overlayControlToken: room.overlayEditToken,
       overlayControlInviteToken: room.overlayControlInviteToken,
-      overlayQueryParams: room.overlayOverrides?.overlayUrlParams,
+      overlayQueryParams,
     });
 
     res.json({
@@ -3835,7 +3901,6 @@ async function main() {
         minClassicPlayers: MIN_CLASSIC_PLAYERS,
         isClassicRoom: isClassicRoomRuntime,
         updateRulesetIfAuto: updateRulesetIfAutoRuntime,
-        localizeScenarioMessageForRoom,
         broadcastRoomState,
         broadcastGameViews,
         broadcastEvent: broadcastEventRuntime,
@@ -3856,7 +3921,7 @@ async function main() {
     );
     if (!result.ok) {
       const localizedMessage = result.message
-        ? result.message
+        ? localizeScenarioMessage(result.message, getOverlayLocale(room), room.scenarioId)
         : result.messageKey
           ? tServerForRoom(room, result.messageKey, result.messageVars)
           : tServerForRoom(room, "error.actionRejected");
@@ -4010,7 +4075,7 @@ async function main() {
     sendGameView,
     buildRoomState,
     localizeGameViewForLocale,
-    getRoomCardLocale,
+    getPlayerCardLocale,
     findPlayerByTabId,
     findPlayerByToken,
     findPlayerBySessionId,
@@ -4032,7 +4097,6 @@ async function main() {
         minClassicPlayers: MIN_CLASSIC_PLAYERS,
         isClassicRoom: isClassicRoomRuntime,
         updateRulesetIfAuto: updateRulesetIfAutoRuntime,
-        localizeScenarioMessageForRoom,
         broadcastRoomState,
         broadcastGameViews,
         broadcastEvent: broadcastEventRuntime,
@@ -4055,7 +4119,7 @@ async function main() {
     removeLobbyPlayer,
     resolveControlActorId,
     getCurrentTurnPlayerId,
-    localizeScenarioMessageForRoom,
+    localizeScenarioMessageForPlayer,
     broadcastEvent: broadcastEventRuntime,
     buildSystemEvent,
     formatRemaining,

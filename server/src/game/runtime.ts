@@ -54,11 +54,19 @@ export function broadcastEvent(
   }
 }
 
-export function buildSystemEvent(room: Room, kind: GameEvent["kind"], message: string): GameEvent {
+export function buildSystemEvent(
+  room: Room,
+  kind: GameEvent["kind"],
+  message: string,
+  messageKey?: string,
+  messageVars?: Record<string, string | number>
+): GameEvent {
   return {
     id: `${room.code}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     kind,
     message,
+    messageKey,
+    messageVars,
     createdAt: Date.now(),
   };
 }

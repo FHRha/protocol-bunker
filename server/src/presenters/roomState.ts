@@ -3,19 +3,21 @@ import type { Room } from "../core/types.js";
 
 export interface RoomStateProjectionDeps {
   disconnectGraceMs: number;
-  getRoomCardLocale: (room: Room) => import("@bunker/shared").GameSettings["cardLocale"];
   localizeWorldStateForLocale: (
     world: import("@bunker/shared").WorldState30 | undefined,
-    locale: import("@bunker/shared").GameSettings["cardLocale"]
+    locale: import("@bunker/shared").CardLocale
   ) => import("@bunker/shared").WorldState30 | undefined;
   localizeDisasterOptionsForLocale: (
     options: Array<{ id: string; title: string }>,
-    locale: import("@bunker/shared").GameSettings["cardLocale"]
+    locale: import("@bunker/shared").CardLocale
   ) => Array<{ id: string; title: string }>;
 }
 
-export function buildRoomState(room: Room, deps: RoomStateProjectionDeps): RoomState {
-  const locale = deps.getRoomCardLocale(room);
+export function buildRoomState(
+  room: Room,
+  locale: import("@bunker/shared").CardLocale,
+  deps: RoomStateProjectionDeps
+): RoomState {
   return {
     roomCode: room.code,
     players: Array.from(room.players.values()).map((player) => ({
@@ -35,10 +37,7 @@ export function buildRoomState(room: Room, deps: RoomStateProjectionDeps): RoomS
     controlId: room.controlId,
     phase: room.phase,
     scenarioMeta: room.scenarioMeta,
-    settings: {
-      ...room.settings,
-      cardLocale: locale,
-    },
+    settings: room.settings,
     ruleset: room.ruleset,
     rulesOverriddenByHost: room.rulesOverriddenByHost,
     rulesPresetCount: room.rulesPresetCount,

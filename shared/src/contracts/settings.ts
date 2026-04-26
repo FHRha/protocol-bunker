@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   AutomationModeSchema,
-  CardLocaleSchema,
   ContinuePermissionSchema,
   FinalThreatRevealSchema,
   GameTimerKindSchema,
@@ -9,7 +8,6 @@ import {
   RulesetModeSchema,
   SpecialUsageModeSchema,
   type AutomationMode,
-  type CardLocale,
   type ContinuePermission,
   type FinalThreatReveal,
   type GameTimerKind,
@@ -55,7 +53,6 @@ export interface GameSettings {
   maxPlayers: number;
   finalThreatReveal: FinalThreatReveal;
   forcedDisasterId: string;
-  cardLocale: CardLocale;
 }
 
 export interface ScenarioMeta {
@@ -102,7 +99,6 @@ export const GameSettingsSchema = z.object({
   maxPlayers: z.number().int().min(2),
   finalThreatReveal: FinalThreatRevealSchema,
   forcedDisasterId: z.string().min(1).max(256),
-  cardLocale: CardLocaleSchema,
 });
 
 export const ScenarioMetaSchema = z.object({

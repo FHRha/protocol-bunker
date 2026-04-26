@@ -373,6 +373,7 @@ export default function LobbyPage({
           body: JSON.stringify({
             roomCode,
             token: playerToken,
+            locale: lobbyTexts.locale,
           }),
         });
         const payload = await response.json().catch(() => null);
@@ -427,7 +428,7 @@ export default function LobbyPage({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [canControl, playerToken, roomCode]);
+  }, [canControl, lobbyTexts.locale, playerToken, roomCode]);
 
   useEffect(() => {
     if (!copiedKey) return;

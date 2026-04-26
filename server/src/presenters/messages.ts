@@ -11,13 +11,10 @@ export interface MessagePresenterDeps {
 }
 
 export function getSocketLocale(ws: WebSocket, deps: MessagePresenterDeps, room?: Room): ServerLocaleCode {
-  if (room) {
-    return deps.normalizeServerLocale(room.settings.cardLocale);
-  }
   const info = deps.connectionInfo.get(ws);
-  if (!info) return "ru";
-  const resolvedRoom = deps.rooms.get(info.roomCode);
-  return deps.normalizeServerLocale(resolvedRoom?.settings.cardLocale);
+  const resolvedRoom = room ?? (info ? deps.rooms.get(info.roomCode) : undefined);
+  const player = info && resolvedRoom ? resolvedRoom.players.get(info.playerId) : undefined;
+  return deps.normalizeServerLocale(player?.locale);
 }
 
 export function tServerForRoom(
@@ -26,7 +23,8 @@ export function tServerForRoom(
   key: string,
   vars?: Record<string, unknown>
 ): string {
-  const locale = room ? deps.normalizeServerLocale(room.settings.cardLocale) : "ru";
+  const host = room ? room.players.get(room.hostId) : undefined;
+  const locale = deps.normalizeServerLocale(host?.locale);
   return tServer(locale, key, vars);
 }
 

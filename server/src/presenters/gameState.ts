@@ -19,14 +19,14 @@ export interface GameStatePresenterDeps {
   canControl: (role: Role) => boolean;
   getOverlayState: (room: Room) => Promise<OverlayState | null>;
   buildOverlayPresenterState: (room: Room) => unknown;
-  buildRoomState: (room: Room) => RoomState;
+  buildRoomState: (room: Room, locale: import("@bunker/shared").CardLocale) => RoomState;
   diffTopLevel: <T extends object>(previous: T | undefined, next: T) => Partial<T> | null;
   localizeGameViewForLocale: (
     view: GameView,
-    locale: import("@bunker/shared").GameSettings["cardLocale"],
+    locale: import("@bunker/shared").CardLocale,
     scenarioId: string
   ) => GameView;
-  getRoomCardLocale: (room: Room) => import("@bunker/shared").GameSettings["cardLocale"];
+  getPlayerCardLocale: (player?: Player) => import("@bunker/shared").CardLocale;
   devLog: (...args: unknown[]) => void;
 }
 
@@ -71,23 +71,15 @@ export function broadcastOverlayState(room: Room, deps: GameStatePresenterDeps):
 
 export function broadcastRoomState(room: Room, deps: GameStatePresenterDeps): void {
   room.roomStateRevision += 1;
-  const roomState = {
-    ...deps.buildRoomState(room),
-    revision: room.roomStateRevision,
-  };
-  const patch = deps.diffTopLevel(room.lastRoomState, roomState);
   for (const player of room.players.values()) {
     if (!player.ws) continue;
-    if (player.needsFullState || !room.lastRoomState) {
-      deps.send(player.ws, { type: "roomState", payload: roomState });
-    } else if (patch) {
-      deps.send(player.ws, {
-        type: "statePatch",
-        payload: { roomState: patch, roomStateRevision: room.roomStateRevision },
-      });
-    }
+    const roomState = {
+      ...deps.buildRoomState(room, deps.getPlayerCardLocale(player)),
+      revision: room.roomStateRevision,
+    };
+    deps.send(player.ws, { type: "roomState", payload: roomState });
   }
-  room.lastRoomState = roomState;
+  room.lastRoomState = undefined;
   for (const player of room.players.values()) {
     player.needsFullState = false;
   }
@@ -135,7 +127,7 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
       },
     };
     room.world = payload.world;
-    const localizedPayload = deps.localizeGameViewForLocale(payload, deps.getRoomCardLocale(room), room.scenarioId);
+    const localizedPayload = deps.localizeGameViewForLocale(payload, deps.getPlayerCardLocale(player), room.scenarioId);
     if (!room.lastGameViews) {
       room.lastGameViews = new Map();
     }

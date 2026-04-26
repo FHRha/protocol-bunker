@@ -1,6 +1,7 @@
 {
   "name": "@bunker/client",
-  "version": "0.2.9",
+  "version": "0.3.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -25,5 +26,4 @@
     "vite": "^5.2.0"
   }
 }
-
 

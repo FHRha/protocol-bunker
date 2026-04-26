@@ -4,6 +4,7 @@ import path from "node:path";
 type ScenarioLocaleCode = "ru" | "en";
 type ScenarioDictionary = Record<string, string>;
 type ReverseDictionary = Map<string, string>;
+type TemplateVars = Record<string, string | number> | undefined;
 
 const SCENARIO_LOCALE_ROOT_CANDIDATES = [
   path.resolve(process.cwd(), "locales", "scenario"),
@@ -157,22 +158,36 @@ const EN_PATTERN_RULES: Array<(message: string) => string | null> = [
   },
 ];
 
-export function localizeScenarioMessage(message: string, locale: ScenarioLocaleCode, scenarioId?: string): string {
-  if (!message || locale === "ru") return message;
+function formatTemplate(template: string, vars?: TemplateVars): string {
+  if (!vars) return template;
+  return template.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, key: string) => {
+    const value = vars[key];
+    return value === undefined || value === null ? match : String(value);
+  });
+}
+
+export function localizeScenarioMessage(
+  message: string,
+  locale: ScenarioLocaleCode,
+  scenarioId?: string,
+  vars?: TemplateVars
+): string {
+  if (!message) return message;
+  if (locale === "ru") return formatTemplate(message, vars);
   const dict = getScenarioDictionary(locale, scenarioId);
   const exact = dict[message];
-  if (exact) return exact;
+  if (exact) return formatTemplate(exact, vars);
   const reverseRu = getScenarioReverseDictionary("ru", scenarioId);
   const messageKey = reverseRu.get(message);
   if (messageKey) {
     const localized = dict[messageKey];
-    if (localized) return localized;
+    if (localized) return formatTemplate(localized, vars);
   }
   for (const rule of EN_PATTERN_RULES) {
     const localized = rule(message);
-    if (localized) return localized;
+    if (localized) return formatTemplate(localized, vars);
   }
-  return message;
+  return formatTemplate(message, vars);
 }
 
 export function resolveScenarioLocaleKey(message: string, scenarioId?: string): string | null {

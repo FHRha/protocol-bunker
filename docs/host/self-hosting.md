@@ -115,11 +115,11 @@
 
 #### Конкретная версия, public-профиль
 
-`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.2.8`
+`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --version v0.3.0`
 
 #### Конкретная версия, server-профиль
 
-`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.2.8`
+`curl -fsSL https://raw.githubusercontent.com/FHRha/protocol-bunker/main/install.sh | bash -s -- --edition server --version v0.3.0`
 
 ### Что означают параметры
 

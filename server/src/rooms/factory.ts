@@ -5,13 +5,11 @@ interface CreateLobbyRoomOptions {
   scenarioModule: ScenarioModule;
   assets: AssetCatalog;
   defaultSettings: GameSettings;
-  locale: unknown;
   identityMode: IdentityMode;
   buildAutoRuleset: (playerCount: number) => GameRuleset;
   minClassicPlayers: number;
   generateRoomCode: () => string;
   buildDisasterOptions: (assets: AssetCatalog) => Array<{ id: string; title: string }>;
-  normalizeCardLocale: (value: unknown) => GameSettings["cardLocale"];
   generateOverlayViewToken: () => string;
   generateSpectatorToken: () => string;
   generateOverlayControlToken: () => string;
@@ -33,7 +31,6 @@ export function createLobbyRoom(options: CreateLobbyRoomOptions): Room {
     scenarioModule: options.scenarioModule,
     settings: {
       ...options.defaultSettings,
-      cardLocale: options.normalizeCardLocale(options.locale),
     },
     disasterOptions: options.buildDisasterOptions(options.assets),
     ruleset: initialRuleset,

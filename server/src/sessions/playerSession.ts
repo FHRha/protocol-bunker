@@ -6,7 +6,13 @@ interface TransferHostDeps {
   pickNextHost: (room: Room, excludeId?: string) => string | undefined;
   broadcastRoomState: (room: Room) => void;
   broadcastEvent: (room: Room, event: GameEvent) => void;
-  buildSystemEvent: (room: Room, kind: GameEvent["kind"], message: string) => GameEvent;
+  buildSystemEvent: (
+    room: Room,
+    kind: GameEvent["kind"],
+    message: string,
+    messageKey?: string,
+    messageVars?: Record<string, string | number>
+  ) => GameEvent;
   tServerForRoom: (room: Room | undefined, key: string, vars?: Record<string, unknown>) => string;
   sendHostChanged: (
     player: Player,
@@ -83,7 +89,9 @@ export function transferHost(
       "info",
       deps.tServerForRoom(room, "info.hostTransferred", {
         hostName,
-      })
+      }),
+      "info.hostTransferred",
+      { hostName }
     )
   );
   for (const player of room.players.values()) {
@@ -115,7 +123,9 @@ export function scheduleHostTransfer(
         deps.tServerForRoom(room, "info.hostDisconnectedTransferIn", {
           hostName: hostPlayer.name,
           seconds: String(Math.floor(deps.hostGraceMs / 1000)),
-        })
+        }),
+        "info.hostDisconnectedTransferIn",
+        { hostName: hostPlayer.name, seconds: String(Math.floor(deps.hostGraceMs / 1000)) }
       )
     );
   }
@@ -171,7 +181,9 @@ export function markPlayerLeftBunker(room: Room, player: Player, deps: MarkPlaye
       "playerLeftBunker",
       deps.tServerForRoom(room, "info.playerLeftBunker", {
         playerName: player.name,
-      })
+      }),
+      "info.playerLeftBunker",
+      { playerName: player.name }
     )
   );
 }

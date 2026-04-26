@@ -39,7 +39,7 @@ export interface GameActionDeps {
     options?: { preferredId?: string; allowAnyPresentPlayer?: boolean }
   ) => string | undefined;
   getCurrentTurnPlayerId: (room: Room) => string | undefined;
-  localizeScenarioMessageForRoom: (room: Room, key: string) => string;
+  localizeScenarioMessageForPlayer: (room: Room, playerId: string, message: string) => string;
   broadcastGameViews: (room: Room) => void;
   devScenariosEnabled: boolean;
   identityMode: IdentityMode;
@@ -160,7 +160,12 @@ export function handleGameActionMessage(ws: WebSocket, message: GameActionMessag
 
   const result = room.session.handleAction(actorId, action);
   if (result.error) {
-    deps.send(ws, { type: "error", payload: { message: deps.localizeScenarioMessageForRoom(room, result.error) } });
+    deps.send(ws, {
+      type: "error",
+      payload: {
+        message: deps.localizeScenarioMessageForPlayer(room, info.playerId, result.errorKey ?? result.error),
+      },
+    });
     return;
   }
   if (result.stateChanged) {

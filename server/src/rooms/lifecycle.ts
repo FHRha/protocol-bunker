@@ -28,7 +28,13 @@ interface AddLobbyBotPlayerDeps {
 
 interface AttachPlayerDeps {
   broadcastEvent: (room: Room, event: GameEvent) => void;
-  buildSystemEvent: (room: Room, kind: GameEvent["kind"], message: string) => GameEvent;
+  buildSystemEvent: (
+    room: Room,
+    kind: GameEvent["kind"],
+    message: string,
+    messageKey?: string,
+    messageVars?: Record<string, string | number>
+  ) => GameEvent;
   identityMode: IdentityMode;
   tServerForRoom: (room: Room | undefined, key: string, vars?: Record<string, unknown>) => string;
   send: (ws: WebSocket, message: unknown) => void;
@@ -243,7 +249,9 @@ export function attachPlayer(
         "info",
         deps.tServerForRoom(room, "info.hostReturnedTransferCanceled", {
           hostName: player.name,
-        })
+        }),
+        "info.hostReturnedTransferCanceled",
+        { hostName: player.name }
       )
     );
   }
@@ -281,7 +289,9 @@ export function attachPlayer(
         "playerReconnected",
         deps.tServerForRoom(room, "info.playerReconnected", {
           playerName: player.name,
-        })
+        }),
+        "info.playerReconnected",
+        { playerName: player.name }
       )
     );
   }

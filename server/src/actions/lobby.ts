@@ -32,7 +32,7 @@ export interface LobbyActionDeps {
     messageKey?: string;
     messageVars?: Record<string, unknown>;
   };
-  normalizeCardLocale: (value: unknown) => import("@bunker/shared").GameSettings["cardLocale"];
+  normalizeCardLocale: (value: unknown) => import("@bunker/shared").CardLocale;
   broadcastRoomState: (room: Room) => void;
   broadcastGameViews: (room: Room) => void;
   isClassicRoom: (room: Room) => boolean;
@@ -102,20 +102,22 @@ export function handleStartGameMessage(ws: WebSocket, _message: StartGameMessage
 }
 
 export function handleUpdateLocaleMessage(ws: WebSocket, message: UpdateLocaleMessage, deps: LobbyActionDeps): void {
-  const { room } = getRoomAndRole(ws, deps);
-  if (!room) {
+  const { info, room } = getRoomAndRole(ws, deps);
+  if (!room || !info) {
     deps.sendLocalizedError(ws, { key: "error.roomNotFound" });
     return;
   }
-  const nextLocale = deps.normalizeCardLocale(message.payload.locale);
-  if (room.settings.cardLocale === nextLocale) return;
-  room.settings.cardLocale = nextLocale;
-  room.lastRoomState = undefined;
-  room.lastGameViews?.clear();
-  for (const player of room.players.values()) {
-    player.needsFullState = true;
-    player.needsFullGameView = true;
+  const player = room.players.get(info.playerId);
+  if (!player) {
+    deps.sendLocalizedError(ws, { key: "error.targetPlayerNotFound", room });
+    return;
   }
+  const nextLocale = deps.normalizeCardLocale(message.payload.locale);
+  if (player.locale === nextLocale) return;
+  player.locale = nextLocale;
+  player.needsFullState = true;
+  player.needsFullGameView = true;
+  room.lastGameViews?.delete(player.playerId);
   deps.broadcastRoomState(room);
   if (room.session) deps.broadcastGameViews(room);
 }
@@ -148,7 +150,6 @@ export function handleUpdateSettingsMessage(
     ...message.payload,
     maxPlayers: nextMaxPlayers,
     forcedDisasterId: deps.normalizeForcedDisasterId(message.payload.forcedDisasterId, room.disasterOptions),
-    cardLocale: deps.normalizeCardLocale(message.payload.cardLocale),
   };
   deps.broadcastRoomState(room);
 }

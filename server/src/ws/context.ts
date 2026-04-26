@@ -52,13 +52,13 @@ interface CreateWsContextsOptions {
   broadcastRoomState: (room: Room) => void;
   broadcastGameViews: (room: Room) => void;
   sendGameView: (room: Room, player: Player) => void;
-  buildRoomState: (room: Room) => RoomState;
+  buildRoomState: (room: Room, locale: import("@bunker/shared").CardLocale) => RoomState;
   localizeGameViewForLocale: (
     view: GameView,
-    locale: import("@bunker/shared").GameSettings["cardLocale"],
+    locale: import("@bunker/shared").CardLocale,
     scenarioId: string
   ) => GameView;
-  getRoomCardLocale: (room: Room) => import("@bunker/shared").GameSettings["cardLocale"];
+  getPlayerCardLocale: (player?: Player) => import("@bunker/shared").CardLocale;
   findPlayerByTabId: (room: Room, tabId?: string) => Player | undefined;
   findPlayerByToken: (room: Room, token?: string) => Player | undefined;
   findPlayerBySessionId: (room: Room, sessionId?: string) => Player | undefined;
@@ -84,7 +84,7 @@ interface CreateWsContextsOptions {
   removeLobbyPlayer: (room: Room, playerId: string) => boolean;
   resolveControlActorId: GameActionDeps["resolveControlActorId"];
   getCurrentTurnPlayerId: GameActionDeps["getCurrentTurnPlayerId"];
-  localizeScenarioMessageForRoom: GameActionDeps["localizeScenarioMessageForRoom"];
+  localizeScenarioMessageForPlayer: GameActionDeps["localizeScenarioMessageForPlayer"];
   broadcastEvent: HandleSocketCloseOptions["broadcastEvent"];
   buildSystemEvent: HandleSocketCloseOptions["buildSystemEvent"];
   formatRemaining: HandleSocketCloseOptions["formatRemaining"];
@@ -135,7 +135,7 @@ export function createWsContexts(options: CreateWsContextsOptions): {
     sendGameView: options.sendGameView,
     buildRoomState: options.buildRoomState,
     localizeGameViewForLocale: options.localizeGameViewForLocale,
-    getRoomCardLocale: options.getRoomCardLocale,
+    getPlayerCardLocale: options.getPlayerCardLocale,
     findPlayerByTabId: options.findPlayerByTabId,
     findPlayerByToken: options.findPlayerByToken,
     findPlayerBySessionId: options.findPlayerBySessionId,
@@ -186,7 +186,7 @@ export function createWsContexts(options: CreateWsContextsOptions): {
     canPlayerAction: options.canPlayerAction,
     resolveControlActorId: options.resolveControlActorId,
     getCurrentTurnPlayerId: options.getCurrentTurnPlayerId,
-    localizeScenarioMessageForRoom: options.localizeScenarioMessageForRoom,
+    localizeScenarioMessageForPlayer: options.localizeScenarioMessageForPlayer,
     broadcastGameViews: options.broadcastGameViews,
     devScenariosEnabled: options.devScenariosEnabled,
     identityMode: options.identityMode,

@@ -2,6 +2,7 @@ import type { WebSocket } from "ws";
 import type {
   GameSettings,
   GameRuleset,
+  CardLocale,
   OverlayOverrides,
   PlayerStatus,
   Role,
@@ -46,6 +47,7 @@ export interface Player {
   disconnectNotifiedMinutes?: number;
   needsFullState?: boolean;
   needsFullGameView?: boolean;
+  locale?: CardLocale;
 }
 
 export interface Room {

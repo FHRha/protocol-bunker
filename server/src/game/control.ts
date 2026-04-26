@@ -36,11 +36,16 @@ interface ControlDeps {
   minClassicPlayers: number;
   isClassicRoom: (room: Room) => boolean;
   updateRulesetIfAuto: (room: Room) => void;
-  localizeScenarioMessageForRoom: (room: Room, message: string) => string;
   broadcastRoomState: (room: Room) => void;
   broadcastGameViews: (room: Room) => void;
   broadcastEvent: (room: Room, event: GameEvent) => void;
-  buildSystemEvent: (room: Room, kind: GameEvent["kind"], message: string) => GameEvent;
+  buildSystemEvent: (
+    room: Room,
+    kind: GameEvent["kind"],
+    message: string,
+    messageKey?: string,
+    messageVars?: Record<string, string | number>
+  ) => GameEvent;
   pickNextHost: (room: Room, excludeId?: string) => string | undefined;
   transferHost: (
     room: Room,
@@ -91,11 +96,7 @@ export function startGameAsControl(room: Room, deps: ControlDeps): ControlComman
     hostId: room.hostId,
     ruleset: room.ruleset,
     onStateChange: () => deps.broadcastGameViews(room),
-    onEvent: (event) =>
-      deps.broadcastEvent(room, {
-        ...event,
-        message: deps.localizeScenarioMessageForRoom(room, event.message),
-      }),
+    onEvent: (event) => deps.broadcastEvent(room, event),
   };
   room.sessionContext = sessionContext;
   room.session = room.scenarioModule.createSession(sessionContext);
@@ -397,7 +398,7 @@ export function runControlCommand(
     }
     const result = room.session.handleAction(actorPlayerId, parsedScenarioAction);
     if (result.error) {
-      return { ok: false, message: deps.localizeScenarioMessageForRoom(room, result.error) };
+      return { ok: false, message: result.error };
     }
     if (result.stateChanged) {
       deps.broadcastGameViews(room);
@@ -461,7 +462,7 @@ export function runControlCommand(
     }) || room.hostId;
   const result = room.session.handleAction(actorId, scenarioAction);
   if (result.error) {
-    return { ok: false, message: deps.localizeScenarioMessageForRoom(room, result.error) };
+    return { ok: false, message: result.error };
   }
   if (result.stateChanged) {
     deps.broadcastGameViews(room);

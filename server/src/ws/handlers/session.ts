@@ -44,7 +44,6 @@ export interface SessionHandlerDeps {
     scenarioModule: ScenarioModule;
     assets: import("@bunker/shared").AssetCatalog;
     defaultSettings: import("@bunker/shared").GameSettings;
-    locale: unknown;
     identityMode: IdentityMode;
     buildAutoRuleset: (playerCount: number) => import("@bunker/shared").GameRuleset;
     minClassicPlayers: number;
@@ -52,7 +51,6 @@ export interface SessionHandlerDeps {
     buildDisasterOptions: (
       assets: import("@bunker/shared").AssetCatalog
     ) => Array<{ id: string; title: string }>;
-    normalizeCardLocale: (value: unknown) => import("@bunker/shared").GameSettings["cardLocale"];
     generateOverlayViewToken: () => string;
     generateSpectatorToken: () => string;
     generateOverlayControlToken: () => string;
@@ -63,7 +61,6 @@ export interface SessionHandlerDeps {
   buildDisasterOptions: (
     assets: import("@bunker/shared").AssetCatalog
   ) => Array<{ id: string; title: string }>;
-  normalizeCardLocale: (value: unknown) => import("@bunker/shared").GameSettings["cardLocale"];
   generateOverlayViewToken: () => string;
   generateSpectatorToken: () => string;
   generateOverlayControlToken: () => string;
@@ -81,13 +78,14 @@ export interface SessionHandlerDeps {
   broadcastRoomState: (room: Room) => void;
   broadcastGameViews: (room: Room) => void;
   sendGameView: (room: Room, player: Player) => void;
-  buildRoomState: (room: Room) => RoomState;
+  buildRoomState: (room: Room, locale: import("@bunker/shared").CardLocale) => RoomState;
   localizeGameViewForLocale: (
     view: GameView,
-    locale: import("@bunker/shared").GameSettings["cardLocale"],
+    locale: import("@bunker/shared").CardLocale,
     scenarioId: string
   ) => GameView;
-  getRoomCardLocale: (room: Room) => import("@bunker/shared").GameSettings["cardLocale"];
+  normalizeCardLocale: (value: unknown) => import("@bunker/shared").CardLocale;
+  getPlayerCardLocale: (player?: Player) => import("@bunker/shared").CardLocale;
   findPlayerByTabId: (room: Room, tabId?: string) => Player | undefined;
   findPlayerByToken: (room: Room, token?: string) => Player | undefined;
   findPlayerBySessionId: (room: Room, sessionId?: string) => Player | undefined;
@@ -103,6 +101,17 @@ export interface SessionHandlerDeps {
     role?: import("@bunker/shared").Role
   ) => Promise<void>;
   tServerForRoom: (room: Room | undefined, key: string, vars?: Record<string, unknown>) => string;
+}
+
+function applyClientLocale(room: Room, player: Player, locale: unknown, deps: SessionHandlerDeps): void {
+  if (!locale) return;
+  const nextLocale = deps.normalizeCardLocale(locale);
+  if (player.locale === nextLocale) return;
+  player.locale = nextLocale;
+  player.needsFullState = true;
+  player.needsFullGameView = true;
+  room.lastRoomState = undefined;
+  room.lastGameViews?.delete(player.playerId);
 }
 
 export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: SessionHandlerDeps): void {
@@ -142,13 +151,11 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
       scenarioModule,
       assets: deps.assets,
       defaultSettings: deps.defaultSettings,
-      locale: payload.locale,
       identityMode: deps.identityMode,
       buildAutoRuleset: deps.buildAutoRuleset,
       minClassicPlayers: deps.minClassicPlayers,
       generateRoomCode: deps.generateRoomCode,
       buildDisasterOptions: deps.buildDisasterOptions,
-      normalizeCardLocale: deps.normalizeCardLocale,
       generateOverlayViewToken: deps.generateOverlayViewToken,
       generateSpectatorToken: deps.generateSpectatorToken,
       generateOverlayControlToken: deps.generateOverlayControlToken,
@@ -162,7 +169,8 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
       scenario: room.scenarioMeta.id,
       phase: room.phase,
     });
-    deps.attachPlayer(room, payload, ws);
+    const player = deps.attachPlayer(room, payload, ws);
+    applyClientLocale(room, player, payload.locale, deps);
     deps.printOverlayInfo(
       room.code,
       room.overlayToken,
@@ -197,10 +205,6 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
     });
     return;
   }
-  if (payload.locale) {
-    room.settings.cardLocale = deps.normalizeCardLocale(payload.locale);
-  }
-
   const controlPlayerForRoom = room.players.get(room.controlId);
   const controlPlayerToken = String(controlPlayerForRoom?.token ?? "");
   const helloPlayerToken = String(payload.playerToken ?? "");
@@ -222,14 +226,14 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
       type: "helloAck",
       payload: { playerId: controlPlayer.playerId, playerToken: controlPlayer.token },
     });
-    deps.send(ws, { type: "roomState", payload: deps.buildRoomState(room) });
+    deps.send(ws, { type: "roomState", payload: deps.buildRoomState(room, deps.getPlayerCardLocale(controlPlayer)) });
     if (room.phase === "game" && room.session) {
       try {
         const payloadView =
           room.lastGameViews?.get(controlPlayer.playerId) ??
           deps.localizeGameViewForLocale(
             room.session.getGameView(controlPlayer.playerId),
-            deps.getRoomCardLocale(room),
+            deps.getPlayerCardLocale(controlPlayer),
             room.scenarioId
           );
         deps.send(ws, { type: "gameView", payload: payloadView });
@@ -263,14 +267,14 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
       type: "helloAck",
       payload: { playerId: existingPlayer.playerId, playerToken: existingPlayer.token },
     });
-    deps.send(ws, { type: "roomState", payload: deps.buildRoomState(room) });
+    deps.send(ws, { type: "roomState", payload: deps.buildRoomState(room, deps.getPlayerCardLocale(existingPlayer)) });
     if (room.phase === "game" && room.session) {
       try {
         const payloadView =
           room.lastGameViews?.get(existingPlayer.playerId) ??
           deps.localizeGameViewForLocale(
             room.session.getGameView(existingPlayer.playerId),
-            deps.getRoomCardLocale(room),
+            deps.getPlayerCardLocale(existingPlayer),
             room.scenarioId
           );
         deps.send(ws, { type: "gameView", payload: payloadView });
@@ -333,6 +337,7 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
 
   const wasDisconnected = Boolean(existing?.disconnectedAt);
   const player = deps.attachPlayer(room, payload, ws, existing);
+  applyClientLocale(room, player, payload.locale, deps);
   deps.devLog("player resolved", { room: room.code, playerId: player.playerId, existing: Boolean(existing) });
   deps.updateRulesetIfAuto(room);
   deps.logRoomLifecycle(existing ? "reconnected" : "joined", room.code, {

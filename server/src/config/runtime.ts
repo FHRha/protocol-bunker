@@ -27,20 +27,23 @@ const CLIENT_DIST_PRIMARY = path.resolve(process.cwd(), "client", "dist");
 const CLIENT_DIST_FALLBACK = path.resolve(process.cwd(), "..", "client", "dist");
 const OVERLAY_PUBLIC_PRIMARY = path.resolve(process.cwd(), "server", "public", "overlay");
 const OVERLAY_PUBLIC_FALLBACK = path.resolve(process.cwd(), "public", "overlay");
+const AI_ACCESS_KEYS_FILE_DEFAULT = path.resolve(process.cwd(), "data", "ai-access-keys.json");
 
 const assetsResolved = resolveOptionalPath("BUNKER_ASSETS_ROOT", ASSETS_PRIMARY, ASSETS_FALLBACK);
 const localesResolved = resolveOptionalPath("BUNKER_LOCALES_ROOT", LOCALES_PRIMARY, LOCALES_FALLBACK);
 const clientResolved = resolveOptionalPath("BUNKER_CLIENT_DIST", CLIENT_DIST_PRIMARY, CLIENT_DIST_FALLBACK);
-const overlayPublicResolved = fs.existsSync(OVERLAY_PUBLIC_PRIMARY)
-  ? OVERLAY_PUBLIC_PRIMARY
-  : OVERLAY_PUBLIC_FALLBACK;
+const overlayPublicResolved = resolveOptionalPath(
+  "BUNKER_OVERLAY_PUBLIC_ROOT",
+  OVERLAY_PUBLIC_PRIMARY,
+  OVERLAY_PUBLIC_FALLBACK
+);
 
 export const PORT = PORT_DEFAULT;
 export const HOST = process.env.HOST ?? "0.0.0.0";
 export const ASSETS_ROOT = assetsResolved.path;
 export const LOCALES_ROOT = localesResolved.path;
 export const CLIENT_DIST = clientResolved.path;
-export const OVERLAY_PUBLIC_ROOT = overlayPublicResolved;
+export const OVERLAY_PUBLIC_ROOT = overlayPublicResolved.path;
 export const ASSETS_ROOT_SOURCE = assetsResolved.source;
 export const CLIENT_DIST_SOURCE = clientResolved.source;
 const identityModeRaw = process.env.BUNKER_IDENTITY_MODE?.trim().toLowerCase();
@@ -120,6 +123,39 @@ export const SPECTATOR_INVITE_TTL_MS = (() => {
   const raw = Number(process.env.BUNKER_SPECTATOR_INVITE_TTL_MS ?? 10 * 60 * 1000);
   if (!Number.isFinite(raw)) return 10 * 60 * 1000;
   return Math.max(1_000, Math.floor(raw));
+})();
+export const AI_ACCESS_KEYS_FILE = (() => {
+  const raw = process.env.BUNKER_AI_ACCESS_KEYS_FILE?.trim();
+  if (!raw) return AI_ACCESS_KEYS_FILE_DEFAULT;
+  return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+})();
+export const AI_GATEWAY_BASE_URL = String(process.env.BUNKER_AI_GATEWAY_BASE_URL ?? "").trim().replace(/\/+$/, "");
+export const AI_GATEWAY_API_KEY = String(process.env.BUNKER_AI_GATEWAY_API_KEY ?? "").trim();
+export const AI_GATEWAY_MODEL = String(process.env.BUNKER_AI_GATEWAY_MODEL ?? "gpt-4o-mini").trim();
+export const AI_GATEWAY_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.BUNKER_AI_GATEWAY_TIMEOUT_MS ?? 45_000);
+  if (!Number.isFinite(raw)) return 45_000;
+  return Math.max(1_000, Math.floor(raw));
+})();
+export const RULE_BOT_MIN_DELAY_MS = (() => {
+  const raw = Number(process.env.BUNKER_RULE_BOT_MIN_DELAY_MS ?? 2_500);
+  if (!Number.isFinite(raw)) return 2_500;
+  return Math.max(0, Math.floor(raw));
+})();
+export const RULE_BOT_MAX_DELAY_MS = (() => {
+  const raw = Number(process.env.BUNKER_RULE_BOT_MAX_DELAY_MS ?? 6_500);
+  if (!Number.isFinite(raw)) return 6_500;
+  return Math.max(RULE_BOT_MIN_DELAY_MS, Math.floor(raw));
+})();
+export const RULE_BOT_DISCUSSION_MIN_DELAY_MS = (() => {
+  const raw = Number(process.env.BUNKER_RULE_BOT_DISCUSSION_MIN_DELAY_MS ?? 10_000);
+  if (!Number.isFinite(raw)) return 10_000;
+  return Math.max(0, Math.floor(raw));
+})();
+export const RULE_BOT_DISCUSSION_MAX_DELAY_MS = (() => {
+  const raw = Number(process.env.BUNKER_RULE_BOT_DISCUSSION_MAX_DELAY_MS ?? 20_000);
+  if (!Number.isFinite(raw)) return 20_000;
+  return Math.max(RULE_BOT_DISCUSSION_MIN_DELAY_MS, Math.floor(raw));
 })();
 export const WAN_LOOKUP_TIMEOUT_MS = 2800;
 export const WAN_LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000;

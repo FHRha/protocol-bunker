@@ -5,6 +5,7 @@ import type { Room } from "../core/types.js";
 type StartGameMessage = Extract<ClientMessage, { type: "startGame" }>;
 type UpdateLocaleMessage = Extract<ClientMessage, { type: "updateLocale" }>;
 type UpdateSettingsMessage = Extract<ClientMessage, { type: "updateSettings" }>;
+type UpdateAiAccessKeyMessage = Extract<ClientMessage, { type: "updateAiAccessKey" }>;
 type UpdateRulesMessage = Extract<ClientMessage, { type: "updateRules" }>;
 type RequestHostTransferMessage = Extract<ClientMessage, { type: "requestHostTransfer" }>;
 type KickFromLobbyMessage = Extract<ClientMessage, { type: "kickFromLobby" }>;
@@ -61,6 +62,9 @@ export interface LobbyActionDeps {
     preferredHostId?: string
   ) => void;
   removeLobbyPlayer: (room: Room, playerId: string) => boolean;
+  syncLobbyBotPlayers: (room: Room) => { added: number; removed: number };
+  validateAiAccessKey: (key: string) => boolean;
+  isAiGatewayConfigured: () => boolean;
   devLog: (...args: unknown[]) => void;
 }
 
@@ -87,6 +91,15 @@ export function handleStartGameMessage(ws: WebSocket, _message: StartGameMessage
     deps.sendLocalizedError(ws, { key: "error.onlyControlStartGame", room });
     return;
   }
+  const controlPlayer = Array.from(room.players.values()).find((player) => player.ws === ws);
+  if (room.settings.bots.enabled && room.settings.bots.type === "ai" && !controlPlayer?.aiAccessGranted) {
+    deps.sendLocalizedError(ws, { key: "error.aiAccessRequired", room });
+    return;
+  }
+  if (room.settings.bots.enabled && room.settings.bots.type === "ai" && !deps.isAiGatewayConfigured()) {
+    deps.sendLocalizedError(ws, { key: "error.aiGatewayNotConfigured", room });
+    return;
+  }
   const result = deps.startGameAsControl(room);
   if (!result.ok) {
     if (result.messageKey) {
@@ -99,6 +112,24 @@ export function handleStartGameMessage(ws: WebSocket, _message: StartGameMessage
     }
     deps.sendLocalizedError(ws, { key: "error.startGameFailed", room });
   }
+}
+
+export function handleUpdateAiAccessKeyMessage(
+  ws: WebSocket,
+  message: UpdateAiAccessKeyMessage,
+  deps: LobbyActionDeps
+): void {
+  const { info, room } = getRoomAndRole(ws, deps);
+  if (!room || !info) {
+    deps.sendLocalizedError(ws, { key: "error.roomNotFound" });
+    return;
+  }
+  const player = room.players.get(info.playerId);
+  if (!player) {
+    deps.sendLocalizedError(ws, { key: "error.playerNotFound", room });
+    return;
+  }
+  player.aiAccessGranted = deps.validateAiAccessKey(message.payload.key);
 }
 
 export function handleUpdateLocaleMessage(ws: WebSocket, message: UpdateLocaleMessage, deps: LobbyActionDeps): void {
@@ -142,15 +173,28 @@ export function handleUpdateSettingsMessage(
   }
   const minAllowedPlayers = deps.isClassicRoom(room) ? deps.minClassicPlayers : 2;
   const nextMaxPlayers = deps.clampInt(message.payload.maxPlayers, minAllowedPlayers, deps.maxClassicPlayers);
-  if (nextMaxPlayers < room.players.size) {
+  const humanPlayers = Array.from(room.players.values()).filter((player) => !player.isBot).length;
+  if (nextMaxPlayers < humanPlayers) {
     deps.sendLocalizedError(ws, { key: "error.maxPlayersLowerThanCurrent", room });
     return;
   }
+  const maxBotCount = Math.max(0, nextMaxPlayers - humanPlayers);
+  const requestedBotCount = message.payload.bots.enabled
+    ? deps.clampInt(message.payload.bots.count, 0, maxBotCount)
+    : 0;
+
   room.settings = {
     ...message.payload,
     maxPlayers: nextMaxPlayers,
+    bots: {
+      enabled: message.payload.bots.enabled && requestedBotCount > 0,
+      type: message.payload.bots.type,
+      count: requestedBotCount,
+      aiLanguage: message.payload.bots.aiLanguage,
+    },
     forcedDisasterId: deps.normalizeForcedDisasterId(message.payload.forcedDisasterId, room.disasterOptions),
   };
+  deps.syncLobbyBotPlayers(room);
   deps.broadcastRoomState(room);
 }
 

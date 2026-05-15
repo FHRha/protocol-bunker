@@ -19,6 +19,8 @@ import {
 } from "../game/categoryPresentation";
 import { CardTile } from "../game/CardTile";
 import { GameDossierPanel } from "../game/GameDossierPanel";
+import { GameMatchFeed } from "../game/GameMatchFeed";
+import { GameMobileChatSheet } from "../game/GameMobileChatSheet";
 import { GameMobileDossierPanel } from "../game/GameMobileDossierPanel";
 import { GameSpecialDialog } from "../game/GameSpecialDialog";
 import { GameVoteModal } from "../game/GameVoteModal";
@@ -43,6 +45,7 @@ interface GamePageProps {
   onApplySpecial: (specialInstanceId: string, payload?: Record<string, unknown>) => void;
   onFinalizeVoting: () => void;
   onContinueRound: () => void;
+  onSendMatchMessage: (text: string) => void;
   onRevealWorldThreat: (index: number) => void;
   onSetBunkerOutcome: (outcome: "survived" | "failed") => void;
   onDevAddPlayer: (name?: string) => void;
@@ -83,6 +86,7 @@ export default function GamePage({
   onApplySpecial,
   onFinalizeVoting,
   onContinueRound,
+  onSendMatchMessage,
   onRevealWorldThreat,
   onSetBunkerOutcome,
   onDevAddPlayer,
@@ -215,6 +219,9 @@ export default function GamePage({
   const [now, setNow] = useState(() => Date.now());
   const [worldModalOpen, setWorldModalOpen] = useState(false);
   const [worldDetail, setWorldDetail] = useState<WorldDetailState | null>(null);
+  const [matchFeedExpanded, setMatchFeedExpanded] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileChatSeenCount, setMobileChatSeenCount] = useState(0);
   const [expandedDossierKey, setExpandedDossierKey] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 1250px)").matches : false
@@ -237,6 +244,7 @@ export default function GamePage({
   const specialDialogRef = useRef<SpecialDialogState | null>(null);
   const specialActionLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mobileActionBarRef = useRef<HTMLDivElement | null>(null);
+  const mobileChatSeenInitializedRef = useRef(false);
   const lastWorldEventRef = useRef<string | null>(null);
   const lastPostGameRef = useRef<number | null>(null);
 
@@ -252,12 +260,16 @@ export default function GamePage({
   const phase = gameView?.phase ?? "reveal";
   const votePhase = gameView?.public.votePhase ?? null;
   const votesPublic = gameView?.public.votesPublic ?? [];
+  const matchMessages = gameView?.public.matchMessages ?? [];
+  const mobileUnreadChatCount = isMobile && !mobileChatOpen ? Math.max(0, matchMessages.length - mobileChatSeenCount) : 0;
   const votingProgress = gameView?.public.votingProgress;
   const disallowedVoteTargetIdsForYou = gameView?.public.disallowedVoteTargetIdsForYou ?? [];
+  const voteCandidateIds = gameView?.public.voteCandidateIds ?? [];
   const disallowedVoteTargetSet = useMemo(
     () => new Set(disallowedVoteTargetIdsForYou),
     [disallowedVoteTargetIdsForYou]
   );
+  const voteCandidateSet = useMemo(() => new Set(voteCandidateIds), [voteCandidateIds]);
   const voteModalOpenFlag = gameView?.public.voteModalOpen ?? false;
   const activeTimer = gameView?.public.activeTimer ?? null;
   const isHost = roomState?.hostId === you?.playerId;
@@ -293,6 +305,28 @@ export default function GamePage({
   );
 
   const alivePlayers = publicPlayers.filter((player) => player.status === "alive");
+  const publicPlayerStatusById = useMemo(() => {
+    const next = new Map<string, (typeof publicPlayers)[number]["status"]>();
+    for (const player of publicPlayers) {
+      next.set(player.playerId, player.status);
+    }
+    return next;
+  }, [publicPlayers]);
+  const latestBotMessagesByPlayerId = useMemo(() => {
+    const next = new Map<string, (typeof matchMessages)[number]>();
+    for (let index = matchMessages.length - 1; index >= 0; index -= 1) {
+      const message = matchMessages[index];
+      if (!message) continue;
+      if (message.kind !== "bot" || !message.sourcePlayerId) continue;
+      if (publicPlayerStatusById.get(message.sourcePlayerId) !== "alive") continue;
+      if (message.textKey === "match.bot.ruleBased.continue") {
+        break;
+      }
+      next.set(message.sourcePlayerId, message);
+      break;
+    }
+    return next;
+  }, [matchMessages, publicPlayerStatusById]);
   const roundRevealedCount =
     gameView?.public.roundRevealedCount ?? gameView?.public.revealedThisRound.length ?? 0;
   const roundTotalAlive = gameView?.public.roundTotalAlive ?? alivePlayers.length;
@@ -347,7 +381,9 @@ export default function GamePage({
     votePhase === "voting" &&
     youStatus === "alive" &&
     !(gameView?.public.voting?.hasVoted ?? false);
-  const selectedVoteTargetDisallowed = voteTargetId ? disallowedVoteTargetSet.has(voteTargetId) : false;
+  const selectedVoteTargetDisallowed = voteTargetId
+    ? disallowedVoteTargetSet.has(voteTargetId) || (voteCandidateSet.size > 0 && !voteCandidateSet.has(voteTargetId))
+    : false;
   const currentTurnName = currentTurnPlayerId
     ? publicPlayers.find((player) => player.playerId === currentTurnPlayerId)?.name ?? ""
     : "";
@@ -476,10 +512,22 @@ export default function GamePage({
   useEffect(() => {
     if (!isMobile) {
       setDossierOpen(false);
+      setMobileChatOpen(false);
+      setMobileChatSeenCount(matchMessages.length);
+      mobileChatSeenInitializedRef.current = false;
+      return;
     }
-  }, [isMobile]);
+    if (!mobileChatSeenInitializedRef.current) {
+      setMobileChatSeenCount(matchMessages.length);
+      mobileChatSeenInitializedRef.current = true;
+    }
+  }, [isMobile, matchMessages.length]);
   useEffect(() => {
-    if (!isMobile || !dossierOpen) return;
+    if (!isMobile || !mobileChatOpen) return;
+    setMobileChatSeenCount(matchMessages.length);
+  }, [isMobile, mobileChatOpen, matchMessages.length]);
+  useEffect(() => {
+    if (!isMobile || (!dossierOpen && !mobileChatOpen)) return;
     const body = document.body;
     const html = document.documentElement;
     const previous = body.style.overflow;
@@ -501,7 +549,7 @@ export default function GamePage({
       html.style.overflow = previousHtml;
       window.scrollTo(0, scrollY);
     };
-  }, [isMobile, dossierOpen]);
+  }, [isMobile, dossierOpen, mobileChatOpen]);
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
@@ -536,7 +584,7 @@ export default function GamePage({
       observer?.disconnect();
       clear();
     };
-  }, [isMobile, isMobileNarrow, phase, votePhase, useOverlayControl, canDecidePostGameOutcome, isDevScenario]);
+  }, [isMobile, isMobileNarrow, phase, votePhase, useOverlayControl, canDecidePostGameOutcome, isDevScenario, mobileUnreadChatCount]);
   useEffect(() => {
     specialDialogRef.current = specialDialog;
   }, [specialDialog]);
@@ -654,9 +702,9 @@ export default function GamePage({
 
   useEffect(() => {
     if (!voteTargetId) return;
-    if (!disallowedVoteTargetSet.has(voteTargetId)) return;
+    if (!disallowedVoteTargetSet.has(voteTargetId) && (voteCandidateSet.size === 0 || voteCandidateSet.has(voteTargetId))) return;
     setVoteTargetId(null);
-  }, [disallowedVoteTargetSet, voteTargetId]);
+  }, [disallowedVoteTargetSet, voteCandidateSet, voteTargetId]);
   const selectedBoardPlayer = publicPlayers.find((entry) => entry.playerId === selectedPlayerId) ?? null;
   const selectedBoardIsYou = selectedBoardPlayer?.playerId === you?.playerId;
   const showOwnSelectedFacesImmediately = roomState?.scenarioMeta.id !== "classic";
@@ -1885,7 +1933,16 @@ export default function GamePage({
                   </div>
                 </div>
               ) : (
-                <div className="table-container">
+                <div className={`table-container${matchFeedExpanded ? " table-container--chat-expanded" : ""}`}>
+                  <GameMatchFeed
+                    messages={matchMessages}
+                    title={gameText.t("matchFeedTitle")}
+                    emptyText={gameText.t("matchFeedEmpty")}
+                    inputPlaceholder={gameText.t("matchFeedInputPlaceholder")}
+                    activePlaceholder={gameText.t("matchFeedActivePlaceholder")}
+                    onSendMessage={onSendMatchMessage}
+                    onExpandedChange={setMatchFeedExpanded}
+                  />
                   <TableLayout
                     players={publicPlayers}
                     youId={you?.playerId ?? null}
@@ -1893,6 +1950,7 @@ export default function GamePage({
                     onSelect={handleSelectPlayer}
                     world={world}
                     worldThreatsTotal={worldThreatFinalCount}
+                    latestMessagesByPlayerId={latestBotMessagesByPlayerId}
                     onWorldClick={() => setWorldModalOpen(true)}
                   />
                 </div>
@@ -1972,16 +2030,25 @@ export default function GamePage({
                   {PUBLIC_CATEGORY_ORDER.map((category) => {
                       if (selectedBoardIsYou) {
                         if (category === "special") {
-                          const special = you?.specialConditions?.[0];
-                          const specialRevealed = showOwnSelectedFacesImmediately || Boolean(special?.revealedPublic);
-                          const faceUrl = specialRevealed && special?.imgUrl ? getCardFaceUrl(special.imgUrl) : undefined;
-                          const backUrl = getCardBackUrl("special", cardLocale);
+                          const publicSlot = selectedBoardPlayer.categories.find(
+                            (entry) => normalizeCategoryKey(entry.category) === "special"
+                          );
+                          const publicCard = publicSlot?.cards?.[0];
+                          const special = publicCard
+                            ? you?.specialConditions?.find((entry) => entry.instanceId === publicCard.instanceId)
+                            : you?.specialConditions?.[0];
+                          const specialRevealed =
+                            showOwnSelectedFacesImmediately || Boolean(special?.revealedPublic || (publicSlot?.status === "revealed" && publicCard && !publicCard.hidden));
+                          const faceUrl = specialRevealed
+                            ? getCardFaceUrl(special?.imgUrl ?? publicCard?.imgUrl)
+                            : undefined;
+                          const backUrl = getCardBackUrl(publicCard?.backCategory ?? "special", cardLocale);
                           return (
                             <CardTile
                               key={category}
                               src={faceUrl ?? backUrl}
                               fallback={category}
-                              overlayLabel={isDevScenario && specialRevealed ? (special?.title ?? category) : undefined}
+                              overlayLabel={isDevScenario && specialRevealed ? (special?.title ?? publicCard?.labelShort ?? category) : undefined}
                             />
                           );
                         }
@@ -2043,6 +2110,14 @@ export default function GamePage({
           <button className="ghost mobile-action-dossier" onClick={() => setDossierOpen(true)}>
             {gameLocale.dossierTitle}
           </button>
+          <button className="ghost mobile-action-chat" onClick={() => setMobileChatOpen(true)}>
+            <span>{gameText.t("matchFeedInputPlaceholder")}</span>
+            {mobileUnreadChatCount > 0 ? (
+              <span className="mobile-action-chat-badge" aria-label={`+${mobileUnreadChatCount}`}>
+                +{mobileUnreadChatCount > 99 ? "99" : mobileUnreadChatCount}
+              </span>
+            ) : null}
+          </button>
           {isDevScenario ? (
             <div className="mobile-dev-quick-actions">
               <button className="ghost button-small" onClick={() => onDevAddPlayer()}>
@@ -2088,6 +2163,19 @@ export default function GamePage({
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {isMobile && mobileChatOpen ? (
+        <GameMobileChatSheet
+          messages={matchMessages}
+          title={gameText.t("matchFeedTitle")}
+          emptyText={gameText.t("matchFeedEmpty")}
+          inputPlaceholder={gameText.t("matchFeedInputPlaceholder")}
+          activePlaceholder={gameText.t("matchFeedActivePlaceholder")}
+          closeLabel={gameText.t("closeButton")}
+          onClose={() => setMobileChatOpen(false)}
+          onSendMessage={onSendMatchMessage}
+        />
       ) : null}
 
       {isMobile && dossierOpen ? (
@@ -2160,6 +2248,7 @@ export default function GamePage({
         alivePlayers={alivePlayers}
         currentPlayerId={you?.playerId}
         disallowedVoteTargetSet={disallowedVoteTargetSet}
+        voteCandidateSet={voteCandidateSet}
         canVote={canVote}
         selectedVoteTargetDisallowed={selectedVoteTargetDisallowed}
         onVote={onVote}

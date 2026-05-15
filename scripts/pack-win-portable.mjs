@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { buildPortableEnv, buildPortableReadme } from "./env/portable-env.mjs";
 
 if (process.platform !== "win32") {
   console.error("[pack:win] This script is intended to run on Windows.");
@@ -750,6 +751,7 @@ $serverEntry = Join-Path $serverRoot "dist\\index.js"
 $clientDist = Join-Path $appRoot "client\\dist"
 $clientIndex = Join-Path $clientDist "index.html"
 $assetsRoot = Join-Path $appRoot "assets"
+$overlayRoot = Join-Path $serverRoot "public\\overlay"
 
 $serverLogFile = Join-Path $logsDir "server.log"
 $portFile = Join-Path $logsDir "port.txt"
@@ -761,6 +763,8 @@ $script:browserOpened = $false
 $script:selectedPort = 0
 $script:lanIp = "127.0.0.1"
 $script:publicIp = $null
+$script:publicHost = $null
+$script:publicOrigin = $null
 $script:mode = "local"
 $script:domain = $null
 $script:openUrl = $null
@@ -795,6 +799,10 @@ function Read-PortableEnv {
     if ($eqIndex -lt 1) { continue }
     $key = $line.Substring(0, $eqIndex).Trim().ToUpperInvariant()
     $value = $line.Substring($eqIndex + 1).Trim()
+    $commentIndex = $value.IndexOf(" #")
+    if ($commentIndex -ge 0) {
+      $value = $value.Substring(0, $commentIndex).Trim()
+    }
     if (-not [string]::IsNullOrWhiteSpace($key)) {
       $result[$key] = $value
     }
@@ -808,6 +816,16 @@ function Read-PortableConfig {
     return $portableConfig
   }
   return Read-PortableEnv -PathValue $envFile
+}
+
+function Apply-BunkerEnvOverrides {
+  param([hashtable]$Config)
+  foreach ($entry in $Config.GetEnumerator()) {
+    $key = [string]$entry.Key
+    if (-not $key.StartsWith("BUNKER_")) { continue }
+    $value = [string]$entry.Value
+    [Environment]::SetEnvironmentVariable($key, $value, "Process")
+  }
 }
 
 function Get-ConfigPort {
@@ -834,6 +852,24 @@ function Get-ConfigDevMode {
   if ([string]::IsNullOrWhiteSpace($raw)) { return $false }
   $value = $raw.Trim().ToLowerInvariant()
   return $value -in @("1", "true", "yes", "on")
+}
+
+function Get-ConfigTrustProxy {
+  param([hashtable]$Config, [string]$Mode)
+  $raw = if ($Config.ContainsKey("TRUST_PROXY")) { [string]$Config["TRUST_PROXY"] } else { "auto" }
+  $value = $raw.Trim().ToLowerInvariant()
+  if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "auto") {
+    if ($Mode -eq "domain") { return "true" }
+    return "false"
+  }
+  if ($value -in @("1", "true", "yes", "on")) { return "true" }
+  return "false"
+}
+
+function Get-ConfigText {
+  param([hashtable]$Config, [string]$Key)
+  if (-not $Config.ContainsKey($Key)) { return "" }
+  return ([string]$Config[$Key]).Trim()
 }
 
 function Resolve-Mode {
@@ -1064,7 +1100,15 @@ function Save-PortAndUrls {
   } else {
     $localhostUrl = "http://127.0.0.1:$Port"
     $lanUrl = "http://{0}:{1}" -f $script:lanIp, $Port
-    $publicUrl = if ([string]::IsNullOrWhiteSpace($script:publicIp)) {
+    $publicUrl = if (-not [string]::IsNullOrWhiteSpace($script:publicOrigin)) {
+      $script:publicOrigin
+    } elseif (-not [string]::IsNullOrWhiteSpace($script:publicHost)) {
+      if ($script:publicHost -match "^https?://") {
+        $script:publicHost
+      } else {
+        "http://{0}:{1}" -f $script:publicHost, $Port
+      }
+    } elseif ([string]::IsNullOrWhiteSpace($script:publicIp)) {
       "unavailable"
     } else {
       "http://{0}:{1}" -f $script:publicIp, $Port
@@ -1134,6 +1178,7 @@ Assert-Exists -PathValue $nodeExe -Label "Node runtime"
 Assert-Exists -PathValue $serverEntry -Label "server entrypoint"
 Assert-Exists -PathValue $clientIndex -Label "client dist"
 Assert-Exists -PathValue $assetsRoot -Label "assets directory"
+Assert-Exists -PathValue $overlayRoot -Label "overlay assets directory"
 
 New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
 foreach ($f in @($serverLogFile, $portFile, $urlsFile)) {
@@ -1163,20 +1208,37 @@ if ($script:selectedPort -gt 0 -and (Test-PortBusy -Port $script:selectedPort)) 
 }
 
 $env:PORT = "$script:selectedPort"
+Apply-BunkerEnvOverrides -Config $portableConfig
 $env:BUNKER_SERVE_CLIENT = "true"
 $env:BUNKER_PORTABLE = "1"
 $env:BUNKER_ASSETS_ROOT = $assetsRoot
 $env:BUNKER_CLIENT_DIST = $clientDist
+$env:BUNKER_OVERLAY_PUBLIC_ROOT = $overlayRoot
 $env:BUNKER_ASSET_VARIANT = "${assetVariant}"
 
 if ($script:mode -eq "domain") {
   $env:HOST = "127.0.0.1"
-  $env:TRUST_PROXY = "true"
+  $env:TRUST_PROXY = Get-ConfigTrustProxy -Config $portableConfig -Mode $script:mode
   $env:PUBLIC_ORIGIN = "https://$script:domain"
+  Remove-Item Env:PUBLIC_HOST -ErrorAction SilentlyContinue
+  Remove-Item Env:BUNKER_PUBLIC_HOST -ErrorAction SilentlyContinue
 } else {
   $env:HOST = "0.0.0.0"
-  $env:TRUST_PROXY = "false"
-  Remove-Item Env:PUBLIC_ORIGIN -ErrorAction SilentlyContinue
+  $env:TRUST_PROXY = Get-ConfigTrustProxy -Config $portableConfig -Mode $script:mode
+  $script:publicOrigin = Get-ConfigText -Config $portableConfig -Key "PUBLIC_ORIGIN"
+  $script:publicHost = Get-ConfigText -Config $portableConfig -Key "PUBLIC_HOST"
+  if (-not [string]::IsNullOrWhiteSpace($script:publicOrigin)) {
+    $env:PUBLIC_ORIGIN = $script:publicOrigin
+  } else {
+    Remove-Item Env:PUBLIC_ORIGIN -ErrorAction SilentlyContinue
+  }
+  if (-not [string]::IsNullOrWhiteSpace($script:publicHost)) {
+    $env:PUBLIC_HOST = $script:publicHost
+    $env:BUNKER_PUBLIC_HOST = $script:publicHost
+  } else {
+    Remove-Item Env:PUBLIC_HOST -ErrorAction SilentlyContinue
+    Remove-Item Env:BUNKER_PUBLIC_HOST -ErrorAction SilentlyContinue
+  }
 }
 Apply-DevMode -DevMode:$devMode
 
@@ -1225,61 +1287,7 @@ if ($exitCode -ne 0) {
 }
 
 function buildReadme() {
-  return `Protocol Bunker Portable (Windows)
-==================================
-
-Start:
-1. Run start.bat
-2. Wait for startup lines in the console
-3. Browser opens automatically (unless disabled)
-
-Stop:
-- Press Ctrl+C in the start.bat window
-- Or close the start.bat window
-
-Logs:
-- logs\\server.log
-- logs\\port.txt
-- logs\\urls.txt
-- logs\\last-start.txt
-
-Port configuration:
-- Open portable.env and set PORT=XXXXX for fixed port (example: PORT=56986)
-- Set PORT=0 for automatic port
-- Actual port is always saved to logs\\port.txt
-- MODE=local|domain (if not set, launcher asks in console)
-- DOMAIN=your.domain.com (used in domain mode)
-- Domain mode requires fixed PORT (PORT must be 1..65535)
-- DEV_MODE=1 enables dev_tab behavior (for testing), default DEV_MODE=0
-- BUNKER_ENFORCE_ORIGIN_CHECKS=1 enables strict origin validation
-- BUNKER_ALLOWED_ORIGINS=https://admin.example.com,https://overlay.example.com (extra allowed browser origins; same-origin is always allowed)
-- BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1 keeps sensitive HTTP routes rate-limited
-- BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX=120 and BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS=60000 tune the rate limit
-
-Disable auto browser open:
-- set BUNKER_PORTABLE_NO_BROWSER=1
-- then run start.bat
-
-Router port forwarding:
-- Use the port from logs\\port.txt
-- Forward that TCP port to this machine in your router settings
-`;
-}
-
-function buildPortableEnv() {
-  return `PORT=0
-DEV_MODE=0
-# MODE=local
-# MODE=domain
-# DOMAIN=bunker.example.com
-# BUNKER_ENFORCE_ORIGIN_CHECKS=1
-# BUNKER_ALLOWED_ORIGINS=https://admin.example.com,https://overlay.example.com
-# BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1
-# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX=120
-# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS=60000
-# PORT=56986
-# DEV_MODE=1
-`;
+  return buildPortableReadme({ platform: "win" });
 }
 
 function preparePortableBase(paths) {
@@ -1335,7 +1343,7 @@ function writePortableLaunchFiles(paths = portablePaths) {
   syncRootIconsIntoPortableClientDist(paths);
   writeFile(paths.startBatPath, buildStartBat());
   writeFile(paths.startPs1Path, buildStartPs1());
-  writeFile(paths.portableEnvPath, buildPortableEnv());
+  writeFile(paths.portableEnvPath, buildPortableEnv({ platform: "win" }));
   writeFile(paths.readmePath, buildReadme());
   writePortableRuntimeStamp(paths);
 }

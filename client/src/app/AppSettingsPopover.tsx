@@ -24,6 +24,12 @@ type AppSettingsPopoverLocale = {
   settingsAutoCopyRoomCode: string;
   settingsShowSpectatorLinks: string;
   settingsShowHints: string;
+  settingsAiAccessKey: string;
+  settingsAiAccessKeyPlaceholder: string;
+  settingsAiAccessValidate: string;
+  settingsAiAccessChecking: string;
+  settingsAiAccessValid: string;
+  settingsAiAccessInvalid: string;
   settingsResetUi: string;
   settingsLocaleSectionTitle: string;
   localeRu: string;
@@ -63,6 +69,10 @@ interface AppSettingsPopoverProps {
   setShowSpectatorLinks: (value: boolean) => void;
   showHints: boolean;
   setShowHints: (value: boolean) => void;
+  aiAccessKey: string;
+  setAiAccessKey: (value: string) => void;
+  aiAccessValidation: "idle" | "checking" | "valid" | "invalid";
+  onValidateAiAccessKey: () => void;
   handleResetUiSettings: () => void;
   localeCode: LocaleCode;
   setLocale: (value: LocaleCode) => void;
@@ -101,6 +111,10 @@ export function AppSettingsPopover({
   setShowSpectatorLinks,
   showHints,
   setShowHints,
+  aiAccessKey,
+  setAiAccessKey,
+  aiAccessValidation,
+  onValidateAiAccessKey,
   handleResetUiSettings,
   localeCode,
   setLocale,
@@ -244,6 +258,33 @@ export function AppSettingsPopover({
                   <input type="checkbox" checked={showHints} onChange={(event) => setShowHints(event.target.checked)} />
                   <span>{locale.settingsShowHints}</span>
                 </label>
+                <label className="topbar-menu-field">
+                  <span>{locale.settingsAiAccessKey}</span>
+                  <input
+                    type="password"
+                    value={aiAccessKey}
+                    placeholder={locale.settingsAiAccessKeyPlaceholder}
+                    onChange={(event) => setAiAccessKey(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="topbar-menu-inline">
+                  <button
+                    type="button"
+                    className="ghost button-small"
+                    disabled={aiAccessValidation === "checking"}
+                    onClick={onValidateAiAccessKey}
+                  >
+                    {aiAccessValidation === "checking"
+                      ? locale.settingsAiAccessChecking
+                      : locale.settingsAiAccessValidate}
+                  </button>
+                  {aiAccessValidation === "valid" ? (
+                    <span className="muted">{locale.settingsAiAccessValid}</span>
+                  ) : aiAccessValidation === "invalid" ? (
+                    <span className="muted">{locale.settingsAiAccessInvalid}</span>
+                  ) : null}
+                </div>
                 <button type="button" className="ghost button-small" onClick={handleResetUiSettings}>
                   {locale.settingsResetUi}
                 </button>

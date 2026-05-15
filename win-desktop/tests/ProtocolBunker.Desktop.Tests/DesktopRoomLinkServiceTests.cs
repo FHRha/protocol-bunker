@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using ProtocolBunker.Desktop.Contracts.Models;
@@ -61,7 +61,7 @@ public sealed class DesktopRoomLinkServiceTests
             },
             new FakeDesktopSettingsService
             {
-                Current = new DesktopSettingsModel("ru", "local", port, string.Empty, string.Empty, "app/data", string.Empty, false, string.Empty, string.Empty, string.Empty)
+                Current = new DesktopSettingsModel("ru", "local", port, string.Empty, string.Empty, "app/data", string.Empty, string.Empty, "gpt-4o-mini", 45000, string.Empty, false, string.Empty, string.Empty, string.Empty)
             });
 
         var result = await service.BuildAsync();
@@ -94,7 +94,7 @@ public sealed class DesktopRoomLinkServiceTests
             },
             new FakeDesktopSettingsService
             {
-                Current = new DesktopSettingsModel("ru", "local", 38992, "example.test", string.Empty, "app/data", "ABCD", false, string.Empty, string.Empty, string.Empty)
+                Current = new DesktopSettingsModel("ru", "local", 38992, "example.test", string.Empty, "app/data", string.Empty, string.Empty, "gpt-4o-mini", 45000, "ABCD", false, string.Empty, string.Empty, string.Empty)
             });
 
         var result = await service.BuildAsync();
@@ -157,7 +157,7 @@ public sealed class DesktopRoomLinkServiceTests
             },
             new FakeDesktopSettingsService
             {
-                Current = new DesktopSettingsModel("ru", "local", port, "public.example", string.Empty, "app/data", "ABCD", true, string.Empty, string.Empty, string.Empty)
+                Current = new DesktopSettingsModel("ru", "local", port, "public.example", string.Empty, "app/data", string.Empty, string.Empty, "gpt-4o-mini", 45000, "ABCD", true, string.Empty, string.Empty, string.Empty)
             });
 
         var result = await service.BuildAsync();
@@ -198,7 +198,7 @@ public sealed class DesktopRoomLinkServiceTests
             },
             new FakeDesktopSettingsService
             {
-                Current = new DesktopSettingsModel("ru", "local", 38994, string.Empty, string.Empty, "app/data", string.Empty, false, string.Empty, string.Empty, string.Empty)
+                Current = new DesktopSettingsModel("ru", "local", 38994, string.Empty, string.Empty, "app/data", string.Empty, string.Empty, "gpt-4o-mini", 45000, string.Empty, false, string.Empty, string.Empty, string.Empty)
             });
 
         var result = await service.CreateControlInviteAsync();

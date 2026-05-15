@@ -15,7 +15,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly IRoomLinkService _roomLinkService;
     private readonly IPlatformShellService _platformShellService;
     private readonly IUpdateService _updateService;
+    private readonly IAiAccessKeyService _aiAccessKeyService;
     private readonly ILocalizationService _localizationService;
+    private readonly SynchronizationContext? _uiContext;
     private DesktopNavItemViewModel? _selectedSection;
     private bool _isInitialized;
     private string _publicHost;
@@ -27,7 +29,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _editToken = string.Empty;
 
     private readonly List<RuntimeLogItemViewModel> _allLogs = [];
+    private readonly List<RuntimeLogItemViewModel> _pendingLogs = [];
+    private readonly object _logLock = new();
     private const int MaxLogEntries = 500;
+    private bool _isLogFlushScheduled;
     private HomeStatusSnapshot? _lastHomeSnapshot;
     private DesktopSettingsModel? _lastSettingsSnapshot;
     private UpdateStatusSnapshot? _lastUpdateSnapshot;
@@ -40,6 +45,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         IRoomLinkService roomLinkService,
         IPlatformShellService platformShellService,
         IUpdateService updateService,
+        IAiAccessKeyService aiAccessKeyService,
         ILocalizationService localizationService)
     {
         _runtimeService = runtimeService;
@@ -47,7 +53,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         _roomLinkService = roomLinkService;
         _platformShellService = platformShellService;
         _updateService = updateService;
+        _aiAccessKeyService = aiAccessKeyService;
         _localizationService = localizationService;
+        _uiContext = SynchronizationContext.Current;
         T = new DesktopTextCatalog(localizationService);
         T.PropertyChanged += (_, _) =>
         {
@@ -95,6 +103,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         CheckForUpdatesCommand = new AsyncCommand(CheckForUpdatesAsync);
         OpenReleasesPageCommand = new AsyncCommand(OpenReleasesPageAsync);
         OpenSelectedAssetCommand = new AsyncCommand(OpenSelectedAssetAsync);
+        RefreshAiKeysCommand = new AsyncCommand(RefreshAiKeysAsync);
+        CreateAiKeyCommand = new AsyncCommand(CreateAiKeyAsync);
+        CopyCreatedAiKeyCommand = new AsyncCommand(CopyCreatedAiKeyAsync);
+        SaveSelectedAiKeyLabelCommand = new AsyncCommand(SaveSelectedAiKeyLabelAsync);
+        RevokeSelectedAiKeyCommand = new AsyncCommand(RevokeSelectedAiKeyAsync);
+        DeleteSelectedAiKeyCommand = new AsyncCommand(DeleteSelectedAiKeyAsync);
+        ValidateAiKeyCommand = new AsyncCommand(ValidateAiKeyAsync);
         Home = new HomeSectionViewModel(
             T,
             StartRuntimeCommand,
@@ -125,6 +140,15 @@ public sealed class MainWindowViewModel : ViewModelBase
         Network = new NetworkSectionViewModel(T, SaveSettingsCommand, OpenDataRootCommand);
         Network.PropertyChanged += OnNetworkPropertyChanged;
         Access.PropertyChanged += OnAccessPropertyChanged;
+        AiKeys = new AiKeysSectionViewModel(
+            T,
+            RefreshAiKeysCommand,
+            CreateAiKeyCommand,
+            CopyCreatedAiKeyCommand,
+            SaveSelectedAiKeyLabelCommand,
+            RevokeSelectedAiKeyCommand,
+            DeleteSelectedAiKeyCommand,
+            ValidateAiKeyCommand);
         Updates = new UpdatesSectionViewModel(T, CheckForUpdatesCommand, OpenReleasesPageCommand, OpenSelectedAssetCommand);
     }
 
@@ -242,9 +266,25 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     public ICommand OpenSelectedAssetCommand { get; }
 
+    public ICommand RefreshAiKeysCommand { get; }
+
+    public ICommand CreateAiKeyCommand { get; }
+
+    public ICommand CopyCreatedAiKeyCommand { get; }
+
+    public ICommand SaveSelectedAiKeyLabelCommand { get; }
+
+    public ICommand RevokeSelectedAiKeyCommand { get; }
+
+    public ICommand DeleteSelectedAiKeyCommand { get; }
+
+    public ICommand ValidateAiKeyCommand { get; }
+
     public HomeSectionViewModel Home { get; }
 
     public AccessSectionViewModel Access { get; }
+
+    public AiKeysSectionViewModel AiKeys { get; }
 
     public DiagnosticsSectionViewModel Diagnostics { get; }
 
@@ -278,6 +318,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         DesktopSection.Home => Home,
         DesktopSection.Access => Access,
+        DesktopSection.AiKeys => AiKeys,
         DesktopSection.Network => Network,
         DesktopSection.Diagnostics => Diagnostics,
         DesktopSection.Updates => Updates,
@@ -354,6 +395,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         Network.EditablePublicHost = settings.PublicHost;
         Network.EditableDomain = settings.Domain;
         Network.EditableDataRoot = settings.DataFolder;
+        Network.EditableAiGatewayBaseUrl = settings.AiGatewayBaseUrl;
+        Network.EditableAiGatewayApiKey = settings.AiGatewayApiKey;
+        Network.EditableAiGatewayModel = settings.AiGatewayModel;
+        Network.EditableAiGatewayTimeoutMs = settings.AiGatewayTimeoutMs.ToString(CultureInfo.InvariantCulture);
         Access.EditableRoomCode = settings.RoomCode;
         Network.EditableDeveloperMode = settings.DeveloperMode;
         Network.SettingsStatus = T["status.settings_loaded"];
@@ -378,6 +423,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(SectionTitle));
         OnPropertyChanged(nameof(SectionDescription));
         OnPropertyChanged(nameof(CurrentSectionContent));
+        if (SelectedSection?.Section == DesktopSection.AiKeys)
+        {
+            _ = RefreshAiKeysAsync();
+        }
     }
 
     private IReadOnlyList<DesktopNavItemViewModel> CreateSections()
@@ -387,6 +436,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                  {
                      DesktopSection.Home,
                      DesktopSection.Access,
+                     DesktopSection.AiKeys,
                      DesktopSection.Network,
                      DesktopSection.Diagnostics,
                      DesktopSection.Updates,
@@ -554,16 +604,30 @@ public sealed class MainWindowViewModel : ViewModelBase
             Level = e.Entry.IsError ? "ERR" : "OUT",
         };
 
-        _allLogs.Add(item);
-        if (_allLogs.Count > MaxLogEntries)
+        lock (_logLock)
         {
-            _allLogs.RemoveAt(0);
+            _pendingLogs.Add(item);
+            if (_isLogFlushScheduled)
+            {
+                return;
+            }
+
+            _isLogFlushScheduled = true;
         }
 
-        RefreshVisibleLogs();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(120);
+            PostToUi(FlushPendingLogs);
+        });
     }
 
-    private async void OnRuntimeStateChanged(object? sender, EventArgs e)
+    private void OnRuntimeStateChanged(object? sender, EventArgs e)
+    {
+        PostToUi(() => _ = RefreshRuntimeStateAfterChangeAsync());
+    }
+
+    private async Task RefreshRuntimeStateAfterChangeAsync()
     {
         try
         {
@@ -579,6 +643,42 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
         catch
         {
+        }
+    }
+
+    private void FlushPendingLogs()
+    {
+        List<RuntimeLogItemViewModel> batch;
+        lock (_logLock)
+        {
+            batch = [.. _pendingLogs];
+            _pendingLogs.Clear();
+            _isLogFlushScheduled = false;
+        }
+
+        if (batch.Count == 0)
+        {
+            return;
+        }
+
+        _allLogs.AddRange(batch);
+        TrimLogList(_allLogs);
+
+        var query = (Diagnostics.LogSearchText ?? string.Empty).Trim();
+        if (query.Length > 0)
+        {
+            RefreshVisibleLogs();
+            return;
+        }
+
+        foreach (var item in batch)
+        {
+            Diagnostics.VisibleLogs.Add(item);
+        }
+
+        while (Diagnostics.VisibleLogs.Count > MaxLogEntries)
+        {
+            Diagnostics.VisibleLogs.RemoveAt(0);
         }
     }
 
@@ -599,6 +699,27 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             Diagnostics.VisibleLogs.Add(item);
         }
+    }
+
+    private static void TrimLogList(List<RuntimeLogItemViewModel> logs)
+    {
+        if (logs.Count <= MaxLogEntries)
+        {
+            return;
+        }
+
+        logs.RemoveRange(0, logs.Count - MaxLogEntries);
+    }
+
+    private void PostToUi(Action action)
+    {
+        if (_uiContext is null || SynchronizationContext.Current == _uiContext)
+        {
+            action();
+            return;
+        }
+
+        _uiContext.Post(_ => action(), null);
     }
 
     private async Task RefreshLinksAsync()
@@ -644,6 +765,199 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             Access.ControlInviteUrlInternal = ToDisplay(result.InviteUrlInternal);
             Access.ControlInviteUrlExternal = ToDisplay(result.InviteUrlExternal);
+        }
+    }
+
+    private Task RefreshAiKeysAsync()
+        => RefreshAiKeysAsync(TryBuildCurrentSettings(out _) ?? _lastSettingsSnapshot);
+
+    private async Task RefreshAiKeysAsync(DesktopSettingsModel? settingsOverride)
+    {
+        if (settingsOverride is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _aiAccessKeyService.ListAsync(settingsOverride);
+            AiKeys.Keys.Clear();
+            foreach (var key in result.Keys)
+            {
+                AiKeys.Keys.Add(new AiAccessKeyItemViewModel(key));
+            }
+
+            AiKeys.KeysFilePath = ToDisplay(result.FilePath);
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.loaded"], result.Keys.Count);
+        }
+        catch (Exception ex)
+        {
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.failed"], ex.Message);
+        }
+    }
+
+    private async Task CreateAiKeyAsync()
+    {
+        var settings = TryBuildCurrentSettings(out var validationError);
+        if (settings is null)
+        {
+            AiKeys.StatusMessage = validationError ?? T["status.settings_invalid"];
+            return;
+        }
+
+        try
+        {
+            var result = await _aiAccessKeyService.CreateAsync(settings, AiKeys.NewKeyLabel);
+            AiKeys.CreatedKey = result.CreatedKey;
+            AiKeys.KeysFilePath = ToDisplay(result.FilePath);
+            AiKeys.NewKeyLabel = string.Empty;
+            await RefreshAiKeysAsync(settings);
+            AiKeys.StatusMessage = T["ai_keys.status.created"];
+        }
+        catch (Exception ex)
+        {
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.failed"], ex.Message);
+        }
+    }
+
+    private async Task CopyCreatedAiKeyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AiKeys.CreatedKey))
+        {
+            AiKeys.StatusMessage = T["status.nothing_to_copy"];
+            return;
+        }
+
+        try
+        {
+            await _platformShellService.CopyTextAsync(AiKeys.CreatedKey);
+            AiKeys.StatusMessage = T["status.copied"];
+        }
+        catch (Exception ex)
+        {
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["status.copy_failed"], ex.Message);
+        }
+    }
+
+    private async Task SaveSelectedAiKeyLabelAsync()
+    {
+        var selected = AiKeys.SelectedKey;
+        if (selected is null)
+        {
+            AiKeys.StatusMessage = T["ai_keys.status.select_key"];
+            return;
+        }
+
+        var settings = TryBuildCurrentSettings(out var validationError);
+        if (settings is null)
+        {
+            AiKeys.StatusMessage = validationError ?? T["status.settings_invalid"];
+            return;
+        }
+
+        try
+        {
+            var result = await _aiAccessKeyService.UpdateLabelAsync(settings, selected.Id, AiKeys.EditableSelectedLabel);
+            AiKeys.KeysFilePath = ToDisplay(result.FilePath);
+            await RefreshAiKeysAsync(settings);
+            AiKeys.StatusMessage = T["ai_keys.status.updated"];
+        }
+        catch (Exception ex)
+        {
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.failed"], ex.Message);
+        }
+    }
+
+    private async Task RevokeSelectedAiKeyAsync()
+    {
+        var selected = AiKeys.SelectedKey;
+        if (selected is null)
+        {
+            AiKeys.StatusMessage = T["ai_keys.status.select_key"];
+            return;
+        }
+
+        var settings = TryBuildCurrentSettings(out var validationError);
+        if (settings is null)
+        {
+            AiKeys.StatusMessage = validationError ?? T["status.settings_invalid"];
+            return;
+        }
+
+        try
+        {
+            var result = await _aiAccessKeyService.RevokeAsync(settings, selected.Id);
+            AiKeys.KeysFilePath = ToDisplay(result.FilePath);
+            await RefreshAiKeysAsync(settings);
+            AiKeys.StatusMessage = T["ai_keys.status.revoked"];
+        }
+        catch (Exception ex)
+        {
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.failed"], ex.Message);
+        }
+    }
+
+    private async Task DeleteSelectedAiKeyAsync()
+    {
+        var selected = AiKeys.SelectedKey;
+        if (selected is null)
+        {
+            AiKeys.StatusMessage = T["ai_keys.status.select_key"];
+            return;
+        }
+
+        var settings = TryBuildCurrentSettings(out var validationError);
+        if (settings is null)
+        {
+            AiKeys.StatusMessage = validationError ?? T["status.settings_invalid"];
+            return;
+        }
+
+        try
+        {
+            var result = await _aiAccessKeyService.DeleteAsync(settings, selected.Id);
+            AiKeys.SelectedKey = null;
+            AiKeys.KeysFilePath = ToDisplay(result.FilePath);
+            await RefreshAiKeysAsync(settings);
+            AiKeys.StatusMessage = T["ai_keys.status.deleted"];
+        }
+        catch (Exception ex)
+        {
+            AiKeys.StatusMessage = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.failed"], ex.Message);
+        }
+    }
+
+    private async Task ValidateAiKeyAsync()
+    {
+        var key = (AiKeys.ValidateKey ?? string.Empty).Trim();
+        if (key.Length == 0)
+        {
+            AiKeys.ValidationStatusText = T["ai_keys.status.key_required"];
+            AiKeys.IsValidationSuccess = false;
+            AiKeys.IsValidationFailure = true;
+            return;
+        }
+
+        var settings = TryBuildCurrentSettings(out var validationError);
+        if (settings is null)
+        {
+            AiKeys.StatusMessage = validationError ?? T["status.settings_invalid"];
+            return;
+        }
+
+        try
+        {
+            var result = await _aiAccessKeyService.ValidateAsync(settings, key);
+            AiKeys.KeysFilePath = ToDisplay(result.FilePath);
+            AiKeys.ValidationStatusText = result.IsValid ? T["ai_keys.status.valid"] : T["ai_keys.status.invalid"];
+            AiKeys.IsValidationSuccess = result.IsValid;
+            AiKeys.IsValidationFailure = !result.IsValid;
+        }
+        catch (Exception ex)
+        {
+            AiKeys.ValidationStatusText = string.Format(CultureInfo.CurrentUICulture, T["ai_keys.status.failed"], ex.Message);
+            AiKeys.IsValidationSuccess = false;
+            AiKeys.IsValidationFailure = true;
         }
     }
 
@@ -816,6 +1130,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         Apply(await settingsTask);
         Apply(await updatesTask);
         await RefreshLinksAsync(currentSettings);
+        if (SelectedSection?.Section == DesktopSection.AiKeys)
+        {
+            await RefreshAiKeysAsync(currentSettings);
+        }
     }
 
     private string? ValidateNetworkSettings(string mode, string publicHost, string domain, bool developerMode)
@@ -872,6 +1190,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             return null;
         }
 
+        if (!int.TryParse(Network.EditableAiGatewayTimeoutMs, out var aiGatewayTimeoutMs) || aiGatewayTimeoutMs is < 1000 or > 60000)
+        {
+            validationError = T["status.ai_gateway_timeout_invalid"];
+            return null;
+        }
+
         var normalizedMode = NormalizeMode(Network.EditableMode);
         var normalizedPublicHost = NormalizeHost(Network.EditablePublicHost);
         var normalizedDomain = NormalizeHost(Network.EditableDomain);
@@ -888,6 +1212,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             PublicHost: normalizedPublicHost,
             Domain: normalizedDomain,
             DataFolder: string.IsNullOrWhiteSpace(Network.EditableDataRoot) ? "app/data" : Network.EditableDataRoot.Trim(),
+            AiGatewayBaseUrl: (Network.EditableAiGatewayBaseUrl ?? string.Empty).Trim(),
+            AiGatewayApiKey: (Network.EditableAiGatewayApiKey ?? string.Empty).Trim(),
+            AiGatewayModel: string.IsNullOrWhiteSpace(Network.EditableAiGatewayModel) ? "gpt-4o-mini" : Network.EditableAiGatewayModel.Trim(),
+            AiGatewayTimeoutMs: aiGatewayTimeoutMs,
             RoomCode: (Access.EditableRoomCode ?? string.Empty).Trim().ToUpperInvariant(),
             DeveloperMode: Network.EditableDeveloperMode,
             HostToken: _hostToken,
@@ -950,7 +1278,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             try
             {
-                await Task.Delay(250, token);
+                await Task.Delay(600, token);
                 var settings = TryBuildCurrentSettings(out _);
                 if (settings is null)
                 {
@@ -996,6 +1324,10 @@ public sealed class MainWindowViewModel : ViewModelBase
                !string.Equals(previous.PublicHost ?? string.Empty, current.PublicHost ?? string.Empty, StringComparison.OrdinalIgnoreCase) ||
                !string.Equals(previous.Domain ?? string.Empty, current.Domain ?? string.Empty, StringComparison.OrdinalIgnoreCase) ||
                !string.Equals(previous.DataFolder ?? string.Empty, current.DataFolder ?? string.Empty, StringComparison.Ordinal) ||
+               !string.Equals(previous.AiGatewayBaseUrl ?? string.Empty, current.AiGatewayBaseUrl ?? string.Empty, StringComparison.Ordinal) ||
+               !string.Equals(previous.AiGatewayApiKey ?? string.Empty, current.AiGatewayApiKey ?? string.Empty, StringComparison.Ordinal) ||
+               !string.Equals(previous.AiGatewayModel ?? string.Empty, current.AiGatewayModel ?? string.Empty, StringComparison.Ordinal) ||
+               previous.AiGatewayTimeoutMs != current.AiGatewayTimeoutMs ||
                previous.DeveloperMode != current.DeveloperMode;
     }
 

@@ -3,6 +3,7 @@ node_modules/
 
 .tmp-portable-unzip/
 logs/
+**/data/ai-access-keys.json
 .tmp_*
 *.tmp
 

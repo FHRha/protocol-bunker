@@ -27,6 +27,7 @@ interface GameVoteModalProps {
   alivePlayers: GameView["public"]["players"];
   currentPlayerId?: string;
   disallowedVoteTargetSet: Set<string>;
+  voteCandidateSet: Set<string>;
   canVote: boolean;
   selectedVoteTargetDisallowed: boolean;
   onVote: (targetPlayerId: string) => void;
@@ -50,6 +51,7 @@ export function GameVoteModal({
   alivePlayers,
   currentPlayerId,
   disallowedVoteTargetSet,
+  voteCandidateSet,
   canVote,
   selectedVoteTargetDisallowed,
   onVote,
@@ -72,25 +74,37 @@ export function GameVoteModal({
           <div className="vote-modal-section">
             <div className="muted">{yourVoteLabel}</div>
             {yourVoteWeight > 1 ? <div className="muted">{gameLocale.votingWeightHint(yourVoteWeight)}</div> : null}
-            <select value={voteTargetId ?? ""} onChange={(event) => setVoteTargetId(event.target.value)}>
-              <option value="" disabled>
-                {gameText.t("selectPlayerPlaceholder")}
-              </option>
+            <div className="vote-target-list" role="listbox" aria-label={gameText.t("selectPlayerPlaceholder")}>
               {alivePlayers
                 .filter((player) => player.playerId !== currentPlayerId)
-                .map((player) => (
-                  <option
-                    key={player.playerId}
-                    value={player.playerId}
-                    disabled={disallowedVoteTargetSet.has(player.playerId)}
-                  >
-                    {player.name}
-                    {disallowedVoteTargetSet.has(player.playerId)
-                      ? ` (${gameText.t("voteTargetBlockedPlanBSuffix")})`
-                      : ""}
-                  </option>
-                ))}
-            </select>
+                .map((player) => {
+                  const blockedByPlanB = disallowedVoteTargetSet.has(player.playerId);
+                  const blockedByRevote = voteCandidateSet.size > 0 && !voteCandidateSet.has(player.playerId);
+                  const disabled = blockedByPlanB || blockedByRevote;
+                  return (
+                    <button
+                      key={player.playerId}
+                      type="button"
+                      className={`vote-target-chip${voteTargetId === player.playerId ? " selected" : ""}`}
+                      disabled={disabled}
+                      role="option"
+                      aria-selected={voteTargetId === player.playerId}
+                      onClick={() => setVoteTargetId(player.playerId)}
+                      title={
+                        blockedByPlanB
+                          ? gameText.t("voteTargetBlockedPlanB")
+                          : blockedByRevote
+                            ? gameText.t("voteTargetNotInRevote")
+                            : player.name
+                      }
+                    >
+                      <span>{player.name}</span>
+                      {blockedByPlanB ? <small>{gameText.t("voteTargetBlockedPlanBSuffix")}</small> : null}
+                      {blockedByRevote ? <small>{gameText.t("voteTargetNotInRevoteSuffix")}</small> : null}
+                    </button>
+                  );
+                })}
+            </div>
             <button
               className="primary"
               disabled={!canVote || !voteTargetId || selectedVoteTargetDisallowed}
@@ -100,7 +114,11 @@ export function GameVoteModal({
             </button>
             {!canVote ? <div className="muted">{gameText.t("alreadyVoted")}</div> : null}
             {canVote && selectedVoteTargetDisallowed ? (
-              <div className="muted">{gameText.t("voteTargetBlockedPlanB")}</div>
+              <div className="muted">
+                {voteTargetId && voteCandidateSet.size > 0 && !voteCandidateSet.has(voteTargetId)
+                  ? gameText.t("voteTargetNotInRevote")
+                  : gameText.t("voteTargetBlockedPlanB")}
+              </div>
             ) : null}
           </div>
           <div className="vote-modal-right">

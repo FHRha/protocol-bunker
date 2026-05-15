@@ -7,6 +7,7 @@ import type {
   RoomState,
   ScenarioMeta,
 } from "@bunker/shared";
+import { LINK_PATHS } from "@bunker/shared";
 import { BunkerClient, type ConnectionStatus } from "./wsClient";
 import { API_BASE, DEV_TAB_IDENTITY, IDENTITY_MODE, WS_URL } from "./config";
 import { clearPlayerToken, initTabIdentity, writePlayerToken } from "./storage";
@@ -56,6 +57,7 @@ import {
 } from "./app/derivedUi";
 import {
   getInitialAutoCopyRoomCode,
+  getInitialAiAccessKey,
   getInitialCompactMode,
   getInitialConfirmDangerousActions,
   getInitialConfirmExitGame,
@@ -178,6 +180,12 @@ export default function App() {
       settingsAutoCopyRoomCode: getString("settingsAutoCopyRoomCode"),
       settingsShowSpectatorLinks: getString("settingsShowSpectatorLinks"),
       settingsShowHints: getString("settingsShowHints"),
+      settingsAiAccessKey: getString("settingsAiAccessKey"),
+      settingsAiAccessKeyPlaceholder: getString("settingsAiAccessKeyPlaceholder"),
+      settingsAiAccessValidate: getString("settingsAiAccessValidate"),
+      settingsAiAccessChecking: getString("settingsAiAccessChecking"),
+      settingsAiAccessValid: getString("settingsAiAccessValid"),
+      settingsAiAccessInvalid: getString("settingsAiAccessInvalid"),
       settingsResetUi: getString("settingsResetUi"),
       settingsLocaleSectionTitle: getString("settingsLocaleSectionTitle"),
       localeRu: getString("localeRu"),
@@ -242,6 +250,8 @@ export default function App() {
     getInitialShowSpectatorLinks()
   );
   const [showHints, setShowHints] = useState<boolean>(() => getInitialShowHints());
+  const [aiAccessKey, setAiAccessKey] = useState<string>(() => getInitialAiAccessKey());
+  const [aiAccessValidation, setAiAccessValidation] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
   const [locale, setLocale] = useState<LocaleCode>(() => getCurrentLocale());
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
@@ -291,6 +301,7 @@ export default function App() {
   const themeMenuRef = useRef<HTMLDivElement | null>(null);
   const autoCopiedRoomCodeRef = useRef<string | null>(null);
   const dangerConfirmResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const shouldValidateStoredAiAccessKeyRef = useRef(Boolean(aiAccessKey.trim()));
   const isHost = roomState?.hostId === playerId;
   const isControl = roomState?.controlId === playerId;
   const presenterModeEnabled = Boolean(roomState?.settings.enablePresenterMode);
@@ -343,6 +354,7 @@ export default function App() {
     autoCopyRoomCode,
     showSpectatorLinks,
     showHints,
+    aiAccessKey,
     locale,
   });
 
@@ -616,6 +628,12 @@ export default function App() {
     ensureWsInteractive,
   });
 
+  useEffect(() => {
+    const key = aiAccessKey.trim();
+    if (aiAccessValidation !== "valid" || !key || !roomState || !playerId) return;
+    sessionActions.updateAiAccessKey(key);
+  }, [aiAccessKey, aiAccessValidation, playerId, roomState?.roomCode]);
+
   const applyRoomStatePatch = (patch: Partial<RoomState>) => {
     const patchRevision = patch.revision;
     if (typeof patchRevision === "number" && patchRevision <= roomStateRevisionRef.current) {
@@ -865,6 +883,10 @@ export default function App() {
     sessionActions.continueRound();
   };
 
+  const handleSendMatchMessage = (text: string) => {
+    sessionActions.sendMatchMessage(text);
+  };
+
   const handleRevealWorldThreat = (index: number) => {
     sessionActions.revealWorldThreat(index);
   };
@@ -966,7 +988,40 @@ export default function App() {
     setAutoCopyRoomCode(false);
     setShowSpectatorLinks(true);
     setShowHints(true);
+    setAiAccessKey("");
+    setAiAccessValidation("idle");
   };
+
+  const validateAiAccessKey = async () => {
+    const key = aiAccessKey.trim();
+    if (!key) {
+      setAiAccessValidation("invalid");
+      return;
+    }
+    setAiAccessValidation("checking");
+    try {
+      const response = await fetch(`${API_BASE}${LINK_PATHS.apiAiAccessValidate}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      const payload = (await response.json().catch(() => null)) as { valid?: boolean } | null;
+      const valid = response.ok && payload?.valid === true;
+      setAiAccessValidation(valid ? "valid" : "invalid");
+      if (valid) {
+        sessionActions.updateAiAccessKey(key);
+      }
+    } catch {
+      setAiAccessValidation("invalid");
+    }
+  };
+
+  useEffect(() => {
+    if (!shouldValidateStoredAiAccessKeyRef.current) return;
+    shouldValidateStoredAiAccessKeyRef.current = false;
+    if (!aiAccessKey.trim()) return;
+    void validateAiAccessKey();
+  }, []);
 
   const copyRoomCodeToClipboard = async (options?: { silent?: boolean; markCopied?: boolean }) => {
     if (!roomState) return false;
@@ -1161,6 +1216,12 @@ export default function App() {
                   settingsAutoCopyRoomCode: appLocale.settingsAutoCopyRoomCode,
                   settingsShowSpectatorLinks: appLocale.settingsShowSpectatorLinks,
                   settingsShowHints: appLocale.settingsShowHints,
+                  settingsAiAccessKey: appLocale.settingsAiAccessKey,
+                  settingsAiAccessKeyPlaceholder: appLocale.settingsAiAccessKeyPlaceholder,
+                  settingsAiAccessValidate: appLocale.settingsAiAccessValidate,
+                  settingsAiAccessChecking: appLocale.settingsAiAccessChecking,
+                  settingsAiAccessValid: appLocale.settingsAiAccessValid,
+                  settingsAiAccessInvalid: appLocale.settingsAiAccessInvalid,
                   settingsResetUi: appLocale.settingsResetUi,
                   settingsLocaleSectionTitle: appLocale.settingsLocaleSectionTitle,
                   localeRu: appLocale.localeRu,
@@ -1196,6 +1257,13 @@ export default function App() {
                 setShowSpectatorLinks={setShowSpectatorLinks}
                 showHints={showHints}
                 setShowHints={setShowHints}
+                aiAccessKey={aiAccessKey}
+                setAiAccessKey={(value) => {
+                  setAiAccessKey(value);
+                  setAiAccessValidation("idle");
+                }}
+                aiAccessValidation={aiAccessValidation}
+                onValidateAiAccessKey={validateAiAccessKey}
                 handleResetUiSettings={handleResetUiSettings}
                 localeCode={locale}
                 setLocale={setLocale}
@@ -1344,6 +1412,7 @@ export default function App() {
                     onApplySpecial={handleApplySpecial}
                     onFinalizeVoting={handleFinalizeVoting}
                     onContinueRound={handleContinueRound}
+                    onSendMatchMessage={handleSendMatchMessage}
                     onRevealWorldThreat={handleRevealWorldThreat}
                     onSetBunkerOutcome={handleSetBunkerOutcome}
                     onDevAddPlayer={handleDevAddPlayer}

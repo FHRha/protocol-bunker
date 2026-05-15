@@ -6,6 +6,7 @@ import {
   handleRequestHostTransferMessage,
   handleStartGameMessage,
   handleUpdateLocaleMessage,
+  handleUpdateAiAccessKeyMessage,
   handleUpdateRulesMessage,
   handleUpdateSettingsMessage,
   type LobbyActionDeps,
@@ -56,6 +57,10 @@ export function routeClientMessage(ws: WebSocket, message: ClientMessage, deps: 
       handleUpdateSettingsMessage(ws, message, deps.lobby);
       return;
     }
+    case "updateAiAccessKey": {
+      handleUpdateAiAccessKeyMessage(ws, message, deps.lobby);
+      return;
+    }
     case "updateRules": {
       handleUpdateRulesMessage(ws, message, deps.lobby);
       return;
@@ -79,6 +84,7 @@ export function routeClientMessage(ws: WebSocket, message: ClientMessage, deps: 
     case "revealWorldThreat":
     case "setBunkerOutcome":
     case "continueRound":
+    case "sendMatchMessage":
     case "devSkipRound":
     case "devKickPlayer":
     case "devAddPlayer":

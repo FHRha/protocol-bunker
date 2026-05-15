@@ -17,14 +17,19 @@ internal sealed class AsciiAnimationController : IDisposable
         _home = home;
         _timer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(90),
+            Interval = TimeSpan.FromMilliseconds(180),
         };
         _timer.Tick += OnTick;
     }
 
     public void Start()
     {
-        var frames = LoadRandomAnimationFrames();
+        _ = LoadAndStartAsync();
+    }
+
+    private async Task LoadAndStartAsync()
+    {
+        var frames = await Task.Run(LoadRandomAnimationFrames);
         if (frames.Count == 0)
         {
             _home.AsciiFrame = string.Empty;

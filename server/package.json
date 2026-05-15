@@ -1,12 +1,18 @@
 {
   "name": "@bunker/server",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "ai:key:create": "tsx src/ai/accessKeysCli.ts create",
+    "ai:key:list": "tsx src/ai/accessKeysCli.ts list",
+    "ai:key:edit": "tsx src/ai/accessKeysCli.ts edit",
+    "ai:key:revoke": "tsx src/ai/accessKeysCli.ts revoke",
+    "ai:key:delete": "tsx src/ai/accessKeysCli.ts delete",
+    "ai:key:validate": "tsx src/ai/accessKeysCli.ts validate"
   },
   "dependencies": {
     "@bunker/shared": "workspace:*",
@@ -23,5 +29,3 @@
     "typescript": "^5.4.5"
   }
 }
-
-

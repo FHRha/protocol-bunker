@@ -40,8 +40,8 @@ QUALITY="1x"       # 1x | 2x
 SERVICE_SCOPE="auto"      # auto | system | user
 EFFECTIVE_SERVICE_SCOPE="" # resolved service scope
 TARGET_ARCH=""     # normalized arch used for assets
-VERSION_TAG=""     # canonical version for asset names (e.g. v0.2.6)
-RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.2.6 or v0.2.6)
+VERSION_TAG=""     # canonical version for asset names (e.g. v0.3.1)
+RELEASE_TAG=""     # actual GitHub release tag (e.g. 0.3.1 or v0.3.1)
 
 usage() {
   cat <<EOF
@@ -52,7 +52,7 @@ Usage:
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.2.6
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --version v0.3.1
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --edition server
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --arch arm64
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --quality 2x
@@ -67,7 +67,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version)
       shift
-      [ $# -gt 0 ] || err "--version requires a value like v0.2.6"
+      [ $# -gt 0 ] || err "--version requires a value like v0.3.1"
       VERSION="$1"
       ;;
     --edition)
@@ -124,7 +124,7 @@ json_latest_tag() {
 normalize_version_tag() {
   local value="$1"
   if [ -z "$value" ]; then
-    err "Version is empty. Use format like v0.2.6 or 0.2.6"
+    err "Version is empty. Use format like v0.3.1 or 0.3.1"
   fi
 
   if [[ "$value" == v* ]]; then
@@ -137,7 +137,7 @@ normalize_version_tag() {
     return
   fi
 
-  err "Invalid version format: $value (expected v0.2.6 or 0.2.6)"
+  err "Invalid version format: $value (expected v0.3.1 or 0.3.1)"
 }
 
 resolve_release_tag_by_candidates() {
@@ -325,18 +325,38 @@ fi
 if [ -f "$PRESERVE_DIR/portable.env" ]; then
   if [ -f "$APP_DIR/portable.env" ]; then
     awk '
-      function parse_assignment(line,   s, eq) {
+      function trim(value) {
+        sub(/^[[:space:]]*/, "", value)
+        sub(/[[:space:]]*$/, "", value)
+        return value
+      }
+      function split_value_comment(rest) {
+        assign_suffix = ""
+        if (match(rest, /[[:space:]]#/)) {
+          assign_suffix = substr(rest, RSTART)
+          rest = substr(rest, 1, RSTART - 1)
+        }
+        assign_val = trim(rest)
+      }
+      function parse_assignment(line, allow_commented,   s, eq, rest) {
         s = line
         sub(/^[[:space:]]*/, "", s)
-        if (s ~ /^#/ || s !~ /^[A-Za-z_][A-Za-z0-9_]*=/) return 0
+        assign_commented = 0
+        if (s ~ /^#/) {
+          if (!allow_commented) return 0
+          sub(/^#[[:space:]]*/, "", s)
+          assign_commented = 1
+        }
+        if (s !~ /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/) return 0
         eq = index(s, "=")
         if (eq <= 1) return 0
-        assign_key = substr(s, 1, eq - 1)
-        assign_val = substr(s, eq + 1)
+        assign_key = trim(substr(s, 1, eq - 1))
+        rest = substr(s, eq + 1)
+        split_value_comment(rest)
         return 1
       }
       NR == FNR {
-        if (parse_assignment($0)) {
+        if (parse_assignment($0, 0)) {
           k = assign_key
           if (!(k in old_seen)) {
             old_order[++old_n] = k
@@ -347,11 +367,12 @@ if [ -f "$PRESERVE_DIR/portable.env" ]; then
         next
       }
       {
-        if (parse_assignment($0)) {
+        if ($0 ~ /^# 7[.] Examples/) in_examples = 1
+        if (parse_assignment($0, !in_examples)) {
           k = assign_key
           base_key[k] = 1
           if (k in old_val) {
-            print k "=" old_val[k]
+            print k "=" old_val[k] assign_suffix
             next
           }
         }
@@ -497,6 +518,29 @@ disable_autostart() {
   msg "Autostart disabled."
 }
 
+run_ai_key_cli() {
+  local command_name="\$1"
+  shift
+  local node_bin="${APP_DIR}/app/node/node"
+  local cli_file="${APP_DIR}/app/server/dist/ai/accessKeysCli.js"
+
+  if [ ! -x "\$node_bin" ]; then
+    node_bin="$(command -v node || true)"
+  fi
+
+  if [ -z "\$node_bin" ]; then
+    msg "Node runtime not found; cannot manage AI access keys."
+    exit 1
+  fi
+
+  if [ ! -f "\$cli_file" ]; then
+    msg "AI access-key CLI not found: \$cli_file"
+    exit 1
+  fi
+
+  "\$node_bin" "\$cli_file" "\$command_name" "\$@"
+}
+
 case "\${1:-}" in
   --help|-h)
     echo "\$APP_NAME: launch Protocol: Bunker self-host"
@@ -505,6 +549,12 @@ case "\${1:-}" in
     echo "  \$APP_NAME --update [vX.Y.Z]"
     echo "  \$APP_NAME --enable-autostart"
     echo "  \$APP_NAME --disable-autostart"
+    echo "  \$APP_NAME ai:key:create --label \"Host name\""
+    echo "  \$APP_NAME ai:key:list"
+    echo "  \$APP_NAME ai:key:edit <id> --label \"New label\""
+    echo "  \$APP_NAME ai:key:revoke <id>"
+    echo "  \$APP_NAME ai:key:delete <id>"
+    echo "  \$APP_NAME ai:key:validate <key>"
     echo "  \$APP_NAME --uninstall"
     exit 0
     ;;
@@ -519,6 +569,36 @@ case "\${1:-}" in
     ;;
   --enable-autostart) enable_autostart; exit \$? ;;
   --disable-autostart) disable_autostart; exit 0 ;;
+  ai:key:create)
+    shift
+    run_ai_key_cli create "\$@"
+    exit \$?
+    ;;
+  ai:key:list)
+    shift
+    run_ai_key_cli list "\$@"
+    exit \$?
+    ;;
+  ai:key:edit)
+    shift
+    run_ai_key_cli edit "\$@"
+    exit \$?
+    ;;
+  ai:key:revoke)
+    shift
+    run_ai_key_cli revoke "\$@"
+    exit \$?
+    ;;
+  ai:key:delete)
+    shift
+    run_ai_key_cli delete "\$@"
+    exit \$?
+    ;;
+  ai:key:validate)
+    shift
+    run_ai_key_cli validate "\$@"
+    exit \$?
+    ;;
   --uninstall)
     disable_autostart >/dev/null 2>&1 || true
     if [ -L "\$GLOBAL_LINK" ]; then
@@ -600,5 +680,3 @@ elif [ -n "$GLOBAL_LAUNCHER" ]; then
 else
   info "Run: ${LAUNCHER}"
 fi
-
-

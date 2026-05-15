@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { GameRulesetSchema, GameSettingsSchema, GameTimerStateSchema, ScenarioMetaSchema } from "./settings.js";
+import {
+  GameRulesetSchema,
+  GameSettingsSchema,
+  GameTimerStateSchema,
+  LobbyBotTypeSchema,
+  ScenarioMetaSchema,
+  type LobbyBotType,
+} from "./settings.js";
 import {
   GameEventKindSchema,
   PlayerStatusSchema,
@@ -114,6 +121,9 @@ export interface PlayerSummary {
   playerId: string;
   name: string;
   connected: boolean;
+  isBot?: boolean;
+  botType?: LobbyBotType;
+  disconnectedBotTakeoverAt?: number;
   disconnectedAt?: number;
   totalAbsentMs?: number;
   currentOfflineMs?: number;
@@ -166,6 +176,9 @@ export interface PublicPlayerView {
   name: string;
   status: PlayerStatus;
   connected: boolean;
+  isBot?: boolean;
+  botType?: LobbyBotType;
+  disconnectedBotTakeoverAt?: number;
   disconnectedAt?: number;
   totalAbsentMs?: number;
   currentOfflineMs?: number;
@@ -220,6 +233,22 @@ export interface GameEvent {
   createdAt: number;
 }
 
+export const MatchMessageKindValues = ["bot", "system", "player"] as const;
+export type MatchMessageKind = (typeof MatchMessageKindValues)[number];
+export const MatchMessageKindSchema = z.enum(MatchMessageKindValues);
+
+export interface MatchMessage {
+  id: string;
+  kind: MatchMessageKind;
+  text: string;
+  textKey?: string;
+  textVars?: LocalizedVars;
+  createdAt: number;
+  sourcePlayerId?: string;
+  sourceName?: string;
+  sourceNameKey?: string;
+}
+
 export interface RoundRulesView {
   noTalkUntilVoting?: boolean;
   forcedRevealCategory?: string;
@@ -255,9 +284,11 @@ export interface GameView {
     revealLimit?: number;
     voting?: VotingView;
     votePhase?: VotePhase | null;
+    voteCandidateIds?: string[];
     votesPublic?: VotePublic[];
     votingProgress?: VotingProgress;
     disallowedVoteTargetIdsForYou?: string[];
+    matchMessages?: MatchMessage[];
     threatModifier?: ThreatModifierView;
     canOpenVotingModal?: boolean;
     canContinue?: boolean;
@@ -276,6 +307,9 @@ export const PlayerSummarySchema = z.object({
   playerId: z.string(),
   name: z.string(),
   connected: z.boolean(),
+  isBot: z.boolean().optional(),
+  botType: LobbyBotTypeSchema.optional(),
+  disconnectedBotTakeoverAt: z.number().int().nonnegative().optional(),
   disconnectedAt: z.number().int().nonnegative().optional(),
   totalAbsentMs: z.number().int().nonnegative().optional(),
   currentOfflineMs: z.number().int().nonnegative().optional(),
@@ -362,6 +396,9 @@ export const PublicPlayerViewSchema = z.object({
   name: z.string(),
   status: PlayerStatusSchema,
   connected: z.boolean(),
+  isBot: z.boolean().optional(),
+  botType: LobbyBotTypeSchema.optional(),
+  disconnectedBotTakeoverAt: z.number().int().nonnegative().optional(),
   disconnectedAt: z.number().int().nonnegative().optional(),
   totalAbsentMs: z.number().int().nonnegative().optional(),
   currentOfflineMs: z.number().int().nonnegative().optional(),
@@ -433,6 +470,18 @@ export const GameEventSchema = z.object({
   createdAt: z.number().int().nonnegative(),
 });
 
+export const MatchMessageSchema = z.object({
+  id: z.string(),
+  kind: MatchMessageKindSchema,
+  text: z.string(),
+  textKey: z.string().optional(),
+  textVars: LocalizedVarsSchema.optional(),
+  createdAt: z.number().int().nonnegative(),
+  sourcePlayerId: z.string().optional(),
+  sourceName: z.string().optional(),
+  sourceNameKey: z.string().optional(),
+});
+
 export const RoundRulesViewSchema = z.object({
   noTalkUntilVoting: z.boolean().optional(),
   forcedRevealCategory: z.string().optional(),
@@ -468,9 +517,11 @@ export const GameViewSchema = z.object({
     revealLimit: z.number().int().min(1).optional(),
     voting: VotingViewSchema.optional(),
     votePhase: VotePhaseSchema.nullable().optional(),
+    voteCandidateIds: z.array(z.string()).optional(),
     votesPublic: z.array(VotePublicSchema).optional(),
     votingProgress: VotingProgressSchema.optional(),
     disallowedVoteTargetIdsForYou: z.array(z.string()).optional(),
+    matchMessages: z.array(MatchMessageSchema).optional(),
     threatModifier: ThreatModifierViewSchema.optional(),
     canOpenVotingModal: z.boolean().optional(),
     canContinue: z.boolean().optional(),

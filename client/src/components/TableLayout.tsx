@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PublicPlayerView, WorldState30 } from "@bunker/shared";
+import type { MatchMessage, PublicPlayerView, WorldState30 } from "@bunker/shared";
 import { useUiLocaleNamespace } from "../localization";
+import { TypewriterText } from "../game/TypewriterText";
 
 interface TableLayoutProps {
   players: PublicPlayerView[];
@@ -9,6 +10,7 @@ interface TableLayoutProps {
   onSelect?: (playerId: string) => void;
   world?: WorldState30;
   worldThreatsTotal?: number;
+  latestMessagesByPlayerId?: Map<string, MatchMessage>;
   onWorldClick?: () => void;
 }
 
@@ -26,6 +28,7 @@ export default function TableLayout({
   onSelect,
   world,
   worldThreatsTotal,
+  latestMessagesByPlayerId,
   onWorldClick,
 }: TableLayoutProps) {
   const text = useUiLocaleNamespace("game", { fallbacks: ["common", "world", "format", "misc"] });
@@ -164,7 +167,13 @@ export default function TableLayout({
             const top = y - cardSize / 2;
             const isYou = player.playerId === youId;
             const isSelected = player.playerId === selectedId;
-            const label = isYou ? `${player.name} (${text.t("youBadge")})` : player.name;
+            const botBadge = player.isBot
+              ? player.disconnectedBotTakeoverAt
+                ? text.t("botTakenOverBadge")
+                : text.t("botBadge")
+              : "";
+            const baseLabel = isYou ? `${player.name} (${text.t("youBadge")})` : player.name;
+            const label = botBadge ? `${baseLabel} · ${botBadge}` : baseLabel;
             const elapsed = now - lastUpdateRef.current;
             const remainingMs =
               player.kickRemainingMs && elapsed > 0
@@ -172,6 +181,8 @@ export default function TableLayout({
                 : player.kickRemainingMs;
             const remainingText =
               !player.connected && !player.leftBunker ? formatRemaining(remainingMs) : "";
+            const latestMessage = latestMessagesByPlayerId?.get(player.playerId) ?? null;
+            const bubblePlacement = y < centerY ? "below" : "above";
 
             const className = [
               "table-seat",
@@ -202,6 +213,20 @@ export default function TableLayout({
                     <div className="seat-remaining">{text.t("leftTimeLabel", { time: remainingText })}</div>
                   ) : null}
                 </div>
+                {latestMessage ? (
+                  <div
+                    className={`seat-speech-bubble seat-speech-bubble--${bubblePlacement}${
+                      latestMessage.textKey === "match.bot.ai.thinking" ? " seat-speech-bubble--thinking" : ""
+                    }`}
+                    aria-live="polite"
+                  >
+                    {latestMessage.textKey === "match.bot.ai.thinking" ? (
+                      <span className="thinking-text">{latestMessage.text}</span>
+                    ) : (
+                      <TypewriterText text={latestMessage.text} />
+                    )}
+                  </div>
+                ) : null}
               </button>
             );
           })}
@@ -210,4 +235,3 @@ export default function TableLayout({
     </div>
   );
 }
-

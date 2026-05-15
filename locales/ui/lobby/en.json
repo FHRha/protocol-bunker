@@ -10,6 +10,8 @@
   "lobbyKickButton": "Kick",
   "hostMarker": " (host)",
   "controlMarker": " (CONTROL)",
+  "botMarker": " (bot)",
+  "botTakenOverMarker": " (became bot)",
   "transferHostTitle": "Transfer host",
   "transferHostSelectPlaceholder": "No available players",
   "offlineMarker": " (offline)",

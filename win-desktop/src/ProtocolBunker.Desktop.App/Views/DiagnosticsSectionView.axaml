@@ -56,9 +56,11 @@
                 BorderThickness="1"
                 CornerRadius="16"
                 Padding="14">
-          <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding VisibleLogs}">
-              <ItemsControl.ItemTemplate>
+          <ListBox ItemsSource="{Binding VisibleLogs}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Padding="0">
+            <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:RuntimeLogItemViewModel">
                   <Border Background="{StaticResource BunkerPanelStrong}"
                           BorderBrush="{StaticResource BunkerStroke}"
@@ -79,9 +81,8 @@
                     </Grid>
                   </Border>
                 </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
+              </ListBox.ItemTemplate>
+          </ListBox>
         </Border>
       </Grid>
     </Border>

@@ -177,6 +177,8 @@ export default function LobbyPage({
       copiedButton: lobbyTexts.t("copiedButton"),
       copyButton: lobbyTexts.t("copyButton"),
       copyFailed: lobbyTexts.t("copyFailed"),
+      botMarker: lobbyTexts.t("botMarker"),
+      botTakenOverMarker: lobbyTexts.t("botTakenOverMarker"),
       devKickNoTargets: lobbyTexts.t("devKickNoTargets"),
       externalLabel: lobbyTexts.t("externalLabel"),
       externalLinksHint: lobbyTexts.t("externalLinksHint"),
@@ -221,6 +223,15 @@ export default function LobbyPage({
       rulesPresetLabel: lobbyTexts.t("rulesPresetLabel"),
       rulesPresetOptions,
       rulesTitle: lobbyTexts.t("rulesTitle"),
+      settingsBotsAi: lobbyTexts.t("settingsBotsAi"),
+      settingsBotsBlock: lobbyTexts.t("settingsBotsBlock"),
+      settingsBotsCount: lobbyTexts.t("settingsBotsCount"),
+      settingsBotsEnabled: lobbyTexts.t("settingsBotsEnabled"),
+      settingsBotsRuleBased: lobbyTexts.t("settingsBotsRuleBased"),
+      settingsBotsType: lobbyTexts.t("settingsBotsType"),
+      settingsBotsAiLanguage: lobbyTexts.t("settingsBotsAiLanguage"),
+      settingsBotsAiLanguageRu: lobbyTexts.t("settingsBotsAiLanguageRu"),
+      settingsBotsAiLanguageEn: lobbyTexts.t("settingsBotsAiLanguageEn"),
       settingsAutomationAuto: lobbyTexts.t("settingsAutomationAuto"),
       settingsAutomationManual: lobbyTexts.t("settingsAutomationManual"),
       settingsAutomationMode: lobbyTexts.t("settingsAutomationMode"),
@@ -676,7 +687,9 @@ export default function LobbyPage({
   const visiblePlayers = roomState.players.slice(0, maxPlayersVisible);
   const extraPlayers = roomState.players.length - visiblePlayers.length;
   const kickCandidates = roomState.players.filter((player) => player.playerId !== roomState.controlId);
-  const transferHostCandidates = roomState.players.filter((player) => player.playerId !== roomState.hostId);
+  const transferHostCandidates = roomState.players.filter(
+    (player) => !player.isBot && player.playerId !== roomState.hostId
+  );
   const playerIndexById = new Map(roomState.players.map((player, index) => [player.playerId, index]));
   const getFallbackPlayerName = (player: LobbyPlayer): string =>
     lobbyLocale.playerFallback((playerIndexById.get(player.playerId) ?? 0) + 1);
@@ -710,6 +723,8 @@ export default function LobbyPage({
             controlId={roomState.controlId}
             hostMarker={lobbyLocale.hostMarker}
             controlMarker={lobbyLocale.controlMarker}
+            botMarker={lobbyLocale.botMarker}
+            botTakenOverMarker={lobbyLocale.botTakenOverMarker}
             offlineMarker={lobbyLocale.offlineMarker}
             extraPlayers={extraPlayers}
             playerExtraText={extraPlayers > 0 ? lobbyLocale.playerExtra(extraPlayers) : null}
@@ -812,6 +827,15 @@ export default function LobbyPage({
               settingsPreVoteTimer: lobbyLocale.settingsPreVoteTimer,
               settingsPostVoteTimer: lobbyLocale.settingsPostVoteTimer,
               settingsOtherBlock: lobbyLocale.settingsOtherBlock,
+              settingsBotsBlock: lobbyLocale.settingsBotsBlock,
+              settingsBotsEnabled: lobbyLocale.settingsBotsEnabled,
+              settingsBotsType: lobbyLocale.settingsBotsType,
+              settingsBotsRuleBased: lobbyLocale.settingsBotsRuleBased,
+              settingsBotsAi: lobbyLocale.settingsBotsAi,
+              settingsBotsCount: lobbyLocale.settingsBotsCount,
+              settingsBotsAiLanguage: lobbyLocale.settingsBotsAiLanguage,
+              settingsBotsAiLanguageRu: lobbyLocale.settingsBotsAiLanguageRu,
+              settingsBotsAiLanguageEn: lobbyLocale.settingsBotsAiLanguageEn,
               settingsAutomationMode: lobbyLocale.settingsAutomationMode,
               settingsAutomationModeHint: lobbyLocale.settingsAutomationModeHint,
               settingsAutomationAuto: lobbyLocale.settingsAutomationAuto,

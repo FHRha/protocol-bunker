@@ -2611,6 +2611,7 @@ export const scenario: ScenarioModule = {
             revealLimit: alivePlayers().length,
             voting: votePhase && votingState ? { hasVoted: votingState.votes.has(playerId) } : undefined,
             votePhase: votePhase ?? null,
+            voteCandidateIds: votingState ? Array.from(votingState.candidates) : undefined,
             votesPublic: buildVotesPublic(),
             votingProgress: buildVotingProgress(),
             disallowedVoteTargetIdsForYou,

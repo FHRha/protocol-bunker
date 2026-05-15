@@ -15,6 +15,15 @@ interface LobbySettingsTexts {
   settingsPreVoteTimer: string;
   settingsPostVoteTimer: string;
   settingsOtherBlock: string;
+  settingsBotsBlock: string;
+  settingsBotsEnabled: string;
+  settingsBotsType: string;
+  settingsBotsRuleBased: string;
+  settingsBotsAi: string;
+  settingsBotsCount: string;
+  settingsBotsAiLanguage: string;
+  settingsBotsAiLanguageRu: string;
+  settingsBotsAiLanguageEn: string;
   settingsAutomationMode: string;
   settingsAutomationModeHint: string;
   settingsAutomationAuto: string;
@@ -81,6 +90,7 @@ export function LobbySettingsCard({
   const [preVoteSecondsInput, setPreVoteSecondsInput] = useState(String(settings.preVoteDiscussionSeconds));
   const [postVoteSecondsInput, setPostVoteSecondsInput] = useState(String(settings.postVoteDiscussionSeconds));
   const [maxPlayersInput, setMaxPlayersInput] = useState(String(settings.maxPlayers));
+  const [botCountInput, setBotCountInput] = useState(String(settings.bots.count));
 
   useEffect(() => {
     setRevealSecondsInput(String(settings.revealDiscussionSeconds));
@@ -97,6 +107,10 @@ export function LobbySettingsCard({
   useEffect(() => {
     setMaxPlayersInput(String(settings.maxPlayers));
   }, [settings.maxPlayers]);
+
+  useEffect(() => {
+    setBotCountInput(String(settings.bots.count));
+  }, [settings.bots.count]);
 
   const commitNumberField = <K extends keyof GameSettings>(
     key: K,
@@ -120,6 +134,15 @@ export function LobbySettingsCard({
       event.currentTarget.blur();
     }
   };
+
+  const updateBots = (patch: Partial<GameSettings["bots"]>) => {
+    updateField("bots", {
+      ...settings.bots,
+      ...patch,
+    });
+  };
+
+  const normalizeBotCount = (value: number) => Math.max(1, Math.min(15, Math.floor(value)));
 
   return (
     <section className="lobbyCard lobbyCard--settings settingsCard">
@@ -332,6 +355,76 @@ export function LobbySettingsCard({
                   <small className="muted">{text.maxPlayersHint}</small>
                 </div>
               </label>
+
+              <div className="settings-section-title">{text.settingsBotsBlock}</div>
+              <label className="formRow">
+                <span>{text.settingsBotsEnabled}</span>
+                <input
+                  type="checkbox"
+                  checked={settings.bots.enabled}
+                  onChange={(event) =>
+                    updateBots({
+                      enabled: event.target.checked,
+                      count: event.target.checked ? Math.max(1, settings.bots.count) : 0,
+                    })
+                  }
+                />
+              </label>
+              {settings.bots.enabled ? (
+                <>
+                  <label className="formRow">
+                    <span>{text.settingsBotsType}</span>
+                    <select
+                      value={settings.bots.type}
+                      onChange={(event) => updateBots({ type: event.target.value as GameSettings["bots"]["type"] })}
+                    >
+                      <option value="rule_based">{text.settingsBotsRuleBased}</option>
+                      <option value="ai">{text.settingsBotsAi}</option>
+                    </select>
+                  </label>
+                  <label className="formRow">
+                    <span>{text.settingsBotsCount}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={15}
+                      value={botCountInput}
+                      onChange={(event) => {
+                        const rawValue = event.target.value;
+                        setBotCountInput(rawValue);
+                        if (rawValue.trim() === "") return;
+                        const value = Number(rawValue);
+                        if (Number.isFinite(value)) {
+                          updateBots({ count: normalizeBotCount(value) });
+                        }
+                      }}
+                      onBlur={() => {
+                        const value = Number(botCountInput);
+                        if (!Number.isFinite(value)) {
+                          setBotCountInput(String(settings.bots.count));
+                          return;
+                        }
+                        updateBots({ count: normalizeBotCount(value) });
+                      }}
+                      onKeyDown={blurOnEnter}
+                    />
+                  </label>
+                </>
+              ) : null}
+              {settings.bots.enabled && settings.bots.type === "ai" ? (
+                <label className="formRow">
+                  <span>{text.settingsBotsAiLanguage}</span>
+                  <select
+                    value={settings.bots.aiLanguage}
+                    onChange={(event) =>
+                      updateBots({ aiLanguage: event.target.value as GameSettings["bots"]["aiLanguage"] })
+                    }
+                  >
+                    <option value="ru">{text.settingsBotsAiLanguageRu}</option>
+                    <option value="en">{text.settingsBotsAiLanguageEn}</option>
+                  </select>
+                </label>
+              ) : null}
             </div>
           </fieldset>
         ) : (
@@ -382,6 +475,21 @@ export function LobbySettingsCard({
             <div>
               {text.settingsMaxPlayers}: {settings.maxPlayers}
             </div>
+            <div>
+              {text.settingsBotsEnabled}: {settings.bots.enabled ? text.settingsOn : text.settingsOff}
+            </div>
+            {settings.bots.enabled ? (
+              <div>
+                {text.settingsBotsType}:{" "}
+                {settings.bots.type === "ai" ? text.settingsBotsAi : text.settingsBotsRuleBased} ({settings.bots.count})
+              </div>
+            ) : null}
+            {settings.bots.enabled && settings.bots.type === "ai" ? (
+              <div>
+                {text.settingsBotsAiLanguage}:{" "}
+                {settings.bots.aiLanguage === "en" ? text.settingsBotsAiLanguageEn : text.settingsBotsAiLanguageRu}
+              </div>
+            ) : null}
           </div>
         )}
         {canControl && wsHint ? <div className="muted wsDisabledHint">{wsHint}</div> : null}

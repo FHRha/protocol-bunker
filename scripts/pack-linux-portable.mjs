@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { buildPortableEnv, buildPortableReadme } from "./env/portable-env.mjs";
 
 const SUPPORTED_ARCHES = {
   x64: { label: "x64", nodeDistArch: "x64" },
@@ -781,6 +782,7 @@ function buildStartSh(profile) {
     'CONFIG_DOMAIN=""',
     'CONFIG_PUBLIC_HOST=""',
     'CONFIG_PUBLIC_ORIGIN=""',
+    'CONFIG_TRUST_PROXY="auto"',
     'CONFIG_LOG_RETENTION_DAYS="14"',
     'MODE=""',
     'DOMAIN=""',
@@ -830,6 +832,24 @@ function buildStartSh(profile) {
     '  [[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]',
     "}",
     "",
+    "resolve_trust_proxy() {",
+    '  local value',
+    '  value="$(printf "%s" "$CONFIG_TRUST_PROXY" | tr "[:upper:]" "[:lower:]")"',
+    '  if [[ -z "$value" || "$value" == "auto" ]]; then',
+    '    if [[ "$MODE" == "domain" ]]; then',
+    '      printf "true"',
+    "    else",
+    '      printf "false"',
+    "    fi",
+    "    return",
+    "  fi",
+    '  if is_truthy "$value"; then',
+    '    printf "true"',
+    "  else",
+    '    printf "false"',
+    "  fi",
+    "}",
+    "",
     "parse_portable_env() {",
     '  local env_file',
     '  for env_file in "$ENV_FILE" "$LEGACY_ENV_FILE"; do',
@@ -845,6 +865,8 @@ function buildStartSh(profile) {
     "        local key value",
     '        key="$(printf "%s" "${BASH_REMATCH[1]}" | tr "[:lower:]" "[:upper:]")"',
     '        value="$(trim "${BASH_REMATCH[2]}")"',
+    '        value="$(printf "%s" "$value" | sed -E "s/[[:space:]]+#.*$//")"',
+    '        value="$(trim "$value")"',
     '        case "$key" in',
     '          PORT) CONFIG_PORT="$value" ;;',
     '          DEV_MODE) CONFIG_DEV_MODE="$value" ;;',
@@ -852,8 +874,12 @@ function buildStartSh(profile) {
     '          DOMAIN) CONFIG_DOMAIN="$value" ;;',
     '          PUBLIC_HOST) CONFIG_PUBLIC_HOST="$value" ;;',
     '          PUBLIC_ORIGIN) CONFIG_PUBLIC_ORIGIN="$value" ;;',
+    '          TRUST_PROXY) CONFIG_TRUST_PROXY="$value" ;;',
     '          LOG_RETENTION_DAYS) CONFIG_LOG_RETENTION_DAYS="$value" ;;',
     "        esac",
+    '        if [[ "$key" == BUNKER_* ]]; then',
+    '          export "$key=$value"',
+    "        fi",
     "      fi",
     '    done < "$env_file"',
     "  done",
@@ -1131,13 +1157,13 @@ function buildStartSh(profile) {
     "",
     'if [[ "$MODE" == "domain" ]]; then',
     '  export HOST="127.0.0.1"',
-    '  export TRUST_PROXY="true"',
+    '  export TRUST_PROXY="$(resolve_trust_proxy)"',
     '  export PUBLIC_ORIGIN="https://${DOMAIN}"',
     '  unset PUBLIC_HOST || true',
     '  unset BUNKER_PUBLIC_HOST || true',
     "else",
     '  export HOST="0.0.0.0"',
-    '  export TRUST_PROXY="false"',
+    '  export TRUST_PROXY="$(resolve_trust_proxy)"',
     '  if [[ -n "$CONFIG_PUBLIC_ORIGIN" ]]; then',
     '    export PUBLIC_ORIGIN="$CONFIG_PUBLIC_ORIGIN"',
     "  else",
@@ -1213,64 +1239,8 @@ function buildStartSh(profile) {
   return `${lines.join("\n")}\n`;
 }
 
-function buildPortableEnv(profile) {
-  const isServer = profile === "server";
-  return `PORT=0
-DEV_MODE=0
-# MODE=local
-# MODE=domain
-# DOMAIN=bunker.example.com
-# PUBLIC_HOST=203.0.113.10
-# PUBLIC_ORIGIN=http://203.0.113.10:8080
-# BUNKER_ENFORCE_ORIGIN_CHECKS=1
-# BUNKER_ALLOWED_ORIGINS=https://admin.example.com,https://overlay.example.com
-# BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1
-# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_MAX=120
-# BUNKER_SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS=60000
-# LOG_RETENTION_DAYS=14
-# PORT=56986
-# DEV_MODE=1
-# PROFILE=${isServer ? "server" : "public"}
-`;
-}
-
 function buildReadme(profile) {
-  const isServer = profile === "server";
-  return `Protocol Bunker Portable (Linux ${isServer ? "Server" : "Public"})
-================================
-
-Start:
-1. chmod +x start.sh
-2. Run ./start.sh
-3. Wait for startup lines in terminal
-
-Modes:
-- MODE=local|domain in portable.env
-- DOMAIN=your.domain.com for domain mode
-- Domain mode requires fixed PORT (PORT must be 1..65535)
-- For local mode, set PUBLIC_HOST or PUBLIC_ORIGIN in portable.env to skip WAN lookup
-- BUNKER_ENFORCE_ORIGIN_CHECKS=1 enables strict origin validation
-- BUNKER_ALLOWED_ORIGINS=... adds extra allowed browser origins; same-origin is always allowed
-- BUNKER_SENSITIVE_HTTP_RATE_LIMIT=1 keeps sensitive HTTP routes rate-limited
-- If PUBLIC_HOST/PUBLIC_ORIGIN are not set, WAN is detected via ipify/ifconfig
-
-Port:
-- Set PORT=0 for auto-port
-- Set PORT=XXXXX for fixed port
-- Actual port is saved to logs/port.txt
-
-Dev mode:
-- DEV_MODE=1 enables dev_tab behavior and dev logs/scenarios
-
-Logs:
-- logs/server-YYYY-MM-DD.log (daily server log)
-- logs/server.log (alias to current daily log)
-- logs/port.txt
-- logs/urls.txt
-- logs/last-start.txt
-- retention: set LOG_RETENTION_DAYS in portable.env (default: 14, 0 disables cleanup)
-${isServer ? "- Server profile hides LAN/localhost links in launcher output." : "- Public profile prints both Public and Local links."}
-`;
+  return buildPortableReadme({ platform: "linux", profile });
 }
 
 function getVariantPaths(variantDir) {
@@ -1286,7 +1256,7 @@ function getVariantPaths(variantDir) {
 
 function writeVariantLaunchFiles(paths, profile) {
   writeFile(paths.startShPath, buildStartSh(profile));
-  writeFile(paths.portableEnvPath, buildPortableEnv(profile));
+  writeFile(paths.portableEnvPath, buildPortableEnv({ platform: "linux", profile }));
   writeFile(paths.readmePath, buildReadme(profile));
   writePortableRuntimeStamp(paths);
   fs.chmodSync(paths.startShPath, 0o755);

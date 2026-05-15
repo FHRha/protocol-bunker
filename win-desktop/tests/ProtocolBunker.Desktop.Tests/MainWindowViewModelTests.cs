@@ -108,6 +108,7 @@ public sealed class MainWindowViewModelTests
             new FakeRoomLinkService(),
             new FakePlatformShellService(),
             new FakeUpdateService(),
+            new FakeAiAccessKeyService(),
             new FakeLocalizationService());
     }
 }

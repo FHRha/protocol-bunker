@@ -35,65 +35,112 @@
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="2"
-            Background="{StaticResource BunkerPanel}"
-            CornerRadius="20"
-            Padding="22"
-            BorderBrush="{StaticResource BunkerStroke}"
-            BorderThickness="1">
-      <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,14,Auto,14,Auto,14,Auto,14,Auto,14,Auto,14,Auto">
-        <TextBlock Text="{Binding T.NetworkMode}" Foreground="{StaticResource BunkerSubtle}" />
-        <ComboBox Grid.Column="1"
-                  IsEnabled="{Binding !IsSettingsLocked}"
-                  ItemsSource="{Binding ModeOptions}"
-                  SelectedIndex="{Binding SelectedModeIndex}">
-          <ComboBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding Label}" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
+    <ScrollViewer Grid.Row="2">
+      <StackPanel Spacing="20">
+        <Border Background="{StaticResource BunkerPanel}"
+                CornerRadius="20"
+                Padding="22"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1">
+          <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,14,Auto,14,Auto,14,Auto,14,Auto,14,Auto,14,Auto">
+            <TextBlock Text="{Binding T.NetworkMode}" Foreground="{StaticResource BunkerSubtle}" />
+            <ComboBox Grid.Column="1"
+                      IsEnabled="{Binding !IsSettingsLocked}"
+                      ItemsSource="{Binding ModeOptions}"
+                      SelectedIndex="{Binding SelectedModeIndex}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
 
-        <TextBlock Grid.Row="2" Text="{Binding T.NetworkPort}" Foreground="{StaticResource BunkerSubtle}" />
-        <TextBox Grid.Row="2"
-                 Grid.Column="1"
-                 IsEnabled="{Binding !IsSettingsLocked}"
-                 Text="{Binding EditablePort}" />
+            <TextBlock Grid.Row="2" Text="{Binding T.NetworkPort}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="2"
+                     Grid.Column="1"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditablePort}" />
 
-        <TextBlock Grid.Row="4" Text="{Binding T.NetworkPublicHost}" Foreground="{StaticResource BunkerSubtle}" />
-        <TextBox Grid.Row="4"
-                 Grid.Column="1"
-                 IsEnabled="{Binding !IsSettingsLocked}"
-                 Text="{Binding EditablePublicHost}" />
+            <TextBlock Grid.Row="4" Text="{Binding T.NetworkPublicHost}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="4"
+                     Grid.Column="1"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditablePublicHost}" />
 
-        <TextBlock Grid.Row="6" Text="{Binding T.NetworkDomain}" Foreground="{StaticResource BunkerSubtle}" />
-        <TextBox Grid.Row="6"
-                 Grid.Column="1"
-                 IsEnabled="{Binding !IsSettingsLocked}"
-                 Text="{Binding EditableDomain}" />
+            <TextBlock Grid.Row="6" Text="{Binding T.NetworkDomain}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="6"
+                     Grid.Column="1"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditableDomain}" />
 
-        <TextBlock Grid.Row="8" Text="{Binding T.NetworkDataRoot}" Foreground="{StaticResource BunkerSubtle}" />
-        <Grid Grid.Row="8" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-          <TextBox Text="{Binding EditableDataRoot}"
-                   IsEnabled="{Binding !IsSettingsLocked}" />
-          <Button Grid.Column="1"
-                  Content="{Binding T.CommonOpen}"
-                  Command="{Binding OpenDataRootCommand}" />
-        </Grid>
+            <TextBlock Grid.Row="8" Text="{Binding T.NetworkDataRoot}" Foreground="{StaticResource BunkerSubtle}" />
+            <Grid Grid.Row="8" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox Text="{Binding EditableDataRoot}"
+                       IsEnabled="{Binding !IsSettingsLocked}" />
+              <Button Grid.Column="1"
+                      Content="{Binding T.CommonOpen}"
+                      Command="{Binding OpenDataRootCommand}" />
+            </Grid>
 
-        <CheckBox Grid.Row="10"
-                  Grid.ColumnSpan="2"
-                  IsEnabled="{Binding !IsSettingsLocked}"
-                  Content="{Binding T.NetworkDeveloperMode}"
-                  IsChecked="{Binding EditableDeveloperMode}" />
+            <CheckBox Grid.Row="10"
+                      Grid.ColumnSpan="2"
+                      IsEnabled="{Binding !IsSettingsLocked}"
+                      Content="{Binding T.NetworkDeveloperMode}"
+                      IsChecked="{Binding EditableDeveloperMode}" />
 
-        <TextBlock Grid.Row="12"
-                   Grid.ColumnSpan="2"
-                   IsVisible="{Binding IsSettingsLocked}"
-                   Text="{Binding LockReason}"
-                   Foreground="{StaticResource BunkerAccent}"
-                   TextWrapping="Wrap" />
-      </Grid>
-    </Border>
+            <TextBlock Grid.Row="12"
+                       Grid.ColumnSpan="2"
+                       IsVisible="{Binding IsSettingsLocked}"
+                       Text="{Binding LockReason}"
+                       Foreground="{StaticResource BunkerAccent}"
+                       TextWrapping="Wrap" />
+          </Grid>
+        </Border>
+
+        <Border Background="{StaticResource BunkerPanel}"
+                CornerRadius="20"
+                Padding="22"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1">
+          <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,8,Auto,16,Auto,14,Auto,14,Auto,14,Auto">
+            <TextBlock Text="{Binding T.NetworkAiGatewayTitle}"
+                       Grid.ColumnSpan="2"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource BunkerText}" />
+            <TextBlock Grid.Row="2"
+                       Grid.ColumnSpan="2"
+                       Text="{Binding T.NetworkAiGatewayBody}"
+                       Foreground="{StaticResource BunkerMuted}"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Grid.Row="4" Text="{Binding T.NetworkAiGatewayBaseUrl}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="4"
+                     Grid.Column="1"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditableAiGatewayBaseUrl}" />
+
+            <TextBlock Grid.Row="6" Text="{Binding T.NetworkAiGatewayApiKey}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="6"
+                     Grid.Column="1"
+                     PasswordChar="*"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditableAiGatewayApiKey}" />
+
+            <TextBlock Grid.Row="8" Text="{Binding T.NetworkAiGatewayModel}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="8"
+                     Grid.Column="1"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditableAiGatewayModel}" />
+
+            <TextBlock Grid.Row="10" Text="{Binding T.NetworkAiGatewayTimeoutMs}" Foreground="{StaticResource BunkerSubtle}" />
+            <TextBox Grid.Row="10"
+                     Grid.Column="1"
+                     IsEnabled="{Binding !IsSettingsLocked}"
+                     Text="{Binding EditableAiGatewayTimeoutMs}" />
+          </Grid>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
   </Grid>
 </UserControl>

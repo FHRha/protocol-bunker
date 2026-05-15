@@ -27,6 +27,8 @@ export function createSessionActions({ client, clearAppErrors, ensureWsInteracti
       sendInteractive(() => client.send({ type: "applySpecial", payload: { specialInstanceId, payload } })),
     finalizeVoting: () => sendInteractive(() => client.send({ type: "finalizeVoting", payload: {} })),
     continueRound: () => sendInteractive(() => client.send({ type: "continueRound", payload: {} })),
+    sendMatchMessage: (text: string) =>
+      sendInteractive(() => client.send({ type: "sendMatchMessage", payload: { text } })),
     revealWorldThreat: (index: number) =>
       sendInteractive(() => client.send({ type: "revealWorldThreat", payload: { index } })),
     setBunkerOutcome: (outcome: "survived" | "failed") =>
@@ -41,6 +43,8 @@ export function createSessionActions({ client, clearAppErrors, ensureWsInteracti
       sendInteractive(() => client.send({ type: "devKickPlayer", payload: { targetPlayerId } })),
     updateSettings: (settings: GameSettings) =>
       sendInteractive(() => client.send({ type: "updateSettings", payload: settings })),
+    updateAiAccessKey: (key: string) =>
+      sendInteractive(() => client.send({ type: "updateAiAccessKey", payload: { key } })),
     updateRules: (payload: RulesUpdatePayload) =>
       sendInteractive(() => client.send({ type: "updateRules", payload })),
     kickFromLobby: (targetPlayerId: string) =>

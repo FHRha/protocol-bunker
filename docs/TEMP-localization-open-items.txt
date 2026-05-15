@@ -1,19 +1,20 @@
 # TEMP: localization open items
 
-Generated: 2026-03-21T09:40:07.024Z
+Generated: 2026-04-29T15:04:56.878Z
 
 ## UI (en -> ru)
-- keys en: 462
-- keys ru: 462
+- keys en: 490
+- keys ru: 490
 - missing in ru: 0
 - missing in en: 0
-- ru equals en: 2
+- ru equals en: 3
 - en with cyrillic: 0
 - en suspicious placeholders: 0
 
 ### UI ru equals en
 - hostMenuVoteTotalRow = {name}: {count}
 - rulesPresetOptions = 4,5,6,7,8,9,10,11,12,13,14,15,16
+- settingsAiAccessKeyPlaceholder = pbai_...
 
 ## Cards (en -> ru)
 - keys en: 352
@@ -24,25 +25,46 @@ Generated: 2026-03-21T09:40:07.024Z
 - en with cyrillic key: 0
 
 ## Server error keys (index.ts -> locales/server)
-- used keys in index.ts: 61
-- keys in locales/server/ru.json: 77
-- keys in locales/server/en.json: 77
+- used keys in index.ts: 13
+- keys in locales/server/ru.json: 82
+- keys in locales/server/en.json: 82
 - missing in server ru: 0
 - missing in server en: 0
-- unused in index.ts: 16
+- unused in index.ts: 69
 - en with cyrillic value: 0
 - en suspicious placeholders: 0
 
 ### Server keys unused in index.ts
+- error.actionControlOnly
+- error.actionPlayerPermission
+- error.aiAccessRequired
+- error.aiGatewayNotConfigured
+- error.alreadyHost
+- error.cannotKickHost
+- error.cannotTransferHostOffline
+- error.commandClassicOnly
+- error.commandLobbyOnly
+- error.control.actorNotFoundInRoom
 - error.control.actorPlayerRequired
+- error.control.addBotFailed
+- error.control.availableAfterGameStart
 - error.control.bunkerOutcomeInvalid
+- error.control.cannotKickControl
 - error.control.cardIdRequired
+- error.control.gameAlreadyStarted
 - error.control.kickTargetRequired
 - error.control.markLeftBunkerTargetRequired
+- error.control.minPlayersRequired
+- error.control.noActiveHost
+- error.control.phaseDetectFailed
 - error.control.playerCardRequired
+- error.control.scenarioActionTypeRequired
+- error.control.skipStepUnavailable
 - error.control.specialInstanceIdRequired
 - error.control.specialSelectionRequired
+- error.control.targetPlayerRequired
 - error.control.threatIndexInvalid
+- error.control.unknownCommand
 - error.control.unsupportedScenarioAction
 - error.control.voteTargetRequired
 - error.control.worldCardIndexInvalid
@@ -50,6 +72,38 @@ Generated: 2026-03-21T09:40:07.024Z
 - error.control.worldIndexRequiredForBunkerThreat
 - error.control.worldKindBunkerThreatDisasterRequired
 - error.control.worldKindBunkerThreatRequired
+- error.controlPlayerNotFoundInRoom
+- error.devCommandsOnlyDevScenarios
+- error.devModeDisabled
+- error.gameNotFound
+- error.invalidJson
+- error.invalidMessageFormat
+- error.leftBunkerRejoinAsNew
+- error.maxPlayersLowerThanCurrent
+- error.noOtherPlayerForHostTransfer
+- error.notInRoom
+- error.onlyControlChangeRules
+- error.onlyControlChangeSettings
+- error.onlyControlKick
+- error.onlyControlStartGame
+- error.onlyControlTransferRole
+- error.overlaySubscribeRoomNotFound
+- error.overlaySubscribeUnauthorized
+- error.playerRestoreFailed
+- error.playerRestoreFailedRejoin
+- error.reconnectForbidden
+- error.roomCodeRequired
+- error.roomFull
+- error.rulesClassicOnly
+- error.rulesLobbyOnly
+- error.scenarioIdRequired
+- error.scenarioNotFound
+- error.scenarioStateFailed
+- error.settingsLobbyOnly
+- error.startGameFailed
+- error.tabIdRequiredDev
+- error.targetPlayerNotFound
+- error.unknownMessage
 
 ## Scenario classic (classic.ts -> locales/scenario/classic)
 - keys in classic.ts: 161

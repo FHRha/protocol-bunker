@@ -105,10 +105,12 @@ export function pickNextHost(room: Room, excludeId?: string): string | undefined
   if (order.length === 0) return undefined;
   for (const id of order) {
     if (excludeId && id === excludeId) continue;
+    if (room.players.get(id)?.isBot) continue;
     if (isPlayerAlive(room, id)) return id;
   }
   for (const id of order) {
     if (excludeId && id === excludeId) continue;
+    if (room.players.get(id)?.isBot) continue;
     return id;
   }
   return undefined;

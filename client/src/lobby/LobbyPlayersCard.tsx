@@ -9,6 +9,8 @@ interface LobbyPlayersCardProps {
   controlId: string | null;
   hostMarker: string;
   controlMarker: string;
+  botMarker: string;
+  botTakenOverMarker: string;
   offlineMarker: string;
   extraPlayers: number;
   playerExtraText: string | null;
@@ -42,6 +44,8 @@ export function LobbyPlayersCard({
   controlId,
   hostMarker,
   controlMarker,
+  botMarker,
+  botTakenOverMarker,
   offlineMarker,
   extraPlayers,
   playerExtraText,
@@ -81,6 +85,7 @@ export function LobbyPlayersCard({
                 {safeName}
                 {player.playerId === hostId ? hostMarker : ""}
                 {player.playerId === controlId ? controlMarker : ""}
+                {player.isBot ? (player.disconnectedBotTakeoverAt ? botTakenOverMarker : botMarker) : ""}
                 {player.connected ? "" : offlineMarker}
               </li>
             );
@@ -118,6 +123,7 @@ export function LobbyPlayersCard({
                   return (
                     <option key={player.playerId} value={player.playerId}>
                       {safeName}
+                      {player.isBot ? (player.disconnectedBotTakeoverAt ? botTakenOverMarker : botMarker) : ""}
                       {player.playerId === controlId ? controlMarker : ""}
                     </option>
                   );

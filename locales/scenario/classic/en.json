@@ -55,7 +55,7 @@
   "classic.auto.039": "Failed to select a world card.",
   "classic.auto.040": "Failed to determine the deck for world cards.",
   "classic.auto.041": "Invalid target.",
-  "classic.auto.042": "Invalid candidate.",
+  "classic.auto.042": "This player is not part of the current revote. Choose one of the tied candidates.",
   "classic.auto.043": "Invalid neighbor.",
   "classic.auto.044": "Not enough players for neighbors.",
   "classic.auto.045": "Unknown category.",

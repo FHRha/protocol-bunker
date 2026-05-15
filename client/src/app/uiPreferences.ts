@@ -12,6 +12,7 @@ export const UI_STORAGE_KEYS = {
   showSpectatorLinks: "bunker.showSpectatorLinks",
   showHints: "bunker.showHints",
   toastDuration: "bunker.toastDurationMs",
+  aiAccessKey: "bunker.aiAccessKey",
 } as const;
 
 export type ThemeMode =
@@ -120,4 +121,9 @@ export function getInitialShowSpectatorLinks(): boolean {
 export function getInitialShowHints(): boolean {
   if (typeof window === "undefined") return true;
   return localStorage.getItem(UI_STORAGE_KEYS.showHints) !== "0";
+}
+
+export function getInitialAiAccessKey(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(UI_STORAGE_KEYS.aiAccessKey) ?? "";
 }

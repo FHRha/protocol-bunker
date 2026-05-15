@@ -1,6 +1,7 @@
-import type { GameView, OverlayState, PlayerStatus, Role, RoomState, ServerMessage } from "@bunker/shared";
+import type { GameView, MatchMessage, OverlayState, PlayerStatus, Role, RoomState, ServerMessage } from "@bunker/shared";
 import type { WebSocket } from "ws";
 import type { Player, Room } from "../core/types.js";
+import { appendSystemMatchMessageForView } from "../game/matchMessages.js";
 
 export interface GameStatePresenterDeps {
   disconnectGraceMs: number;
@@ -27,6 +28,8 @@ export interface GameStatePresenterDeps {
     scenarioId: string
   ) => GameView;
   getPlayerCardLocale: (player?: Player) => import("@bunker/shared").CardLocale;
+  localizePlayerName: (player: Player, locale: import("@bunker/shared").CardLocale) => string;
+  localizeMatchMessages: (messages: MatchMessage[], player?: Player, room?: Room) => MatchMessage[];
   devLog: (...args: unknown[]) => void;
 }
 
@@ -99,6 +102,7 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
   }
   try {
     const view = room.session.getGameView(player.playerId);
+    const locale = deps.getPlayerCardLocale(player);
     syncScenarioStatuses(room, view.public.players);
     const enrichedPlayers = view.public.players.map((entry) => {
       const roomPlayer = room.players.get(entry.playerId);
@@ -108,7 +112,11 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
           : 0;
       return {
         ...entry,
+        name: roomPlayer ? deps.localizePlayerName(roomPlayer, locale) : entry.name,
         connected: roomPlayer?.connected ?? false,
+        isBot: roomPlayer?.isBot,
+        botType: roomPlayer?.botType,
+        disconnectedBotTakeoverAt: roomPlayer?.disconnectedBotTakeoverAt,
         disconnectedAt: roomPlayer?.disconnectedAt,
         totalAbsentMs: roomPlayer?.totalAbsentMs ?? 0,
         currentOfflineMs,
@@ -124,10 +132,11 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
       public: {
         ...view.public,
         players: enrichedPlayers,
+        matchMessages: deps.localizeMatchMessages(room.matchMessages, player, room),
       },
     };
     room.world = payload.world;
-    const localizedPayload = deps.localizeGameViewForLocale(payload, deps.getPlayerCardLocale(player), room.scenarioId);
+    const localizedPayload = deps.localizeGameViewForLocale(payload, locale, room.scenarioId);
     if (!room.lastGameViews) {
       room.lastGameViews = new Map();
     }
@@ -158,6 +167,14 @@ export function sendGameView(room: Room, player: Player, deps: GameStatePresente
 
 export function broadcastGameViews(room: Room, deps: GameStatePresenterDeps): void {
   if (!room.session) return;
+  const anchorId = room.sessionPlayerIds?.values().next().value ?? room.hostId;
+  if (anchorId) {
+    try {
+      appendSystemMatchMessageForView(room, room.session.getGameView(anchorId));
+    } catch {
+      // Best-effort narration should not block state delivery.
+    }
+  }
   for (const player of room.players.values()) {
     if (!player.ws) continue;
     try {

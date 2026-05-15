@@ -28,6 +28,10 @@ public sealed class NetworkSectionViewModel : ViewModelBase
     private string _editablePublicHost = string.Empty;
     private string _editableDomain = string.Empty;
     private string _editableDataRoot = string.Empty;
+    private string _editableAiGatewayBaseUrl = string.Empty;
+    private string _editableAiGatewayApiKey = string.Empty;
+    private string _editableAiGatewayModel = string.Empty;
+    private string _editableAiGatewayTimeoutMs = "45000";
     private bool _editableDeveloperMode;
     private string _settingsStatus;
     private bool _isSettingsLocked;
@@ -110,6 +114,30 @@ public sealed class NetworkSectionViewModel : ViewModelBase
     {
         get => _editableDataRoot;
         set => SetProperty(ref _editableDataRoot, value);
+    }
+
+    public string EditableAiGatewayBaseUrl
+    {
+        get => _editableAiGatewayBaseUrl;
+        set => SetProperty(ref _editableAiGatewayBaseUrl, value);
+    }
+
+    public string EditableAiGatewayApiKey
+    {
+        get => _editableAiGatewayApiKey;
+        set => SetProperty(ref _editableAiGatewayApiKey, value);
+    }
+
+    public string EditableAiGatewayModel
+    {
+        get => _editableAiGatewayModel;
+        set => SetProperty(ref _editableAiGatewayModel, value);
+    }
+
+    public string EditableAiGatewayTimeoutMs
+    {
+        get => _editableAiGatewayTimeoutMs;
+        set => SetProperty(ref _editableAiGatewayTimeoutMs, value);
     }
 
     public bool EditableDeveloperMode

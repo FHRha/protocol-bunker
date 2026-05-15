@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { WebSocket } from "ws";
-import type { ClientHelloPayload, GameEvent } from "@bunker/shared";
+import type { ClientHelloPayload, GameEvent, LobbyBotType } from "@bunker/shared";
 import type { IdentityMode, Player, Room } from "../core/types.js";
 import { connectionInfo, rooms } from "../core/serverState.js";
 
@@ -70,6 +70,10 @@ export function cleanupInactiveRooms(deps: CleanupInactiveRoomsDeps): void {
       clearTimeout(room.hostTransferTimer);
       room.hostTransferTimer = undefined;
     }
+    if (room.botActionTimer) {
+      clearTimeout(room.botActionTimer);
+      room.botActionTimer = undefined;
+    }
     for (const player of room.players.values()) {
       if (player.disconnectTimer) {
         clearTimeout(player.disconnectTimer);
@@ -100,6 +104,49 @@ export function generateRoomCode(): string {
   }
   if (rooms.has(code)) return generateRoomCode();
   return code;
+}
+
+function getLocalizedBotNameCandidates(room: Room, deps: AddLobbyBotPlayerDeps): Array<{ name: string; key?: string }> {
+  const candidates: Array<{ name: string; key?: string }> = [];
+  for (let index = 1; index <= 16; index += 1) {
+    const key = `info.botNames.${index}`;
+    const localized = deps.tServerForRoom(room, key);
+    if (localized && localized !== key) {
+      candidates.push({ name: localized, key });
+    }
+  }
+
+  const fallback = deps.tServerForRoom(room, "info.botDefaultName");
+  if (fallback && fallback !== "info.botDefaultName") {
+    candidates.push({ name: fallback, key: "info.botDefaultName" });
+  }
+
+  return candidates;
+}
+
+function resolveLobbyBotName(room: Room, deps: AddLobbyBotPlayerDeps, preferredName?: string): { name: string; key?: string } {
+  const explicitName = String(preferredName ?? "").trim();
+  const existingNames = new Set(
+    Array.from(room.players.values()).map((player) => String(player.name || "").trim().toLocaleLowerCase("ru-RU"))
+  );
+
+  const candidates = explicitName ? [{ name: explicitName }] : getLocalizedBotNameCandidates(room, deps);
+  for (const candidate of candidates) {
+    const trimmed = candidate.name.trim();
+    if (trimmed && !existingNames.has(trimmed.toLocaleLowerCase("ru-RU"))) {
+      return { name: trimmed, key: candidate.key };
+    }
+  }
+
+  const fallbackCandidate = candidates.find((candidate) => candidate.name.trim());
+  const baseName = fallbackCandidate?.name.trim() || "Bot";
+  let nextName = baseName;
+  let suffix = 2;
+  while (existingNames.has(nextName.toLocaleLowerCase("ru-RU"))) {
+    nextName = `${baseName} ${suffix}`;
+    suffix += 1;
+  }
+  return { name: nextName, key: fallbackCandidate?.key };
 }
 
 export function removeLobbyPlayer(room: Room, playerId: string, deps: RemoveLobbyPlayerDeps): boolean {
@@ -139,7 +186,25 @@ export function removeLobbyPlayer(room: Room, playerId: string, deps: RemoveLobb
       clearTimeout(room.hostTransferTimer);
       room.hostTransferTimer = undefined;
     }
+    if (room.botActionTimer) {
+      clearTimeout(room.botActionTimer);
+      room.botActionTimer = undefined;
+    }
     deps.logRoomLifecycle("closed", room.code, { reason: "empty_lobby" });
+    rooms.delete(room.code);
+    return true;
+  }
+
+  if (!Array.from(room.players.values()).some((remainingPlayer) => !remainingPlayer.isBot)) {
+    if (room.hostTransferTimer) {
+      clearTimeout(room.hostTransferTimer);
+      room.hostTransferTimer = undefined;
+    }
+    if (room.botActionTimer) {
+      clearTimeout(room.botActionTimer);
+      room.botActionTimer = undefined;
+    }
+    deps.logRoomLifecycle("closed", room.code, { reason: "only_bots_left" });
     rooms.delete(room.code);
     return true;
   }
@@ -164,27 +229,26 @@ export function removeLobbyPlayer(room: Room, playerId: string, deps: RemoveLobb
   return true;
 }
 
-export function addLobbyBotPlayer(room: Room, deps: AddLobbyBotPlayerDeps, preferredName?: string): Player | null {
+export function addLobbyBotPlayer(
+  room: Room,
+  deps: AddLobbyBotPlayerDeps,
+  preferredName?: string,
+  botType: LobbyBotType = "rule_based"
+): Player | null {
   if (room.phase !== "lobby") return null;
   const maxPlayers = deps.getEffectiveMaxPlayers(room);
   if (room.players.size >= maxPlayers) return null;
 
-  const baseName = String(preferredName ?? "").trim() || deps.tServerForRoom(room, "info.botDefaultName");
-  const existingNames = new Set(
-    Array.from(room.players.values()).map((player) => String(player.name || "").trim().toLocaleLowerCase("ru-RU"))
-  );
-  let nextName = baseName;
-  let suffix = 2;
-  while (existingNames.has(nextName.toLocaleLowerCase("ru-RU"))) {
-    nextName = `${baseName} ${suffix}`;
-    suffix += 1;
-  }
+  const nextName = resolveLobbyBotName(room, deps, preferredName);
 
   const bot: Player = {
     playerId: crypto.randomUUID(),
-    name: nextName,
+    name: nextName.name,
     token: deps.generatePlayerReconnectToken(),
     connected: true,
+    isBot: true,
+    botType,
+    botNameKey: nextName.key,
     totalAbsentMs: 0,
     needsFullState: false,
     needsFullGameView: false,
@@ -194,8 +258,49 @@ export function addLobbyBotPlayer(room: Room, deps: AddLobbyBotPlayerDeps, prefe
   room.playersByToken.set(bot.token, bot.playerId);
   room.joinOrder.push(bot.playerId);
   deps.updateRulesetIfAuto(room);
-  deps.logRoomLifecycle("joined", room.code, { player: bot.name, count: room.players.size, phase: room.phase });
+  deps.logRoomLifecycle("joined", room.code, {
+    player: bot.name,
+    count: room.players.size,
+    phase: room.phase,
+    isBot: true,
+    botType: bot.botType,
+  });
   return bot;
+}
+
+export function removeLobbyBotPlayer(room: Room, playerId: string, deps: RemoveLobbyPlayerDeps): boolean {
+  const player = room.players.get(playerId);
+  if (!player?.isBot) return false;
+  return removeLobbyPlayer(room, playerId, deps);
+}
+
+export function syncLobbyBotPlayers(
+  room: Room,
+  deps: AddLobbyBotPlayerDeps & RemoveLobbyPlayerDeps
+): { added: number; removed: number } {
+  if (room.phase !== "lobby") return { added: 0, removed: 0 };
+
+  const desiredCount = room.settings.bots.enabled ? Math.max(0, Math.floor(room.settings.bots.count)) : 0;
+  const desiredType = room.settings.bots.type;
+  let added = 0;
+  let removed = 0;
+
+  const bots = () => Array.from(room.players.values()).filter((player) => player.isBot);
+  for (const bot of bots()) {
+    if (bot.botType !== desiredType || bots().length > desiredCount) {
+      if (removeLobbyBotPlayer(room, bot.playerId, deps)) {
+        removed += 1;
+      }
+    }
+  }
+
+  while (bots().length < desiredCount) {
+    const next = addLobbyBotPlayer(room, deps, undefined, desiredType);
+    if (!next) break;
+    added += 1;
+  }
+
+  return { added, removed };
 }
 
 export function attachPlayer(
@@ -238,6 +343,10 @@ export function attachPlayer(
   if (wasDisconnected) {
     player.totalAbsentMs = 0;
     player.disconnectedAt = undefined;
+  }
+  if (player.isBot && !player.disconnectedBotTakeoverAt) {
+    player.isBot = undefined;
+    player.botType = undefined;
   }
   if (room.hostId === player.playerId && room.hostTransferTimer) {
     clearTimeout(room.hostTransferTimer);

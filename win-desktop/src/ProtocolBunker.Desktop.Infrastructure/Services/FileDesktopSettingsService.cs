@@ -45,6 +45,10 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
                 PublicHost: string.Empty,
                 Domain: string.Empty,
                 DataFolder: repoRoot is null ? "app/data" : Path.Combine(repoRoot, ".tmp-desktop-data"),
+                AiGatewayBaseUrl: string.Empty,
+                AiGatewayApiKey: string.Empty,
+                AiGatewayModel: "gpt-4o-mini",
+                AiGatewayTimeoutMs: 45000,
                 RoomCode: string.Empty,
                 DeveloperMode: false,
                 HostToken: string.Empty,
@@ -80,6 +84,10 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
                 PublicHost = settings.PublicHost?.Trim() ?? string.Empty,
                 Domain = settings.Domain?.Trim() ?? string.Empty,
                 DataFolder = string.IsNullOrWhiteSpace(settings.DataFolder) ? "app/data" : settings.DataFolder.Trim(),
+                AiGatewayBaseUrl = settings.AiGatewayBaseUrl?.Trim() ?? string.Empty,
+                AiGatewayApiKey = settings.AiGatewayApiKey?.Trim() ?? string.Empty,
+                AiGatewayModel = string.IsNullOrWhiteSpace(settings.AiGatewayModel) ? "gpt-4o-mini" : settings.AiGatewayModel.Trim(),
+                AiGatewayTimeoutMs = NormalizeAiGatewayTimeoutMs(settings.AiGatewayTimeoutMs),
                 RoomCode = settings.RoomCode?.Trim() ?? string.Empty,
                 DevMode = settings.DeveloperMode,
                 HostToken = settings.HostToken?.Trim() ?? string.Empty,
@@ -151,6 +159,10 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
                 PublicHost: model.PublicHost?.Trim() ?? string.Empty,
                 Domain: model.Domain?.Trim() ?? string.Empty,
                 DataFolder: string.IsNullOrWhiteSpace(model.DataFolder) ? "app/data" : model.DataFolder.Trim(),
+                AiGatewayBaseUrl: model.AiGatewayBaseUrl?.Trim() ?? string.Empty,
+                AiGatewayApiKey: model.AiGatewayApiKey?.Trim() ?? string.Empty,
+                AiGatewayModel: string.IsNullOrWhiteSpace(model.AiGatewayModel) ? "gpt-4o-mini" : model.AiGatewayModel.Trim(),
+                AiGatewayTimeoutMs: NormalizeAiGatewayTimeoutMs(model.AiGatewayTimeoutMs),
                 RoomCode: model.RoomCode?.Trim() ?? string.Empty,
                 DeveloperMode: model.DevMode,
                 HostToken: model.HostToken?.Trim() ?? string.Empty,
@@ -199,7 +211,11 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
                 Port: NormalizePort(data.GetValueOrDefault("PORT")),
                 PublicHost: (data.GetValueOrDefault("PUBLIC_HOST") ?? string.Empty).Trim(),
                 Domain: (data.GetValueOrDefault("DOMAIN") ?? string.Empty).Trim(),
-                DataFolder: string.IsNullOrWhiteSpace(data.GetValueOrDefault("DATA_DIR")) ? "app/data" : data["DATA_DIR"].Trim(),
+                DataFolder: ResolvePortableDataFolder(data),
+                AiGatewayBaseUrl: (data.GetValueOrDefault("BUNKER_AI_GATEWAY_BASE_URL") ?? string.Empty).Trim(),
+                AiGatewayApiKey: (data.GetValueOrDefault("BUNKER_AI_GATEWAY_API_KEY") ?? string.Empty).Trim(),
+                AiGatewayModel: string.IsNullOrWhiteSpace(data.GetValueOrDefault("BUNKER_AI_GATEWAY_MODEL")) ? "gpt-4o-mini" : data["BUNKER_AI_GATEWAY_MODEL"].Trim(),
+                AiGatewayTimeoutMs: NormalizeAiGatewayTimeoutMs(data.GetValueOrDefault("BUNKER_AI_GATEWAY_TIMEOUT_MS")),
                 RoomCode: (data.GetValueOrDefault("ROOM_CODE") ?? string.Empty).Trim(),
                 DeveloperMode: ToBool(data.GetValueOrDefault("DEV_MODE")),
                 HostToken: (data.GetValueOrDefault("HOST_TOKEN") ?? string.Empty).Trim(),
@@ -266,6 +282,27 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
         return int.TryParse(raw, out var port) ? NormalizePort(port) : DefaultPort;
     }
 
+    private static string ResolvePortableDataFolder(IReadOnlyDictionary<string, string> data)
+    {
+        var value = data.GetValueOrDefault("BUNKER_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            value = data.GetValueOrDefault("DATA_DIR");
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? "app/data" : value.Trim();
+    }
+
+    private static int NormalizeAiGatewayTimeoutMs(int? timeoutMs)
+    {
+        return timeoutMs is >= 1000 and <= 60000 ? timeoutMs.Value : 45000;
+    }
+
+    private static int NormalizeAiGatewayTimeoutMs(string? raw)
+    {
+        return int.TryParse(raw, out var timeoutMs) ? NormalizeAiGatewayTimeoutMs(timeoutMs) : 45000;
+    }
+
     private static bool ToBool(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -297,6 +334,14 @@ public sealed class FileDesktopSettingsService : IDesktopSettingsService
         public string? Domain { get; set; }
 
         public string? DataFolder { get; set; }
+
+        public string? AiGatewayBaseUrl { get; set; }
+
+        public string? AiGatewayApiKey { get; set; }
+
+        public string? AiGatewayModel { get; set; }
+
+        public int? AiGatewayTimeoutMs { get; set; }
 
         public string? RoomCode { get; set; }
 

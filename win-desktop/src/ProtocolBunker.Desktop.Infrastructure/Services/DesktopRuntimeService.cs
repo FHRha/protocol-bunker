@@ -297,6 +297,11 @@ public sealed class DesktopRuntimeService : IRuntimeService
                 isDevelopment: false,
                 appRoot: installedAppDir,
                 dataDir: GetDataDirFromSettings(settings),
+                aiAccessKeysFile: Path.Combine(ResolveDataDir(settings, appBaseDir), "ai-access-keys.json"),
+                aiGatewayBaseUrl: settings.AiGatewayBaseUrl,
+                aiGatewayApiKey: settings.AiGatewayApiKey,
+                aiGatewayModel: settings.AiGatewayModel,
+                aiGatewayTimeoutMs: settings.AiGatewayTimeoutMs,
                 publicOrigin: BuildPublicOrigin(settings),
                 mode: GetModeFromSettings(settings),
                 devMode: settings.DeveloperMode);
@@ -334,6 +339,11 @@ public sealed class DesktopRuntimeService : IRuntimeService
                 isDevelopment: true,
                 appRoot: repoRoot,
                 dataDir: GetDataDirFromSettings(settings),
+                aiAccessKeysFile: Path.Combine(ResolveDataDir(settings, repoRoot), "ai-access-keys.json"),
+                aiGatewayBaseUrl: settings.AiGatewayBaseUrl,
+                aiGatewayApiKey: settings.AiGatewayApiKey,
+                aiGatewayModel: settings.AiGatewayModel,
+                aiGatewayTimeoutMs: settings.AiGatewayTimeoutMs,
                 publicOrigin: BuildPublicOrigin(settings),
                 mode: GetModeFromSettings(settings),
                 devMode: settings.DeveloperMode);
@@ -360,7 +370,19 @@ public sealed class DesktopRuntimeService : IRuntimeService
             _localizationService.Get("runtime.error.environment_unresolved"));
     }
 
-    private Dictionary<string, string> BuildCommonEnvironment(int port, bool isDevelopment, string appRoot, string dataDir, string? publicOrigin, string mode, bool devMode)
+    private Dictionary<string, string> BuildCommonEnvironment(
+        int port,
+        bool isDevelopment,
+        string appRoot,
+        string dataDir,
+        string aiAccessKeysFile,
+        string aiGatewayBaseUrl,
+        string aiGatewayApiKey,
+        string aiGatewayModel,
+        int aiGatewayTimeoutMs,
+        string? publicOrigin,
+        string mode,
+        bool devMode)
     {
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -368,6 +390,11 @@ public sealed class DesktopRuntimeService : IRuntimeService
             ["BUNKER_SERVE_CLIENT"] = "true",
             ["BUNKER_PORTABLE"] = "1",
             ["BUNKER_DATA_DIR"] = dataDir,
+            ["BUNKER_AI_ACCESS_KEYS_FILE"] = aiAccessKeysFile,
+            ["BUNKER_AI_GATEWAY_BASE_URL"] = aiGatewayBaseUrl?.Trim() ?? string.Empty,
+            ["BUNKER_AI_GATEWAY_API_KEY"] = aiGatewayApiKey?.Trim() ?? string.Empty,
+            ["BUNKER_AI_GATEWAY_MODEL"] = string.IsNullOrWhiteSpace(aiGatewayModel) ? "gpt-4o-mini" : aiGatewayModel.Trim(),
+            ["BUNKER_AI_GATEWAY_TIMEOUT_MS"] = aiGatewayTimeoutMs.ToString(CultureInfo.InvariantCulture),
             ["BUNKER_ENABLE_DEV_SCENARIOS"] = devMode ? "true" : "false",
             ["BUNKER_IDENTITY_MODE"] = devMode ? "dev_tab" : "prod",
             ["BUNKER_DEV_LOGS"] = devMode ? "true" : "false",
@@ -408,6 +435,12 @@ public sealed class DesktopRuntimeService : IRuntimeService
     private static string GetDataDirFromSettings(DesktopSettingsModel settings)
     {
         return string.IsNullOrWhiteSpace(settings.DataFolder) ? "app/data" : settings.DataFolder;
+    }
+
+    private static string ResolveDataDir(DesktopSettingsModel settings, string baseDir)
+    {
+        var raw = GetDataDirFromSettings(settings).Trim();
+        return Path.GetFullPath(Path.IsPathRooted(raw) ? raw : Path.Combine(baseDir, raw));
     }
 
     private static string GetModeFromSettings(DesktopSettingsModel settings)

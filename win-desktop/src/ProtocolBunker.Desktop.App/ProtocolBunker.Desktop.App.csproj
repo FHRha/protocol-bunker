@@ -8,6 +8,9 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>ProtocolBunker</AssemblyName>
+    <Version>0.3.1</Version>
+    <AssemblyVersion>0.3.1.0</AssemblyVersion>
+    <FileVersion>0.3.1.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,18 +24,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\\ProtocolBunker.Desktop.Application\\ProtocolBunker.Desktop.Application.csproj" />
-    <ProjectReference Include="..\\ProtocolBunker.Desktop.Contracts\\ProtocolBunker.Desktop.Contracts.csproj" />
-    <ProjectReference Include="..\\ProtocolBunker.Desktop.Infrastructure\\ProtocolBunker.Desktop.Infrastructure.csproj" />
+    <ProjectReference Include="..\ProtocolBunker.Desktop.Application\ProtocolBunker.Desktop.Application.csproj" />
+    <ProjectReference Include="..\ProtocolBunker.Desktop.Contracts\ProtocolBunker.Desktop.Contracts.csproj" />
+    <ProjectReference Include="..\ProtocolBunker.Desktop.Infrastructure\ProtocolBunker.Desktop.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\app.ico" />
-    <Content Update="Localization\\*.json">
+    <Content Update="Localization\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Update="AsciiAnimations\\*.json">
+    <Content Update="AsciiAnimations\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

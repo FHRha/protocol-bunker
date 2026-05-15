@@ -18,6 +18,7 @@ export const LINK_PATHS = {
   overlayControlInviteExchange: "/overlay-control/invite/exchange",
   overlayControlInviteRevoke: "/overlay-control/invite/revoke",
   apiOverlayLinks: "/api/overlay-links",
+  apiAiAccessValidate: "/api/ai-access/validate",
 } as const;
 
 export interface BuiltLinkSet {

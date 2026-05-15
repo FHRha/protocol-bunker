@@ -1,4 +1,4 @@
-import type { GameEvent } from "@bunker/shared";
+import type { GameEvent, LobbyBotType } from "@bunker/shared";
 import type { Player, Room } from "../core/types.js";
 import { rooms } from "../core/serverState.js";
 
@@ -28,6 +28,8 @@ interface ScheduleHostTransferDeps extends TransferHostDeps {
 
 interface MarkPlayerLeftBunkerDeps extends TransferHostDeps {
   broadcastGameViews: (room: Room) => void;
+  scheduleRuleBasedBots: (room: Room) => void;
+  logRoomLifecycle: (event: string, roomCode: string, details: Record<string, unknown>) => void;
 }
 
 export function computeKickRemainingMs(player: Player, disconnectGraceMs: number, now = Date.now()): number {
@@ -139,6 +141,35 @@ export function scheduleHostTransfer(
 export function markPlayerLeftBunker(room: Room, player: Player, deps: MarkPlayerLeftBunkerDeps) {
   if (player.leftBunker) return;
   if (player.connected) return;
+  if (room.phase === "game" && room.session && !player.isBot) {
+    if (player.disconnectTimer) {
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = undefined;
+    }
+    if (player.disconnectTicker) {
+      clearInterval(player.disconnectTicker);
+      player.disconnectTicker = undefined;
+    }
+    player.connected = true;
+    player.disconnectedAt = undefined;
+    player.disconnectNotifiedMinutes = undefined;
+    player.isBot = true;
+    const takeoverBotType: LobbyBotType =
+      room.settings.bots.enabled && room.settings.bots.type === "ai" ? "ai" : "rule_based";
+    player.botType = takeoverBotType;
+    player.disconnectedBotTakeoverAt = Date.now();
+    player.needsFullState = false;
+    player.needsFullGameView = false;
+    deps.logRoomLifecycle("bot_takeover", room.code, {
+      player: player.name,
+      playerId: player.playerId,
+      botType: takeoverBotType,
+    });
+    deps.broadcastRoomState(room);
+    deps.broadcastGameViews(room);
+    deps.scheduleRuleBasedBots(room);
+    return;
+  }
   player.leftBunker = true;
   if (!player.kickedAt) {
     player.kickedAt = Date.now();

@@ -56,6 +56,7 @@ Protocol: Bunker — это проект для развёртывания и з
 - [Гайд по self-host](docs/host/self-hosting.md)
 - [Linux + nginx](docs/host/linux-nginx.md)
 - [Развёртывание](docs/host/deployment.md)
+- [Боты и AI-настройка](docs/host/bots-and-ai.md)
 
 ### Хочу использовать на стриме
 

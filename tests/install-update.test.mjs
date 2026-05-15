@@ -72,7 +72,22 @@ test("install.sh: install/update preserve settings+data and keep selected qualit
   await writeFile(path.join(packageDir, "app", "node", "node"), "fake-node\n", "utf8");
   await writeFile(
     path.join(packageDir, "portable.env"),
-    "PORT=8080\nDEV_MODE=0\nMODE=local\nNEW_DEFAULT=on\n",
+    `# Protocol: Bunker Portable Configuration
+# =============================================================================
+# 1. Launcher Settings
+# =============================================================================
+
+PORT=8080 # Server port.
+DEV_MODE=0 # Dev mode.
+# MODE=local # Launcher mode: local or domain.
+TRUST_PROXY=auto # Proxy mode.
+
+# =============================================================================
+# 2. Bot Timing
+# =============================================================================
+
+NEW_DEFAULT=on # Simulated new setting in the release template.
+`,
     "utf8"
   );
   await writeFile(path.join(packageDir, "app", "data", "seed.txt"), "seed-data\n", "utf8");
@@ -117,7 +132,11 @@ exit 1
   await chmod(fakeCurl, 0o755);
 
   await mkdir(path.join(appDir, "app", "data"), { recursive: true });
-  await writeFile(portableEnvPath, "PORT=9999\nDEV_MODE=1\nCUSTOM_KEEP=yes\n", "utf8");
+  await writeFile(
+    portableEnvPath,
+    "PORT=9999 # user-selected port\nDEV_MODE=1\nMODE=domain\nCUSTOM_KEEP=yes\n",
+    "utf8"
+  );
   await writeFile(userDataFile, "user-data\n", "utf8");
 
   const commonEnv = {
@@ -149,10 +168,21 @@ exit 1
   );
 
   const installedEnv = await readFile(portableEnvPath, "utf8");
-  assert.match(installedEnv, /^PORT=9999$/m);
-  assert.match(installedEnv, /^DEV_MODE=1$/m);
+  assert.match(installedEnv, /^PORT=9999 # Server port\.$/m);
+  assert.match(installedEnv, /^DEV_MODE=1 # Dev mode\.$/m);
+  assert.match(installedEnv, /^MODE=domain # Launcher mode: local or domain\.$/m);
+  assert.match(installedEnv, /^TRUST_PROXY=auto # Proxy mode\.$/m);
   assert.match(installedEnv, /^CUSTOM_KEEP=yes$/m);
-  assert.match(installedEnv, /^NEW_DEFAULT=on$/m);
+  assert.match(installedEnv, /^NEW_DEFAULT=on # Simulated new setting in the release template\.$/m);
+  assert.ok(
+    installedEnv.indexOf("MODE=domain # Launcher mode: local or domain.") <
+      installedEnv.indexOf("# 2. Bot Timing"),
+    "existing MODE value should be merged into the launcher settings block"
+  );
+  assert.ok(
+    installedEnv.trimEnd().endsWith("CUSTOM_KEEP=yes"),
+    "unknown custom settings should remain appended after template blocks"
+  );
   assert.equal(await readFile(userDataFile, "utf8"), "user-data\n");
 
   const launcher = await readFile(launcherPath, "utf8");
@@ -163,7 +193,8 @@ exit 1
 
   await run("bash", [launcherPath, "--update", "v0.2.6"], { env: commonEnv, cwd: root });
   const envAfterUpdate = await readFile(portableEnvPath, "utf8");
-  assert.match(envAfterUpdate, /^PORT=9999$/m);
+  assert.match(envAfterUpdate, /^PORT=9999 # Server port\.$/m);
+  assert.match(envAfterUpdate, /^MODE=domain # Launcher mode: local or domain\.$/m);
   assert.match(envAfterUpdate, /^CUSTOM_KEEP=yes$/m);
   assert.equal(await readFile(userDataFile, "utf8"), "user-data\n");
 

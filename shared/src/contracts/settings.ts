@@ -21,6 +21,16 @@ export interface GameTimerState {
   endsAt: number;
 }
 
+export type LobbyBotType = "rule_based" | "ai";
+export type LobbyBotLanguage = "ru" | "en";
+
+export interface LobbyBotSettings {
+  enabled: boolean;
+  type: LobbyBotType;
+  count: number;
+  aiLanguage: LobbyBotLanguage;
+}
+
 export interface ManualRulesConfig {
   bunkerSlots: number;
   votesByRound: number[];
@@ -53,6 +63,7 @@ export interface GameSettings {
   maxPlayers: number;
   finalThreatReveal: FinalThreatReveal;
   forcedDisasterId: string;
+  bots: LobbyBotSettings;
 }
 
 export interface ScenarioMeta {
@@ -65,6 +76,16 @@ export interface ScenarioMeta {
 export const GameTimerStateSchema = z.object({
   kind: GameTimerKindSchema,
   endsAt: z.number().int().nonnegative(),
+});
+
+export const LobbyBotTypeSchema = z.union([z.literal("rule_based"), z.literal("ai")]);
+export const LobbyBotLanguageSchema = z.union([z.literal("ru"), z.literal("en")]);
+
+export const LobbyBotSettingsSchema = z.object({
+  enabled: z.boolean(),
+  type: LobbyBotTypeSchema,
+  count: z.number().int().min(0).max(15),
+  aiLanguage: LobbyBotLanguageSchema.default("ru"),
 });
 
 export const ManualRulesConfigSchema = z.object({
@@ -99,6 +120,7 @@ export const GameSettingsSchema = z.object({
   maxPlayers: z.number().int().min(2),
   finalThreatReveal: FinalThreatRevealSchema,
   forcedDisasterId: z.string().min(1).max(256),
+  bots: LobbyBotSettingsSchema,
 });
 
 export const ScenarioMetaSchema = z.object({

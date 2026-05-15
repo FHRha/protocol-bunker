@@ -119,6 +119,7 @@ public sealed class MainWindowViewModelSettingsTests
             links,
             new FakePlatformShellService(),
             new FakeUpdateService(),
+            new FakeAiAccessKeyService(),
             new FakeLocalizationService());
     }
 

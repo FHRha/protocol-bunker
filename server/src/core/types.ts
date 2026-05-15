@@ -2,7 +2,9 @@ import type { WebSocket } from "ws";
 import type {
   GameSettings,
   GameRuleset,
+  LobbyBotType,
   CardLocale,
+  MatchMessage,
   OverlayOverrides,
   PlayerStatus,
   Role,
@@ -36,6 +38,11 @@ export interface Player {
   sessionId?: string;
   ws?: WebSocket;
   connected: boolean;
+  isBot?: boolean;
+  botType?: LobbyBotType;
+  botNameKey?: string;
+  disconnectedBotTakeoverAt?: number;
+  aiAccessGranted?: boolean;
   disconnectedAt?: number;
   totalAbsentMs?: number;
   scenarioStatus?: PlayerStatus;
@@ -72,11 +79,16 @@ export interface Room {
   playersBySessionId: Map<string, string>;
   joinOrder: string[];
   hostTransferTimer?: ReturnType<typeof setTimeout>;
+  botActionTimer?: ReturnType<typeof setTimeout>;
+  botActionTimerDueAt?: number;
   session?: ScenarioSession;
   sessionContext?: ScenarioContext;
   sessionPlayerIds?: Set<string>;
   lastRoomState?: RoomState;
   lastGameViews?: Map<string, ReturnType<ScenarioSession["getGameView"]>>;
+  matchMessages: MatchMessage[];
+  matchMessageRateLimits?: Map<string, { windowStartedAt: number; count: number; lastSentAt: number }>;
+  lastMatchSystemSignature?: string;
   roomStateRevision: number;
   gameViewRevisions: Map<string, number>;
   overlayToken: OverlayViewToken;

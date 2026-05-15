@@ -11,6 +11,7 @@ export interface RoomStateProjectionDeps {
     options: Array<{ id: string; title: string }>,
     locale: import("@bunker/shared").CardLocale
   ) => Array<{ id: string; title: string }>;
+  localizePlayerName: (player: import("../core/types.js").Player, locale: import("@bunker/shared").CardLocale) => string;
 }
 
 export function buildRoomState(
@@ -22,8 +23,11 @@ export function buildRoomState(
     roomCode: room.code,
     players: Array.from(room.players.values()).map((player) => ({
       playerId: player.playerId,
-      name: player.name,
+      name: deps.localizePlayerName(player, locale),
       connected: player.connected,
+      isBot: player.isBot,
+      botType: player.botType,
+      disconnectedBotTakeoverAt: player.disconnectedBotTakeoverAt,
       disconnectedAt: player.disconnectedAt,
       totalAbsentMs: player.totalAbsentMs ?? 0,
       currentOfflineMs: !player.connected && player.disconnectedAt ? Date.now() - player.disconnectedAt : 0,

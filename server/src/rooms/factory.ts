@@ -43,6 +43,7 @@ export function createLobbyRoom(options: CreateLobbyRoomOptions): Room {
     playersBySessionId: new Map(),
     joinOrder: [],
     lastGameViews: new Map(),
+    matchMessages: [],
     roomStateRevision: 0,
     gameViewRevisions: new Map(),
     overlayToken: options.generateOverlayViewToken(),

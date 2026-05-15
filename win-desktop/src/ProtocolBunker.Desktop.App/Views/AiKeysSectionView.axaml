@@ -1,0 +1,252 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ProtocolBunker.Desktop.Application.ViewModels"
+             x:Class="ProtocolBunker.Desktop.App.Views.AiKeysSectionView"
+             x:DataType="vm:AiKeysSectionViewModel"
+             mc:Ignorable="d">
+  <UserControl.Styles>
+    <Style Selector="ListBox.ai-key-list">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="ListBox.ai-key-list ListBoxItem">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,0,10" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Padding="{TemplateBinding Padding}" />
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="ListBox.ai-key-list ListBoxItem:pointerover">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.ai-key-list ListBoxItem:selected">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.ai-key-card">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerStroke}" />
+    </Style>
+    <Style Selector="Border.ai-key-card.selected">
+      <Setter Property="BorderBrush" Value="{StaticResource BunkerAccentStrong}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,18,*">
+    <StackPanel Spacing="10">
+      <Border Background="{StaticResource BunkerAccentSoft}"
+              CornerRadius="999"
+              HorizontalAlignment="Left"
+              Padding="10,4">
+        <TextBlock Text="{Binding T.AiKeysBadge}"
+                   FontSize="11"
+                   FontWeight="Bold"
+                   Foreground="{StaticResource BunkerAccent}" />
+      </Border>
+      <TextBlock Text="{Binding T.AiKeysHeroTitle}"
+                 FontSize="22"
+                 FontWeight="SemiBold"
+                 Foreground="{StaticResource BunkerText}"
+                 TextWrapping="Wrap" />
+      <Grid ColumnDefinitions="90,*">
+        <TextBlock Text="{Binding T.AiKeysKeysFile}"
+                   Foreground="{StaticResource BunkerSubtle}" />
+        <TextBlock Grid.Column="1"
+                   Text="{Binding KeysFilePath}"
+                   Foreground="{StaticResource BunkerMuted}"
+                   TextWrapping="NoWrap"
+                   TextTrimming="CharacterEllipsis"
+                   ToolTip.Tip="{Binding KeysFilePath}" />
+      </Grid>
+      <TextBlock Text="{Binding StatusMessage}"
+                 Foreground="{StaticResource BunkerMuted}"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="0.92*,1.38*"
+          ColumnSpacing="28">
+      <StackPanel Spacing="28">
+        <Border Background="{StaticResource BunkerPanel}"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1"
+                CornerRadius="18"
+                Padding="20">
+          <StackPanel Spacing="12">
+          <TextBlock Text="{Binding T.AiKeysCreateTitle}"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource BunkerText}" />
+          <TextBlock Text="{Binding T.AiKeysCreateBody}"
+                     Foreground="{StaticResource BunkerMuted}"
+                     TextWrapping="Wrap" />
+          <Button Content="{Binding T.AiKeysCreate}"
+                  HorizontalAlignment="Left"
+                  Command="{Binding CreateCommand}" />
+          <Border IsVisible="{Binding HasCreatedKey}"
+                  Background="{StaticResource BunkerPanel}"
+                  BorderBrush="{StaticResource BunkerStroke}"
+                  BorderThickness="1"
+                  CornerRadius="12"
+                  Padding="14">
+            <Grid RowDefinitions="Auto,8,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <TextBlock Text="{Binding T.AiKeysCreatedKey}"
+                         Foreground="{StaticResource BunkerSubtle}" />
+              <TextBox Grid.Row="2"
+                       Text="{Binding CreatedKey}"
+                       IsReadOnly="True"
+                       FontFamily="Consolas"
+                       TextWrapping="NoWrap" />
+              <Button Grid.Row="2"
+                      Grid.Column="1"
+                      Content="{Binding T.CommonCopy}"
+                      Command="{Binding CopyCreatedCommand}" />
+            </Grid>
+          </Border>
+          </StackPanel>
+        </Border>
+
+        <Border Background="{StaticResource BunkerPanel}"
+                BorderBrush="{StaticResource BunkerStroke}"
+                BorderThickness="1"
+                CornerRadius="18"
+                Padding="20">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{Binding T.AiKeysValidateTitle}"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource BunkerText}" />
+            <TextBlock Text="{Binding T.AiKeysValidateBody}"
+                       Foreground="{StaticResource BunkerMuted}"
+                       TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <TextBox Text="{Binding ValidateKey}"
+                       Watermark="{Binding T.AiKeysValidateWatermark}" />
+              <Button Grid.Column="1"
+                      Content="{Binding T.AiKeysValidate}"
+                      Command="{Binding ValidateCommand}" />
+            </Grid>
+            <TextBlock Text="{Binding ValidationStatusText}"
+                       IsVisible="{Binding IsValidationSuccess}"
+                       Foreground="{StaticResource BunkerSuccess}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ValidationStatusText}"
+                       IsVisible="{Binding IsValidationFailure}"
+                       Foreground="{StaticResource BunkerDanger}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <Border Grid.Column="1"
+              Background="{StaticResource BunkerPanel}"
+              CornerRadius="18"
+              Padding="20"
+              BorderBrush="{StaticResource BunkerStroke}"
+              BorderThickness="1">
+        <Grid RowDefinitions="Auto,14,*,18,Auto">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBlock Text="{Binding T.AiKeysListTitle}"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource BunkerText}" />
+            <Button Grid.Column="1"
+                    Content="{Binding T.CommonRefresh}"
+                    Command="{Binding RefreshCommand}" />
+          </Grid>
+
+          <ListBox Grid.Row="2"
+                   Classes="ai-key-list"
+                   ItemsSource="{Binding Keys}"
+                   SelectedItem="{Binding SelectedKey}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:AiAccessKeyItemViewModel">
+                <Border Classes="ai-key-card"
+                        Classes.selected="{Binding IsSelected}"
+                        Padding="14"
+                        CornerRadius="12"
+                        BorderThickness="1">
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,6,Auto">
+                    <TextBlock Text="{Binding DisplayLabel}"
+                               Foreground="{StaticResource BunkerText}"
+                               FontWeight="SemiBold"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Status}"
+                               Foreground="{StaticResource BunkerAccent}" />
+                    <TextBlock Grid.Row="2"
+                               Grid.ColumnSpan="2"
+                               Text="{Binding Id}"
+                               FontFamily="Consolas"
+                               Foreground="{StaticResource BunkerMuted}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Id}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <StackPanel Grid.Row="4" Spacing="12">
+            <TextBlock Text="{Binding T.AiKeysSelectedTitle}"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource BunkerText}" />
+            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,10,Auto,10,Auto,10,Auto" IsEnabled="{Binding HasSelectedKey}">
+              <TextBlock Text="{Binding T.AiKeysId}"
+                         Foreground="{StaticResource BunkerSubtle}" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding SelectedKey.Id}"
+                         FontFamily="Consolas"
+                         Foreground="{StaticResource BunkerMuted}"
+                         TextWrapping="NoWrap"
+                         TextTrimming="CharacterEllipsis" />
+
+              <TextBlock Grid.Row="2"
+                         Text="{Binding T.AiKeysLabel}"
+                         Foreground="{StaticResource BunkerSubtle}" />
+              <TextBox Grid.Row="2"
+                       Grid.Column="1"
+                       Text="{Binding EditableSelectedLabel}" />
+
+              <TextBlock Grid.Row="4"
+                         Text="{Binding T.AiKeysLastUsedAt}"
+                         Foreground="{StaticResource BunkerSubtle}" />
+              <TextBlock Grid.Row="4"
+                         Grid.Column="1"
+                         Text="{Binding SelectedKey.LastUsedAt}"
+                         Foreground="{StaticResource BunkerMuted}" />
+
+              <TextBlock Grid.Row="6"
+                         Text="{Binding T.AiKeysRevokedAt}"
+                         Foreground="{StaticResource BunkerSubtle}" />
+              <TextBlock Grid.Row="6"
+                         Grid.Column="1"
+                         Text="{Binding SelectedKey.RevokedAt}"
+                         Foreground="{StaticResource BunkerMuted}" />
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Content="{Binding T.AiKeysSaveLabel}"
+                      Command="{Binding SaveSelectedLabelCommand}"
+                      IsEnabled="{Binding HasSelectedKey}" />
+              <Button Content="{Binding T.AiKeysRevoke}"
+                      Command="{Binding RevokeSelectedCommand}"
+                      IsEnabled="{Binding HasSelectedKey}" />
+              <Button Content="{Binding T.AiKeysDelete}"
+                      Command="{Binding DeleteSelectedCommand}"
+                      IsEnabled="{Binding HasSelectedKey}" />
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

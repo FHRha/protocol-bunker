@@ -92,6 +92,12 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
     payload: z.object({}),
   }),
   z.object({
+    type: z.literal("sendMatchMessage"),
+    payload: z.object({
+      text: z.string().trim().min(1).max(500),
+    }),
+  }),
+  z.object({
     type: z.literal("kickFromLobby"),
     payload: z.object({
       targetPlayerId: z.string().min(1),
@@ -100,6 +106,12 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("updateSettings"),
     payload: GameSettingsSchema,
+  }),
+  z.object({
+    type: z.literal("updateAiAccessKey"),
+    payload: z.object({
+      key: z.string().max(512),
+    }),
   }),
   z.object({
     type: z.literal("updateLocale"),

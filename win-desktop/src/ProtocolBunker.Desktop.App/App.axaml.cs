@@ -20,6 +20,7 @@ public partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            MainWindow? mainWindow = null;
             var settingsService = new FileDesktopSettingsService();
             var localizationService = new DesktopLocalizationService();
             var desktopApiSession = new DesktopApiSessionService();
@@ -35,18 +36,20 @@ public partial class App : Avalonia.Application
                     // ignored during process teardown
                 }
             };
-            var platformShellService = new DesktopPlatformShellService();
+            var platformShellService = new AvaloniaPlatformShellService(() => mainWindow);
             var viewModel = new MainWindowViewModel(
                 runtimeService,
                 settingsService,
                 new DesktopRoomLinkService(settingsService, runtimeService, localizationService, desktopApiSession),
                 platformShellService,
                 new DesktopUpdateService(runtimeService, platformShellService, localizationService),
+                new DesktopAiAccessKeyService(),
                 localizationService);
-            desktop.MainWindow = new MainWindow
+            mainWindow = new MainWindow
             {
                 DataContext = viewModel,
             };
+            desktop.MainWindow = mainWindow;
 
             _asciiAnimationController = new AsciiAnimationController(viewModel.Home);
             _asciiAnimationController.Start();

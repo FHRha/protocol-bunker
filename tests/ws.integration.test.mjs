@@ -327,6 +327,130 @@ const matchGameView = (predicate) => (msg) => {
   return Boolean(view) && predicate(view);
 };
 
+test("ws integration: rule-based lobby bots reveal and vote in classic flow", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("WS integration test is run in CI (linux); windows process tree teardown is flaky.");
+    return;
+  }
+
+  const server = spawn("pnpm", ["-C", "server", "exec", "tsx", "src/index.ts"], {
+    env: {
+      ...process.env,
+      PORT: "0",
+      HOST: "127.0.0.1",
+      BUNKER_ENABLE_DEV_SCENARIOS: "0",
+      BUNKER_IDENTITY_MODE: "token",
+      BUNKER_DEV_LOGS: "0",
+      BUNKER_SERVE_CLIENT: "false",
+      BUNKER_RULE_BOT_MIN_DELAY_MS: "1",
+      BUNKER_RULE_BOT_MAX_DELAY_MS: "1",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  let hostWs;
+
+  try {
+    const port = await waitForPort(server);
+    const url = `ws://127.0.0.1:${port}`;
+
+    hostWs = await openSocket(url);
+    sendJson(hostWs, {
+      type: "hello",
+      payload: {
+        name: "Host",
+        create: true,
+        scenarioId: "classic",
+        locale: "en",
+        tabId: makeTabId("host"),
+      },
+    });
+
+    await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
+    const initialRoomStateMessage = await nextMessage(hostWs, (msg) => msg?.type === "roomState");
+    const initialRoomState = getRoomStateFromMessage(initialRoomStateMessage);
+    assert.ok(initialRoomState?.settings, "room settings must be present");
+
+    sendJson(hostWs, {
+      type: "updateSettings",
+      payload: {
+        ...initialRoomState.settings,
+        maxPlayers: 4,
+        bots: {
+          enabled: true,
+          type: "rule_based",
+          count: 3,
+        },
+      },
+    });
+
+    const botsRoomStateMessage = await nextMessage(hostWs, (msg) => {
+      const state = getRoomStateFromMessage(msg);
+      return state?.players?.filter((player) => player.isBot).length === 3;
+    });
+    const botsRoomState = getRoomStateFromMessage(botsRoomStateMessage);
+    const botPlayers = botsRoomState.players.filter((player) => player.isBot);
+    assert.deepEqual(
+      botPlayers.map((player) => player.name),
+      ["Mira", "Anton", "Vera"],
+      "bots should receive localized automatic names"
+    );
+
+    sendJson(hostWs, { type: "startGame", payload: {} });
+    const hostStartView = await waitForGameView(hostWs, (view) => view.phase === "reveal");
+    const hiddenHostCard = hostStartView.you.hand.find((card) => !card.revealed);
+    assert.ok(hiddenHostCard?.instanceId, "host must have a hidden card to reveal");
+
+    sendJson(hostWs, {
+      type: "revealCard",
+      payload: { cardId: hiddenHostCard.instanceId },
+    });
+    await waitForGameView(hostWs, (view) => view.phase === "reveal_discussion" && view.public.canContinue === true);
+
+    sendJson(hostWs, { type: "continueRound", payload: {} });
+    const votingView = await waitForGameView(hostWs, (view) => view.phase === "voting" && view.public.votePhase === "voting");
+    const publicVotes = votingView.public.votesPublic ?? [];
+
+    for (const bot of botPlayers) {
+      const vote = publicVotes.find((entry) => entry.voterId === bot.playerId);
+      assert.equal(vote?.status, "voted", `bot ${bot.name} should vote automatically`);
+      assert.ok(vote?.targetId, `bot ${bot.name} vote should have a target`);
+    }
+  } finally {
+    await new Promise((resolve) => {
+      if (!hostWs || hostWs.readyState === WebSocketCtor.CLOSED) {
+        disposeSocketMessageState(hostWs);
+        resolve();
+        return;
+      }
+      addListener(
+        hostWs,
+        "close",
+        () => {
+          disposeSocketMessageState(hostWs);
+          resolve();
+        },
+        true
+      );
+      try {
+        hostWs.close();
+      } catch {
+        disposeSocketMessageState(hostWs);
+        resolve();
+      }
+    });
+
+    if (server.exitCode === null) {
+      server.kill("SIGTERM");
+      await new Promise((resolve) => {
+        server.once("exit", () => resolve());
+        setTimeout(resolve, 2_000);
+      });
+    }
+  }
+});
+
 test("ws integration: host transfer works and CONTROL companion socket does not create ghost player", async (t) => {
   if (process.platform === "win32") {
     t.skip("WS integration test is run in CI (linux); windows process tree teardown is flaky.");

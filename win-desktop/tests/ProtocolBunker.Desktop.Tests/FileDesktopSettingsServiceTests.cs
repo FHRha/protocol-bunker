@@ -30,6 +30,10 @@ public sealed class FileDesktopSettingsServiceTests : IDisposable
             PublicHost: " https://public.example:8080/path ",
             Domain: " https://bunker.example.com/path ",
             DataFolder: " app/data ",
+            AiGatewayBaseUrl: " https://api.openai.com/v1 ",
+            AiGatewayApiKey: " gateway-key ",
+            AiGatewayModel: " gpt-4o-mini ",
+            AiGatewayTimeoutMs: 45000,
             RoomCode: " abcd ",
             DeveloperMode: true,
             HostToken: " host ",
@@ -45,6 +49,10 @@ public sealed class FileDesktopSettingsServiceTests : IDisposable
         Assert.Equal("https://public.example:8080/path", loaded.PublicHost);
         Assert.Equal("https://bunker.example.com/path", loaded.Domain);
         Assert.Equal("app/data", loaded.DataFolder);
+        Assert.Equal("https://api.openai.com/v1", loaded.AiGatewayBaseUrl);
+        Assert.Equal("gateway-key", loaded.AiGatewayApiKey);
+        Assert.Equal("gpt-4o-mini", loaded.AiGatewayModel);
+        Assert.Equal(45000, loaded.AiGatewayTimeoutMs);
         Assert.Equal("abcd", loaded.RoomCode);
         Assert.True(loaded.DeveloperMode);
         Assert.Equal("host", loaded.HostToken);
@@ -64,6 +72,10 @@ public sealed class FileDesktopSettingsServiceTests : IDisposable
             DOMAIN=bunker.example.com
             PUBLIC_HOST=public.example
             DATA_DIR=portable-data
+            BUNKER_AI_GATEWAY_BASE_URL=https://api.openai.com/v1
+            BUNKER_AI_GATEWAY_API_KEY=gateway-token
+            BUNKER_AI_GATEWAY_MODEL=test-model
+            BUNKER_AI_GATEWAY_TIMEOUT_MS=30000
             ROOM_CODE=QWER
             DEV_MODE=1
             HOST_TOKEN=host-token
@@ -81,6 +93,10 @@ public sealed class FileDesktopSettingsServiceTests : IDisposable
         Assert.Equal("public.example", loaded.PublicHost);
         Assert.Equal("bunker.example.com", loaded.Domain);
         Assert.Equal("portable-data", loaded.DataFolder);
+        Assert.Equal("https://api.openai.com/v1", loaded.AiGatewayBaseUrl);
+        Assert.Equal("gateway-token", loaded.AiGatewayApiKey);
+        Assert.Equal("test-model", loaded.AiGatewayModel);
+        Assert.Equal(30000, loaded.AiGatewayTimeoutMs);
         Assert.Equal("QWER", loaded.RoomCode);
         Assert.True(loaded.DeveloperMode);
         Assert.Equal("host-token", loaded.HostToken);

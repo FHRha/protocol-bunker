@@ -8,9 +8,9 @@
         x:DataType="vm:MainWindowViewModel"
         mc:Ignorable="d"
         Width="1360"
-        Height="860"
+        Height="940"
         MinWidth="1100"
-        MinHeight="760"
+        MinHeight="820"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True"
         Icon="/Assets/app.ico"
@@ -21,6 +21,9 @@
     </DataTemplate>
     <DataTemplate DataType="vm:AccessSectionViewModel">
       <views:AccessSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:AiKeysSectionViewModel">
+      <views:AiKeysSectionView />
     </DataTemplate>
     <DataTemplate DataType="vm:NetworkSectionViewModel">
       <views:NetworkSectionView />

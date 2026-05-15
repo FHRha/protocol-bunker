@@ -82,9 +82,13 @@ interface CreateWsContextsOptions {
   pickNextHost: LobbyActionDeps["pickNextHost"];
   transferHost: LobbyActionDeps["transferHost"];
   removeLobbyPlayer: (room: Room, playerId: string) => boolean;
+  syncLobbyBotPlayers: LobbyActionDeps["syncLobbyBotPlayers"];
+  validateAiAccessKey: LobbyActionDeps["validateAiAccessKey"];
+  isAiGatewayConfigured: LobbyActionDeps["isAiGatewayConfigured"];
   resolveControlActorId: GameActionDeps["resolveControlActorId"];
   getCurrentTurnPlayerId: GameActionDeps["getCurrentTurnPlayerId"];
   localizeScenarioMessageForPlayer: GameActionDeps["localizeScenarioMessageForPlayer"];
+  scheduleRuleBasedBots: GameActionDeps["scheduleRuleBasedBots"];
   broadcastEvent: HandleSocketCloseOptions["broadcastEvent"];
   buildSystemEvent: HandleSocketCloseOptions["buildSystemEvent"];
   formatRemaining: HandleSocketCloseOptions["formatRemaining"];
@@ -142,6 +146,7 @@ export function createWsContexts(options: CreateWsContextsOptions): {
     getScenarioStatus: options.getScenarioStatus,
     computeKickRemainingMs: options.computeKickRemainingMs,
     markPlayerLeftBunker: options.markPlayerLeftBunker,
+    removeLobbyPlayer: options.removeLobbyPlayer,
     getEffectiveMaxPlayers: options.getEffectiveMaxPlayers,
     getRoleForToken: options.getRoleForToken,
     canControl: options.canControl,
@@ -173,6 +178,9 @@ export function createWsContexts(options: CreateWsContextsOptions): {
     pickNextHost: options.pickNextHost,
     transferHost: options.transferHost,
     removeLobbyPlayer: options.removeLobbyPlayer,
+    syncLobbyBotPlayers: options.syncLobbyBotPlayers,
+    validateAiAccessKey: options.validateAiAccessKey,
+    isAiGatewayConfigured: options.isAiGatewayConfigured,
     devLog: options.devLog,
   };
 
@@ -187,6 +195,7 @@ export function createWsContexts(options: CreateWsContextsOptions): {
     resolveControlActorId: options.resolveControlActorId,
     getCurrentTurnPlayerId: options.getCurrentTurnPlayerId,
     localizeScenarioMessageForPlayer: options.localizeScenarioMessageForPlayer,
+    scheduleRuleBasedBots: options.scheduleRuleBasedBots,
     broadcastGameViews: options.broadcastGameViews,
     devScenariosEnabled: options.devScenariosEnabled,
     identityMode: options.identityMode,

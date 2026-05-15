@@ -1,6 +1,6 @@
 {
   "name": "bunker-browser",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "packageManager": "pnpm@9.12.0",
   "workspaces": [
@@ -21,6 +21,8 @@
     "kill:project-processes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-project-processes.ps1 -ResetAttributes",
     "fix:repo-acl": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fix-repo-acl.ps1",
     "test:ws": "pnpm -C shared build && pnpm -C scenarios build && node --test tests/ws.integration.test.mjs",
+    "test:ai": "pnpm -C server build && node --test tests/ai-bots.test.mjs",
+    "test:bots": "pnpm -C server build && node --test tests/ai-bots.test.mjs tests/lobby-bots.test.mjs",
     "test:install": "node --test tests/install-update.test.mjs",
     "test:desktop": "dotnet test win-desktop/tests/ProtocolBunker.Desktop.Tests/ProtocolBunker.Desktop.Tests.csproj",
     "test:integration": "pnpm run test:ws && pnpm run test:install",

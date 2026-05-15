@@ -30,7 +30,7 @@ public sealed class DesktopUpdateService : IUpdateService
         _platformShellService = platformShellService;
         _localizationService = localizationService;
         _httpClient = new HttpClient();
-        _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("ProtocolBunkerDesktop", "0.1"));
+        _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("ProtocolBunkerDesktop", "0.3.1"));
         var placeholder = _localizationService.Get("placeholder.not_available");
         _lastSnapshot = new UpdateStatusSnapshot(
             CurrentVersion: placeholder,

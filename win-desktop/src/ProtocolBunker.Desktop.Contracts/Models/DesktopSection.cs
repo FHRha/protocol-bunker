@@ -4,6 +4,7 @@ public enum DesktopSection
 {
     Home,
     Access,
+    AiKeys,
     Network,
     Diagnostics,
     Updates,

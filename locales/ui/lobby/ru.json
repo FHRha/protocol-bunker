@@ -10,6 +10,8 @@
   "lobbyKickButton": "Кикнуть",
   "hostMarker": " (ведущий)",
   "controlMarker": "",
+  "botMarker": " (бот)",
+  "botTakenOverMarker": " (стал ботом)",
   "transferHostTitle": "Передать ведущего",
   "transferHostSelectPlaceholder": "Нет доступных игроков",
   "offlineMarker": " (оффлайн)",

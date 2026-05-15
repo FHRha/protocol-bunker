@@ -15,6 +15,7 @@ type UiStorageKeys = {
   showSpectatorLinks: string;
   showHints: string;
   toastDuration: string;
+  aiAccessKey: string;
 };
 
 type AppUiSideEffectsInput = {
@@ -34,6 +35,7 @@ type AppUiSideEffectsInput = {
   autoCopyRoomCode: boolean;
   showSpectatorLinks: boolean;
   showHints: boolean;
+  aiAccessKey: string;
   locale: LocaleCode;
 };
 
@@ -54,6 +56,7 @@ export function useAppUiSideEffects({
   autoCopyRoomCode,
   showSpectatorLinks,
   showHints,
+  aiAccessKey,
   locale,
 }: AppUiSideEffectsInput) {
   useEffect(() => {
@@ -126,4 +129,8 @@ export function useAppUiSideEffects({
   useEffect(() => {
     localStorage.setItem(keys.showHints, showHints ? "1" : "0");
   }, [keys.showHints, showHints]);
+
+  useEffect(() => {
+    localStorage.setItem(keys.aiAccessKey, aiAccessKey);
+  }, [aiAccessKey, keys.aiAccessKey]);
 }

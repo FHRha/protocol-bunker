@@ -21,6 +21,8 @@ import {
   type GameSettings,
   type GameRuleset,
   type ManualRulesConfig,
+  type MatchMessage,
+  type LobbyBotType,
   type PlayerStatus,
   type OverlayState,
   type OverlayOverrides,
@@ -45,6 +47,9 @@ import { tOverlay } from "./locales/overlayLocale.js";
 import { localizeScenarioMessage, resolveScenarioLocaleKey } from "./locales/scenarioLocale.js";
 import { localizeSpecialConditionField } from "./locales/specialConditionLocale.js";
 import { buildDefaultOverlayBioTags, buildOverlayBiology } from "./locales/biologyLocale.js";
+import { validateAiAccessKey } from "./ai/accessKeys.js";
+import { hasAiBotRequestInFlight, runAiBotStep, type AiBotConfig, type AiPendingSpecialDecision } from "./bots/ai.js";
+import { runRuleBasedBotStep } from "./bots/ruleBased.js";
 import { createRuntimeContext } from "./bootstrap/runtimeContext.js";
 import {
   broadcastOverlayState as broadcastOverlayStatePresenter,
@@ -72,6 +77,7 @@ import {
   resolveControlActorId,
   updateRulesetIfAuto,
 } from "./game/runtime.js";
+import { appendMatchMessage, removeMatchMessage } from "./game/matchMessages.js";
 import { runControlCommand, startGameAsControl, type ControlCommand } from "./game/control.js";
 import { createWsContexts } from "./ws/context.js";
 import { routeClientMessage } from "./ws/router.js";
@@ -89,6 +95,11 @@ import type {
 } from "./core/types.js";
 import {
   ALLOWED_ORIGINS_RAW,
+  AI_ACCESS_KEYS_FILE,
+  AI_GATEWAY_API_KEY,
+  AI_GATEWAY_BASE_URL,
+  AI_GATEWAY_MODEL,
+  AI_GATEWAY_TIMEOUT_MS,
   ASSETS_ROOT,
   ASSETS_ROOT_SOURCE,
   BUILD_PROFILE,
@@ -118,6 +129,10 @@ import {
   ROOM_CLEANUP_INTERVAL_MS,
   ROOM_ENDED_TTL_MS,
   ROOM_INACTIVE_TTL_MS,
+  RULE_BOT_DISCUSSION_MAX_DELAY_MS,
+  RULE_BOT_DISCUSSION_MIN_DELAY_MS,
+  RULE_BOT_MAX_DELAY_MS,
+  RULE_BOT_MIN_DELAY_MS,
   SENSITIVE_HTTP_RATE_LIMIT_ENABLED,
   SENSITIVE_HTTP_RATE_LIMIT_MAX,
   SENSITIVE_HTTP_RATE_LIMIT_WINDOW_MS,
@@ -134,6 +149,7 @@ import {
   attachPlayer as attachPlayerState,
   generateRoomCode as generateRoomCodeState,
   removeLobbyPlayer as removeLobbyPlayerState,
+  syncLobbyBotPlayers as syncLobbyBotPlayersState,
 } from "./rooms/lifecycle.js";
 import { createCleanupInactiveRooms } from "./rooms/runtime.js";
 import {
@@ -2083,6 +2099,12 @@ const DEFAULT_SETTINGS: GameSettings = {
   maxPlayers: 12,
   finalThreatReveal: "host",
   forcedDisasterId: "random",
+  bots: {
+    enabled: false,
+    type: "rule_based",
+    count: 0,
+    aiLanguage: "ru",
+  },
 };
 
 let roomCleanupTimer: ReturnType<typeof setInterval> | undefined;
@@ -2101,7 +2123,34 @@ function buildRoomState(room: Room, locale: CardLocaleCode): RoomState {
     disconnectGraceMs: DISCONNECT_GRACE_MS,
     localizeWorldStateForLocale,
     localizeDisasterOptionsForLocale,
+    localizePlayerName,
   });
+}
+
+function localizePlayerName(player: Player, locale: CardLocaleCode): string {
+  if (player.isBot) {
+    const botNameKey = player.botNameKey ?? inferBotNameKey(player.name);
+    const localized = botNameKey ? tServer(normalizeServerLocale(locale), botNameKey) : "";
+    if (localized && localized !== botNameKey) return localized;
+  }
+  return player.name;
+}
+
+function inferBotNameKey(name: string): string | undefined {
+  const normalizedName = name.trim().toLocaleLowerCase("ru-RU");
+  if (!normalizedName) return undefined;
+  for (let index = 1; index <= 16; index += 1) {
+    const key = `info.botNames.${index}`;
+    const ruName = tServer("ru", key);
+    const enName = tServer("en", key);
+    if (
+      ruName.trim().toLocaleLowerCase("ru-RU") === normalizedName ||
+      enName.trim().toLocaleLowerCase("ru-RU") === normalizedName
+    ) {
+      return key;
+    }
+  }
+  return undefined;
 }
 
 // Overlay category configuration with localization keys
@@ -3044,8 +3093,102 @@ function tServerForRoom(
   return tServerForRoomPresenter(messagePresenterDeps, room, key, vars);
 }
 
-function localizeScenarioMessageForPlayer(room: Room, playerId: string, message: string): string {
-  return localizeScenarioMessage(message, getPlayerCardLocale(room.players.get(playerId)), room.scenarioId);
+function localizeScenarioMessageForPlayer(
+  room: Room,
+  playerId: string,
+  message: string,
+  vars?: Record<string, string | number>
+): string {
+  return localizeScenarioMessage(message, getPlayerCardLocale(room.players.get(playerId)), room.scenarioId, vars);
+}
+
+function localizeMatchMessages(messages: MatchMessage[], player?: Player, room?: Room): MatchMessage[] {
+  const locale = normalizeServerLocale(getPlayerCardLocale(player));
+  return messages.map((message) => {
+    const sourcePlayer = message.sourcePlayerId ? room?.players.get(message.sourcePlayerId) : undefined;
+    return {
+      ...message,
+      text: message.textKey
+        ? tServer(locale, message.textKey, localizeMatchMessageVars(message.textVars, locale, room))
+        : localizeRawMatchMessageText(message.text, message.textVars, locale, room),
+        sourceName: message.sourceNameKey
+          ? tServer(locale, message.sourceNameKey)
+          : sourcePlayer
+            ? localizePlayerName(sourcePlayer, locale)
+            : localizeKnownBotName(message.sourceName, locale),
+    };
+  });
+}
+
+function localizeKnownBotName(name: string | undefined, locale: CardLocaleCode): string | undefined {
+  if (!name) return name;
+  const botNameKey = inferBotNameKey(name);
+  if (!botNameKey) return name;
+  const localized = tServer(normalizeServerLocale(locale), botNameKey);
+  return localized && localized !== botNameKey ? localized : name;
+}
+
+function localizeBotNamesInText(text: string, locale: CardLocaleCode, room?: Room): string {
+  if (!room || !text) return text;
+  let nextText = text;
+  for (const player of room.players.values()) {
+    if (!player.isBot) continue;
+    const localizedName = localizePlayerName(player, locale);
+    if (!localizedName) continue;
+    const candidates = new Set<string>([player.name]);
+    if (player.botNameKey) {
+      candidates.add(tServer("ru", player.botNameKey));
+      candidates.add(tServer("en", player.botNameKey));
+    }
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const possessiveReplacement = locale === "en" ? `${localizedName}'s` : localizedName;
+      nextText = nextText.replace(new RegExp(`${escaped}'s`, "g"), possessiveReplacement);
+      if (candidate === localizedName) continue;
+      nextText = nextText.split(candidate).join(localizedName);
+    }
+  }
+  return nextText;
+}
+
+function localizeCardIdsInText(text: string, vars: MatchMessage["textVars"], locale: CardLocaleCode): string {
+  if (!vars || !text) return text;
+  let nextText = text;
+  const cardId = typeof vars.cardId === "string" ? vars.cardId.trim() : "";
+  if (cardId) {
+    const localizedCard = localizeCardLabel(cardId, cardId, locale);
+    if (localizedCard && localizedCard !== cardId) {
+      nextText = nextText.split(cardId).join(localizedCard);
+    }
+  }
+  const cardInstanceId = typeof vars.cardInstanceId === "string" ? vars.cardInstanceId.trim() : "";
+  if (cardInstanceId && cardInstanceId !== cardId) {
+    const localizedInstance = localizeCardLabel(cardInstanceId, cardInstanceId, locale);
+    if (localizedInstance && localizedInstance !== cardInstanceId) {
+      nextText = nextText.split(cardInstanceId).join(localizedInstance);
+    }
+  }
+  return nextText;
+}
+
+function localizeRawMatchMessageText(text: string, vars: MatchMessage["textVars"], locale: CardLocaleCode, room?: Room): string {
+  return localizeBotNamesInText(localizeCardIdsInText(text, vars, locale), locale, room);
+}
+
+function localizeMatchMessageVars(vars: MatchMessage["textVars"], locale: CardLocaleCode, room?: Room): MatchMessage["textVars"] {
+  if (!vars) return vars;
+  const nextVars = { ...vars };
+  const cardId = typeof nextVars.cardId === "string" ? nextVars.cardId : undefined;
+  if (cardId && typeof nextVars.card === "string") {
+    nextVars.card = localizeCardLabel(cardId, nextVars.card, locale);
+  }
+  const targetId = typeof nextVars.targetId === "string" ? nextVars.targetId : undefined;
+  const targetPlayer = targetId ? room?.players.get(targetId) : undefined;
+  if (targetPlayer && typeof nextVars.target === "string") {
+    nextVars.target = localizePlayerName(targetPlayer, locale);
+  }
+  return nextVars;
 }
 
 function sendLocalizedError(
@@ -3077,6 +3220,8 @@ const gameStatePresenterDeps = {
   diffTopLevel,
   localizeGameViewForLocale,
   getPlayerCardLocale,
+  localizePlayerName,
+  localizeMatchMessages,
   devLog,
 };
 
@@ -3117,27 +3262,461 @@ const removeLobbyPlayer = (room: Room, playerId: string): boolean =>
       }),
   });
 
-const addLobbyBotPlayer = (room: Room, preferredName?: string): Player | null =>
+const lobbyBotDeps = {
+  getEffectiveMaxPlayers: (targetRoom: Room) =>
+    getEffectiveMaxPlayers(targetRoom, {
+      classicScenarioId: CLASSIC_SCENARIO_ID,
+      maxClassicPlayers: MAX_CLASSIC_PLAYERS,
+    }),
+  logRoomLifecycle,
+  tServerForRoom,
+  pickNextHost,
+  updateRulesetIfAuto: (targetRoom: Room) =>
+    updateRulesetIfAuto(targetRoom, {
+      classicScenarioId: CLASSIC_SCENARIO_ID,
+      buildAutoRuleset,
+      buildManualRuleset,
+    }),
+  generatePlayerReconnectToken,
+};
+
+const addLobbyBotPlayer = (
+  room: Room,
+  preferredName?: string,
+  botType?: LobbyBotType
+): Player | null =>
   addLobbyBotPlayerState(
     room,
-    {
-      getEffectiveMaxPlayers: (targetRoom) =>
-        getEffectiveMaxPlayers(targetRoom, {
-          classicScenarioId: CLASSIC_SCENARIO_ID,
-          maxClassicPlayers: MAX_CLASSIC_PLAYERS,
-        }),
-      logRoomLifecycle,
-      tServerForRoom,
-      updateRulesetIfAuto: (targetRoom) =>
-        updateRulesetIfAuto(targetRoom, {
-          classicScenarioId: CLASSIC_SCENARIO_ID,
-          buildAutoRuleset,
-          buildManualRuleset,
-        }),
-      generatePlayerReconnectToken,
-    },
-    preferredName
+    lobbyBotDeps,
+    preferredName,
+    botType
   );
+
+const syncLobbyBotPlayers = (room: Room): { added: number; removed: number } =>
+  syncLobbyBotPlayersState(room, lobbyBotDeps);
+
+const getRuleBotActionDelayMs = (): number => {
+  if (RULE_BOT_MAX_DELAY_MS <= RULE_BOT_MIN_DELAY_MS) return RULE_BOT_MIN_DELAY_MS;
+  const span = RULE_BOT_MAX_DELAY_MS - RULE_BOT_MIN_DELAY_MS;
+  return RULE_BOT_MIN_DELAY_MS + Math.floor(Math.random() * (span + 1));
+};
+
+const getRuleBotDiscussionDelayMs = (): number => {
+  if (RULE_BOT_DISCUSSION_MAX_DELAY_MS <= RULE_BOT_DISCUSSION_MIN_DELAY_MS) {
+    return RULE_BOT_DISCUSSION_MIN_DELAY_MS;
+  }
+  const span = RULE_BOT_DISCUSSION_MAX_DELAY_MS - RULE_BOT_DISCUSSION_MIN_DELAY_MS;
+  return RULE_BOT_DISCUSSION_MIN_DELAY_MS + Math.floor(Math.random() * (span + 1));
+};
+
+const getRuleBotFastActionDelayMs = (): number => Math.max(250, Math.floor(getRuleBotActionDelayMs() / 2));
+const getRuleBotContinueDelayMs = (): number => getRuleBotDiscussionDelayMs();
+
+const logBotScheduler = (event: string, details: Record<string, unknown>): void => {
+  if (!DEV_LOGS) return;
+  console.log(`[bots] ${event}`, details);
+};
+
+type PendingBotAction =
+  | { kind: "reveal"; botPlayerId: string }
+  | { kind: "continue"; botPlayerId: string; actorId: string }
+  | { kind: "vote"; botPlayerId: string }
+  | { kind: "finalizeVoting"; actorId: string }
+  | { kind: "postGameReveal"; botPlayerId: string };
+
+const getBotPlayers = (room: Room): Player[] =>
+  Array.from(room.players.values()).filter(
+    (player) => player.isBot && !player.leftBunker && (player.botType === "rule_based" || player.botType === "ai")
+  );
+
+const isBotPlayerId = (room: Room, playerId: string | null | undefined): boolean => {
+  if (!playerId) return false;
+  const player = room.players.get(playerId);
+  return Boolean(player?.isBot && !player.leftBunker && (player.botType === "rule_based" || player.botType === "ai"));
+};
+
+const getRoomAnchorPlayerId = (room: Room): string | undefined =>
+  room.players.has(room.hostId) ? room.hostId : room.joinOrder.find((id) => room.players.has(id));
+
+const getRoomAnchorView = (room: Room): ReturnType<NonNullable<Room["session"]>["getGameView"]> | null => {
+  if (!room.session) return null;
+  const anchorId = getRoomAnchorPlayerId(room);
+  if (!anchorId) return null;
+  try {
+    return room.session.getGameView(anchorId);
+  } catch {
+    return null;
+  }
+};
+
+const getPublicPlayerStatus = (
+  view: ReturnType<NonNullable<Room["session"]>["getGameView"]>,
+  playerId: string
+): string | undefined => view.public.players.find((player) => player.playerId === playerId)?.status;
+
+const getHiddenCardIds = (view: ReturnType<NonNullable<Room["session"]>["getGameView"]>): string[] =>
+  view.you.hand
+    .filter((card) => !card.revealed && typeof card.instanceId === "string" && card.instanceId.length > 0)
+    .map((card) => card.instanceId as string);
+
+const getContinueActorIdForBotTurn = (room: Room, currentTurnPlayerId: string): string | undefined => {
+  if (room.settings.continuePermission === "revealer_only") {
+    return room.players.has(currentTurnPlayerId) ? currentTurnPlayerId : undefined;
+  }
+  if (room.settings.continuePermission === "host_only") {
+    return resolveControlActorId(room, {
+      preferredId: room.hostId,
+      allowAnyPresentPlayer: true,
+    });
+  }
+  return currentTurnPlayerId;
+};
+
+const getPendingBotAction = (room: Room): PendingBotAction | null => {
+  if (room.phase !== "game" || !room.session) return null;
+  if (getBotPlayers(room).length === 0) return null;
+
+  const anchorView = getRoomAnchorView(room);
+  if (anchorView?.phase === "ended") {
+    for (const bot of getBotPlayers(room)) {
+      try {
+        const view = room.session.getGameView(bot.playerId);
+        if (getPublicPlayerStatus(view, bot.playerId) === "left_bunker") continue;
+        if (getHiddenCardIds(view).length > 0) {
+          return { kind: "postGameReveal", botPlayerId: bot.playerId };
+        }
+      } catch {
+      }
+    }
+  }
+
+  if (anchorView?.phase === "reveal_discussion") {
+    const currentTurnPlayerId = anchorView.public.currentTurnPlayerId;
+    if (currentTurnPlayerId && isBotPlayerId(room, currentTurnPlayerId)) {
+      const actorId = getContinueActorIdForBotTurn(room, currentTurnPlayerId);
+      if (actorId) return { kind: "continue", botPlayerId: currentTurnPlayerId, actorId };
+    }
+  }
+
+  if (
+    anchorView?.phase === "voting" &&
+    anchorView.public.votePhase === "voteSpecialWindow" &&
+    room.settings.automationMode !== "manual" &&
+    !anchorView.public.players.some((player) => {
+      const roomPlayer = room.players.get(player.playerId);
+      return player.status === "alive" && !roomPlayer?.isBot && roomPlayer?.connected;
+    })
+  ) {
+    const actorId = resolveControlActorId(room, { preferredId: room.hostId, allowAnyPresentPlayer: true });
+    if (actorId) return { kind: "finalizeVoting", actorId };
+  }
+
+  for (const bot of getBotPlayers(room)) {
+    try {
+      const view = room.session.getGameView(bot.playerId);
+      if (getPublicPlayerStatus(view, bot.playerId) !== "alive") continue;
+      if (view.phase === "reveal" && view.public.currentTurnPlayerId === bot.playerId) {
+        if (bot.botType === "ai" && hasAiBotRequestInFlight(room, bot.playerId)) continue;
+        return { kind: "reveal", botPlayerId: bot.playerId };
+      }
+      if (view.phase === "voting" && view.public.votePhase === "voting" && !view.public.voting?.hasVoted) {
+        if (bot.botType === "ai" && hasAiBotRequestInFlight(room, bot.playerId)) continue;
+        const disallowed = new Set(view.public.disallowedVoteTargetIdsForYou ?? []);
+        const candidates = new Set(view.public.voteCandidateIds ?? []);
+        const hasLegalTarget = view.public.players.some((player) => {
+          if (player.playerId === bot.playerId || player.status !== "alive") return false;
+          if (disallowed.has(player.playerId)) return false;
+          return candidates.size === 0 || candidates.has(player.playerId);
+        });
+        if (hasLegalTarget) return { kind: "vote", botPlayerId: bot.playerId };
+      }
+    } catch {
+    }
+  }
+
+  return null;
+};
+
+const hasPendingBotAction = (room: Room): boolean => Boolean(getPendingBotAction(room));
+
+const getNextBotDelayMs = (room: Room): number => {
+  const pending = getPendingBotAction(room);
+  if (pending?.kind === "continue" || pending?.kind === "finalizeVoting") return getRuleBotContinueDelayMs();
+  if (pending?.kind === "postGameReveal") return getRuleBotFastActionDelayMs();
+  if (pending?.kind === "vote") return getRuleBotFastActionDelayMs();
+  const currentTurnId = room.session ? getCurrentTurnPlayerId(room) : undefined;
+  const currentTurnPlayer = currentTurnId ? room.players.get(currentTurnId) : undefined;
+  if (room.session && currentTurnPlayer?.isBot && currentTurnId) {
+    try {
+      if (room.session.getGameView(currentTurnId).phase === "reveal_discussion") {
+        return getRuleBotDiscussionDelayMs();
+      }
+    } catch {
+    }
+  }
+  if (room.session) {
+    for (const bot of room.players.values()) {
+      if (!bot.isBot || bot.leftBunker || (bot.botType !== "rule_based" && bot.botType !== "ai")) continue;
+      if (bot.botType === "ai" && hasAiBotRequestInFlight(room, bot.playerId)) continue;
+      try {
+        const view = room.session.getGameView(bot.playerId);
+        if (view.phase === "voting" && view.public.votePhase === "voting" && !view.public.voting?.hasVoted) {
+          return getRuleBotFastActionDelayMs();
+        }
+      } catch {
+      }
+    }
+  }
+  return getRuleBotActionDelayMs();
+};
+
+const aiBotConfig: AiBotConfig = {
+  baseUrl: AI_GATEWAY_BASE_URL,
+  apiKey: AI_GATEWAY_API_KEY,
+  model: AI_GATEWAY_MODEL,
+  timeoutMs: AI_GATEWAY_TIMEOUT_MS,
+  log: logBotScheduler,
+};
+const aiSpecialTimers = new WeakMap<Room, Set<ReturnType<typeof setTimeout>>>();
+
+const showAiThinkingMessage = (room: Room, botPlayerId: string): string | null => {
+  const bot = room.players.get(botPlayerId);
+  if (!bot?.isBot || bot.botType !== "ai" || bot.leftBunker) return null;
+  const message = appendMatchMessage(room, {
+    kind: "bot",
+    sourcePlayerId: botPlayerId,
+    sourceName: bot.name,
+    sourceNameKey: bot.botNameKey,
+    text: "",
+    textKey: "match.bot.ai.thinking",
+  });
+  broadcastGameViews(room);
+  return message.id;
+};
+
+const clearAiThinkingMessage = (room: Room, messageId: string | null): boolean => {
+  if (!messageId) return false;
+  return removeMatchMessage(room, messageId);
+};
+
+const getThinkingBotIdForPendingAction = (room: Room, pending: PendingBotAction): string | null => {
+  if (pending.kind !== "reveal" && pending.kind !== "vote") return null;
+  const bot = room.players.get(pending.botPlayerId);
+  return bot?.isBot && bot.botType === "ai" && !bot.leftBunker ? pending.botPlayerId : null;
+};
+
+const scheduleAiPendingSpecial = (room: Room, botPlayerId: string, pending: AiPendingSpecialDecision): void => {
+  const timer = setTimeout(() => {
+    aiSpecialTimers.get(room)?.delete(timer);
+    if (!rooms.has(room.code) || room.phase !== "game" || !room.session) return;
+    const bot = room.players.get(botPlayerId);
+    if (!bot?.isBot || bot.botType !== "ai" || bot.leftBunker) return;
+    const result = room.session.handleAction(botPlayerId, {
+      type: "applySpecial",
+      payload: {
+        specialInstanceId: pending.specialInstanceId,
+        payload: pending.payload,
+      },
+    });
+    if (result.error || !result.stateChanged) return;
+    if (pending.reason) {
+      appendMatchMessage(room, {
+        kind: "bot",
+        sourcePlayerId: botPlayerId,
+        sourceName: bot.name,
+        sourceNameKey: bot.botNameKey,
+        text: pending.reason,
+      });
+    }
+    broadcastGameViews(room);
+    scheduleRuleBasedBots(room);
+  }, pending.delayMs);
+  let timers = aiSpecialTimers.get(room);
+  if (!timers) {
+    timers = new Set();
+    aiSpecialTimers.set(room, timers);
+  }
+  timers.add(timer);
+  unrefTimer(timer);
+};
+
+const runBotPhaseControlStep = (room: Room, pending: PendingBotAction): { stateChanged: boolean; decision?: { botPlayerId: string; action: "continueRound" | "finalizeVoting" | "postGameReveal" }; error?: string } => {
+  if (!room.session) return { stateChanged: false };
+  if (pending.kind === "continue") {
+    const result = room.session.handleAction(pending.actorId, { type: "continueRound", payload: {} });
+    if (result.error) {
+      return { stateChanged: false, error: result.errorKey ?? result.error };
+    }
+    return {
+      stateChanged: Boolean(result.stateChanged),
+      decision: {
+        botPlayerId: pending.botPlayerId,
+        action: "continueRound",
+      },
+    };
+  }
+  if (pending.kind === "finalizeVoting") {
+    const result = room.session.handleAction(pending.actorId, { type: "finalizeVoting", payload: {} });
+    if (result.error) {
+      return { stateChanged: false, error: result.errorKey ?? result.error };
+    }
+    return {
+      stateChanged: Boolean(result.stateChanged),
+      decision: {
+        botPlayerId: pending.actorId,
+        action: "finalizeVoting",
+      },
+    };
+  }
+  if (pending.kind === "postGameReveal") {
+    const view = room.session.getGameView(pending.botPlayerId);
+    if (view.phase !== "ended" || getPublicPlayerStatus(view, pending.botPlayerId) === "left_bunker") {
+      return { stateChanged: false };
+    }
+    let stateChanged = false;
+    for (const cardId of getHiddenCardIds(view)) {
+      const result = room.session.handleAction(pending.botPlayerId, { type: "revealCard", payload: { cardId } });
+      if (!result.error && result.stateChanged) stateChanged = true;
+    }
+    return {
+      stateChanged,
+      decision: {
+        botPlayerId: pending.botPlayerId,
+        action: "postGameReveal",
+      },
+    };
+  }
+  return { stateChanged: false };
+};
+
+const scheduleRuleBasedBots = (room: Room, delayMs?: number): void => {
+  if (room.phase !== "game" || !room.session) return;
+  const pending = getPendingBotAction(room);
+  if (!pending) return;
+  const effectiveDelayMs = delayMs ?? getNextBotDelayMs(room);
+  const dueAt = Date.now() + effectiveDelayMs;
+  if (room.botActionTimer) {
+    if (room.botActionTimerDueAt !== undefined && room.botActionTimerDueAt <= dueAt) {
+      logBotScheduler("schedule-skip", {
+        room: room.code,
+        pending: pending.kind,
+        dueInMs: Math.max(0, room.botActionTimerDueAt - Date.now()),
+      });
+      return;
+    }
+    clearTimeout(room.botActionTimer);
+    room.botActionTimer = undefined;
+    room.botActionTimerDueAt = undefined;
+    logBotScheduler("reschedule", { room: room.code, pending: pending.kind, delayMs: effectiveDelayMs });
+  } else {
+    logBotScheduler("schedule", { room: room.code, pending: pending.kind, delayMs: effectiveDelayMs });
+  }
+
+  room.botActionTimer = setTimeout(() => {
+    room.botActionTimer = undefined;
+    room.botActionTimerDueAt = undefined;
+    if (!rooms.has(room.code) || room.phase !== "game" || !room.session) return;
+
+    void (async () => {
+      try {
+        const pendingAtTick = getPendingBotAction(room);
+        if (!pendingAtTick) {
+          return;
+        }
+        logBotScheduler("tick", { room: room.code, pending: pendingAtTick.kind });
+        const controlResult =
+          pendingAtTick.kind === "continue" ||
+          pendingAtTick.kind === "finalizeVoting" ||
+          pendingAtTick.kind === "postGameReveal"
+            ? runBotPhaseControlStep(room, pendingAtTick)
+            : undefined;
+        if (controlResult?.error) {
+          logBotScheduler("action-failed", {
+            room: room.code,
+            pending: pendingAtTick.kind,
+            actorId: "actorId" in pendingAtTick ? pendingAtTick.actorId : undefined,
+            botPlayerId: "botPlayerId" in pendingAtTick ? pendingAtTick.botPlayerId : undefined,
+            error: controlResult.error,
+          });
+        }
+        const thinkingBotId = controlResult ? null : getThinkingBotIdForPendingAction(room, pendingAtTick);
+        const thinkingMessageId = thinkingBotId ? showAiThinkingMessage(room, thinkingBotId) : null;
+        let aiDecision: Awaited<ReturnType<typeof runAiBotStep>> = null;
+        let removedThinkingMessage = false;
+        try {
+          aiDecision = controlResult ? null : await runAiBotStep(room, aiBotConfig);
+        } finally {
+          removedThinkingMessage = clearAiThinkingMessage(room, thinkingMessageId);
+        }
+        const result = controlResult?.decision
+          ? { stateChanged: controlResult.stateChanged, decision: controlResult.decision }
+          : aiDecision
+            ? { stateChanged: aiDecision.stateChanged, decision: aiDecision }
+            : runRuleBasedBotStep(room);
+        if (!result.decision) {
+          if (removedThinkingMessage) {
+            broadcastGameViews(room);
+          }
+          if (hasPendingBotAction(room)) {
+            scheduleRuleBasedBots(room, getRuleBotFastActionDelayMs());
+          }
+          return;
+        }
+
+        if (DEV_LOGS) {
+          console.log("[bots] decision", {
+            room: room.code,
+            playerId: result.decision.botPlayerId,
+            action: result.decision.action,
+          });
+        }
+        if (result.stateChanged) {
+          const bot = room.players.get(result.decision.botPlayerId);
+          const explanationKey = "explanationKey" in result.decision ? result.decision.explanationKey : undefined;
+          const explanationVars = "explanationVars" in result.decision ? result.decision.explanationVars : undefined;
+          const explanation = "explanation" in result.decision ? result.decision.explanation : "";
+          const explanationTextVars =
+            "explanationVars" in result.decision
+              ? result.decision.explanationVars
+              : "action" in result.decision && result.decision.action === "revealCard"
+                ? { ...result.decision.explanationVars }
+                : undefined;
+          if (explanation || explanationKey) {
+            appendMatchMessage(room, {
+              kind: "bot",
+              sourcePlayerId: result.decision.botPlayerId,
+              sourceName: bot?.name,
+              sourceNameKey: bot?.botNameKey,
+              text: explanation,
+              textKey: explanationKey,
+              textVars: explanationTextVars ?? explanationVars,
+            });
+          }
+          if ("pendingSpecial" in result.decision && result.decision.pendingSpecial) {
+            scheduleAiPendingSpecial(room, result.decision.botPlayerId, result.decision.pendingSpecial);
+          }
+          broadcastGameViews(room);
+          const nextDelayMs =
+            result.decision.action === "revealCard"
+              ? getRuleBotContinueDelayMs()
+              : result.decision.action === "vote" || result.decision.action === "postGameReveal"
+                ? getRuleBotFastActionDelayMs()
+                : undefined;
+          scheduleRuleBasedBots(room, nextDelayMs);
+        } else if (hasPendingBotAction(room)) {
+          scheduleRuleBasedBots(room, getRuleBotFastActionDelayMs());
+        }
+      } catch (error) {
+        if (DEV_LOGS) console.warn("[bots] scheduler tick failed", error);
+        if (hasPendingBotAction(room)) {
+          scheduleRuleBasedBots(room, getRuleBotFastActionDelayMs());
+        }
+      }
+    })();
+  }, effectiveDelayMs);
+  room.botActionTimerDueAt = dueAt;
+  unrefTimer(room.botActionTimer);
+};
 
 const transferHost = (
   room: Room,
@@ -3190,6 +3769,8 @@ const markPlayerLeftBunker = (room: Room, player: Player) =>
       send(targetPlayer.ws, { type: "hostChanged", payload: { newHostId: nextHostId, reason: hostReason } });
     },
     broadcastGameViews,
+    scheduleRuleBasedBots,
+    logRoomLifecycle,
   });
 
 const computeKickRemainingMs = (player: Player, now = Date.now()): number =>
@@ -3323,6 +3904,7 @@ async function main() {
     LINK_PATHS.spectatorInviteCreate,
     LINK_PATHS.spectatorInviteExchange,
     LINK_PATHS.apiOverlayLinks,
+    LINK_PATHS.apiAiAccessValidate,
   ];
 
   const sensitiveRateLimitRoutes: string[] = [...sensitiveOriginRoutes, LINK_PATHS.overlayControl];
@@ -3732,6 +4314,34 @@ async function main() {
     });
   });
 
+  app.post(LINK_PATHS.apiAiAccessValidate, (req, res) => {
+    const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
+    if (!key) {
+      res.status(400).json({ ok: false, valid: false, message: "AI access key is required." });
+      return;
+    }
+
+    try {
+      const record = validateAiAccessKey(AI_ACCESS_KEYS_FILE, key, { touchLastUsed: true });
+      res.json({
+        ok: true,
+        valid: Boolean(record),
+        record: record
+          ? {
+              id: record.id,
+              label: record.label,
+              scopes: record.scopes,
+              createdAt: record.createdAt,
+              lastUsedAt: record.lastUsedAt,
+            }
+          : null,
+      });
+    } catch (error) {
+      console.warn("[ai-access] validation failed", error);
+      res.status(500).json({ ok: false, valid: false, message: "AI access key validation failed." });
+    }
+  });
+
   app.post("/api/desktop/control-invite", async (req, res) => {
     if (!isDesktopApiAuthorized(req)) {
       res.status(403).json({ ok: false, message: tServerForRoom(undefined, "error.forbidden") });
@@ -3903,6 +4513,7 @@ async function main() {
         updateRulesetIfAuto: updateRulesetIfAutoRuntime,
         broadcastRoomState,
         broadcastGameViews,
+        scheduleRuleBasedBots,
         broadcastEvent: broadcastEventRuntime,
         buildSystemEvent,
         pickNextHost,
@@ -3921,7 +4532,12 @@ async function main() {
     );
     if (!result.ok) {
       const localizedMessage = result.message
-        ? localizeScenarioMessage(result.message, getOverlayLocale(room), room.scenarioId)
+        ? localizeScenarioMessage(
+            result.message,
+            getOverlayLocale(room),
+            room.scenarioId,
+            result.messageVars as Record<string, string | number> | undefined
+          )
         : result.messageKey
           ? tServerForRoom(room, result.messageKey, result.messageVars)
           : tServerForRoom(room, "error.actionRejected");
@@ -3977,6 +4593,11 @@ async function main() {
       if (room.hostTransferTimer) {
         clearTimeout(room.hostTransferTimer);
         room.hostTransferTimer = undefined;
+      }
+      if (room.botActionTimer) {
+        clearTimeout(room.botActionTimer);
+        room.botActionTimer = undefined;
+        room.botActionTimerDueAt = undefined;
       }
       for (const player of room.players.values()) {
         if (player.disconnectTimer) {
@@ -4089,8 +4710,8 @@ async function main() {
     canPlayerAction,
     sendOverlayState,
     tServerForRoom,
-    startGameAsControl: (room) =>
-      startGameAsControl(room, {
+    startGameAsControl: (room) => {
+      const result = startGameAsControl(room, {
         assets,
         rooms,
         classicScenarioId: CLASSIC_SCENARIO_ID,
@@ -4107,7 +4728,12 @@ async function main() {
         addLobbyBotPlayer,
         getCurrentTurnPlayerId,
         resolveControlActorId,
-      }),
+      });
+      if (result.ok) {
+        scheduleRuleBasedBots(room);
+      }
+      return result;
+    },
     isClassicRoom: isClassicRoomRuntime,
     clampInt,
     normalizeForcedDisasterId,
@@ -4117,9 +4743,13 @@ async function main() {
     pickNextHost,
     transferHost,
     removeLobbyPlayer,
+    syncLobbyBotPlayers,
+    validateAiAccessKey: (key) => Boolean(validateAiAccessKey(AI_ACCESS_KEYS_FILE, key, { touchLastUsed: true })),
+    isAiGatewayConfigured: () => Boolean(aiBotConfig.baseUrl && aiBotConfig.apiKey && aiBotConfig.model),
     resolveControlActorId,
     getCurrentTurnPlayerId,
     localizeScenarioMessageForPlayer,
+    scheduleRuleBasedBots,
     broadcastEvent: broadcastEventRuntime,
     buildSystemEvent,
     formatRemaining,

@@ -69,6 +69,7 @@ internal sealed class FakeLocalizationService : ILocalizationService
                 ["status.domain_invalid"] = "Некорректный домен: {0}",
                 ["status.localhost_only_in_dev"] = "localhost разрешён только в dev mode.",
                 ["status.port_invalid"] = "Некорректный порт.",
+                ["status.ai_gateway_timeout_invalid"] = "Некорректный AI timeout.",
                 ["shell.badge"] = "DESKTOP CONTROL",
                 ["shell.title"] = "ProtocolBunker",
                 ["shell.intro"] = "intro",
@@ -87,6 +88,9 @@ internal sealed class FakeLocalizationService : ILocalizationService
                 ["nav.access.title"] = "Доступ",
                 ["nav.access.subtitle"] = "Ссылки",
                 ["nav.access.description"] = "desc",
+                ["nav.ai_keys.title"] = "AI-ключи",
+                ["nav.ai_keys.subtitle"] = "Боты",
+                ["nav.ai_keys.description"] = "desc",
                 ["nav.network.title"] = "Сеть",
                 ["nav.network.subtitle"] = "Сервер",
                 ["nav.network.description"] = "desc",
@@ -141,6 +145,12 @@ internal sealed class FakeLocalizationService : ILocalizationService
                 ["network.labels.public_host"] = "Публичный хост",
                 ["network.labels.domain"] = "Домен",
                 ["network.labels.data_root"] = "Папка данных",
+                ["network.ai_gateway.title"] = "AI gateway",
+                ["network.ai_gateway.body"] = "body",
+                ["network.labels.ai_gateway_base_url"] = "Gateway base URL",
+                ["network.labels.ai_gateway_api_key"] = "Gateway API key",
+                ["network.labels.ai_gateway_model"] = "Gateway model",
+                ["network.labels.ai_gateway_timeout_ms"] = "Timeout, ms",
                 ["network.labels.developer_mode"] = "Режим разработчика",
                 ["network.locked_hint"] = "Останови сервер, чтобы изменить сетевые настройки.",
                 ["network.mode_watermark"] = "local или domain",
@@ -227,6 +237,7 @@ internal sealed class FakeLocalizationService : ILocalizationService
                 ["status.domain_invalid"] = "Invalid domain: {0}",
                 ["status.localhost_only_in_dev"] = "localhost is allowed only in developer mode.",
                 ["status.port_invalid"] = "Invalid port.",
+                ["status.ai_gateway_timeout_invalid"] = "Invalid AI timeout.",
                 ["shell.badge"] = "DESKTOP CONTROL",
                 ["shell.title"] = "ProtocolBunker",
                 ["shell.intro"] = "intro",
@@ -245,6 +256,9 @@ internal sealed class FakeLocalizationService : ILocalizationService
                 ["nav.access.title"] = "Access",
                 ["nav.access.subtitle"] = "Sharing",
                 ["nav.access.description"] = "desc",
+                ["nav.ai_keys.title"] = "AI Keys",
+                ["nav.ai_keys.subtitle"] = "Bots",
+                ["nav.ai_keys.description"] = "desc",
                 ["nav.network.title"] = "Network",
                 ["nav.network.subtitle"] = "Server",
                 ["nav.network.description"] = "desc",
@@ -299,6 +313,12 @@ internal sealed class FakeLocalizationService : ILocalizationService
                 ["network.labels.public_host"] = "Public host",
                 ["network.labels.domain"] = "Domain",
                 ["network.labels.data_root"] = "Data root",
+                ["network.ai_gateway.title"] = "AI gateway",
+                ["network.ai_gateway.body"] = "body",
+                ["network.labels.ai_gateway_base_url"] = "Gateway base URL",
+                ["network.labels.ai_gateway_api_key"] = "Gateway API key",
+                ["network.labels.ai_gateway_model"] = "Gateway model",
+                ["network.labels.ai_gateway_timeout_ms"] = "Timeout, ms",
                 ["network.labels.developer_mode"] = "Developer mode",
                 ["network.locked_hint"] = "Stop the server before changing network settings.",
                 ["network.mode_watermark"] = "local or domain",
@@ -361,6 +381,10 @@ internal sealed class FakeDesktopSettingsService : IDesktopSettingsService
         PublicHost: string.Empty,
         Domain: string.Empty,
         DataFolder: "app/data",
+        AiGatewayBaseUrl: string.Empty,
+        AiGatewayApiKey: string.Empty,
+        AiGatewayModel: "gpt-4o-mini",
+        AiGatewayTimeoutMs: 45000,
         RoomCode: "ABCD",
         DeveloperMode: false,
         HostToken: string.Empty,
@@ -460,4 +484,25 @@ internal sealed class FakeUpdateService : IUpdateService
     public Task<UpdateStatusSnapshot> CheckForUpdatesAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
     public Task OpenReleasesPageAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task OpenSelectedAssetAsync(string assetUrl, CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
+
+internal sealed class FakeAiAccessKeyService : IAiAccessKeyService
+{
+    public Task<AiAccessKeyListResult> ListAsync(DesktopSettingsModel settings, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AiAccessKeyListResult(true, "ok", "keys.json", []));
+
+    public Task<AiAccessKeyCreateResult> CreateAsync(DesktopSettingsModel settings, string label, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AiAccessKeyCreateResult(true, "created", "keys.json", "pbai_test", null));
+
+    public Task<AiAccessKeyActionResult> UpdateLabelAsync(DesktopSettingsModel settings, string id, string label, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AiAccessKeyActionResult(true, "updated", "keys.json", null));
+
+    public Task<AiAccessKeyActionResult> RevokeAsync(DesktopSettingsModel settings, string id, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AiAccessKeyActionResult(true, "revoked", "keys.json", null));
+
+    public Task<AiAccessKeyActionResult> DeleteAsync(DesktopSettingsModel settings, string id, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AiAccessKeyActionResult(true, "deleted", "keys.json", null));
+
+    public Task<AiAccessKeyValidationResult> ValidateAsync(DesktopSettingsModel settings, string key, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AiAccessKeyValidationResult(true, "valid", "keys.json", true, null));
 }

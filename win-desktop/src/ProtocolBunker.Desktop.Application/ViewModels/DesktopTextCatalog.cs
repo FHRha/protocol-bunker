@@ -62,6 +62,32 @@ public sealed class DesktopTextCatalog : ViewModelBase
     public string AccessControlInvite => this["access.sections.control_invite"];
     public string AccessControlBody => this["access.control.body"];
 
+    public string AiKeysBadge => this["ai_keys.badge"];
+    public string AiKeysHeroTitle => this["ai_keys.hero.title"];
+    public string AiKeysCreateTitle => this["ai_keys.create.title"];
+    public string AiKeysCreateBody => this["ai_keys.create.body"];
+    public string AiKeysLabel => this["ai_keys.label"];
+    public string AiKeysLabelWatermark => this["ai_keys.label_watermark"];
+    public string AiKeysCreate => this["ai_keys.actions.create"];
+    public string AiKeysCreatedKey => this["ai_keys.created_key"];
+    public string AiKeysKeysFile => this["ai_keys.keys_file"];
+    public string AiKeysListTitle => this["ai_keys.list.title"];
+    public string AiKeysListEmpty => this["ai_keys.list.empty"];
+    public string AiKeysSelectedTitle => this["ai_keys.selected.title"];
+    public string AiKeysValidateTitle => this["ai_keys.validate.title"];
+    public string AiKeysValidateBody => this["ai_keys.validate.body"];
+    public string AiKeysValidateWatermark => this["ai_keys.validate.watermark"];
+    public string AiKeysValidate => this["ai_keys.actions.validate"];
+    public string AiKeysSaveLabel => this["ai_keys.actions.save_label"];
+    public string AiKeysRevoke => this["ai_keys.actions.revoke"];
+    public string AiKeysDelete => this["ai_keys.actions.delete"];
+    public string AiKeysId => this["ai_keys.labels.id"];
+    public string AiKeysScopes => this["ai_keys.labels.scopes"];
+    public string AiKeysCreatedAt => this["ai_keys.labels.created_at"];
+    public string AiKeysLastUsedAt => this["ai_keys.labels.last_used_at"];
+    public string AiKeysRevokedAt => this["ai_keys.labels.revoked_at"];
+    public string AiKeysStatus => this["ai_keys.labels.status"];
+
     public string NetworkBadge => this["network.badge"];
     public string NetworkHeroTitle => this["network.hero.title"];
     public string NetworkMode => this["network.labels.mode"];
@@ -69,6 +95,12 @@ public sealed class DesktopTextCatalog : ViewModelBase
     public string NetworkPublicHost => this["network.labels.public_host"];
     public string NetworkDomain => this["network.labels.domain"];
     public string NetworkDataRoot => this["network.labels.data_root"];
+    public string NetworkAiGatewayTitle => this["network.ai_gateway.title"];
+    public string NetworkAiGatewayBody => this["network.ai_gateway.body"];
+    public string NetworkAiGatewayBaseUrl => this["network.labels.ai_gateway_base_url"];
+    public string NetworkAiGatewayApiKey => this["network.labels.ai_gateway_api_key"];
+    public string NetworkAiGatewayModel => this["network.labels.ai_gateway_model"];
+    public string NetworkAiGatewayTimeoutMs => this["network.labels.ai_gateway_timeout_ms"];
     public string NetworkDeveloperMode => this["network.labels.developer_mode"];
     public string NetworkLockedHint => this["network.locked_hint"];
     public string NetworkModeWatermark => this["network.mode_watermark"];
@@ -102,6 +134,7 @@ public sealed class DesktopTextCatalog : ViewModelBase
     {
         DesktopSection.Home => this["nav.home.title"],
         DesktopSection.Access => this["nav.access.title"],
+        DesktopSection.AiKeys => this["nav.ai_keys.title"],
         DesktopSection.Network => this["nav.network.title"],
         DesktopSection.Diagnostics => this["nav.diagnostics.title"],
         DesktopSection.Updates => this["nav.updates.title"],
@@ -112,6 +145,7 @@ public sealed class DesktopTextCatalog : ViewModelBase
     {
         DesktopSection.Home => this["nav.home.subtitle"],
         DesktopSection.Access => this["nav.access.subtitle"],
+        DesktopSection.AiKeys => this["nav.ai_keys.subtitle"],
         DesktopSection.Network => this["nav.network.subtitle"],
         DesktopSection.Diagnostics => this["nav.diagnostics.subtitle"],
         DesktopSection.Updates => this["nav.updates.subtitle"],
@@ -122,6 +156,7 @@ public sealed class DesktopTextCatalog : ViewModelBase
     {
         DesktopSection.Home => this["nav.home.description"],
         DesktopSection.Access => this["nav.access.description"],
+        DesktopSection.AiKeys => this["nav.ai_keys.description"],
         DesktopSection.Network => this["nav.network.description"],
         DesktopSection.Diagnostics => this["nav.diagnostics.description"],
         DesktopSection.Updates => this["nav.updates.description"],

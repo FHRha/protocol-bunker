@@ -25,6 +25,7 @@ public sealed class DesktopRoomLinkService : IRoomLinkService
     private readonly DesktopApiSessionService _desktopApiSessionService;
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly SemaphoreSlim _publicIpLock = new(1, 1);
+    private static string? s_cachedLanIp;
     private string? _resolvedPublicIp;
 
     public DesktopRoomLinkService(
@@ -44,7 +45,11 @@ public sealed class DesktopRoomLinkService : IRoomLinkService
         var settings = settingsOverride ?? await _desktopSettingsService.LoadAsync(cancellationToken);
         var runtime = await _runtimeService.GetHomeStatusAsync(settings, cancellationToken);
         var port = runtime.Port > 0 ? runtime.Port : settings.Port;
-        var (internalBaseUrl, externalBaseUrl) = await ResolveBaseEndpointsAsync(port, settings, cancellationToken);
+        var (internalBaseUrl, externalBaseUrl) = await ResolveBaseEndpointsAsync(
+            port,
+            settings,
+            allowPublicIpFallback: runtime.RuntimeState == RuntimeState.Running,
+            cancellationToken);
 
         if (runtime.RuntimeState != RuntimeState.Running)
         {
@@ -207,10 +212,11 @@ public sealed class DesktopRoomLinkService : IRoomLinkService
     private async Task<(string InternalBaseUrl, string? ExternalBaseUrl)> ResolveBaseEndpointsAsync(
         int port,
         DesktopSettingsModel settings,
+        bool allowPublicIpFallback,
         CancellationToken cancellationToken)
     {
         var fallbackInternal = BuildInternalBase(settings, port);
-        var fallbackExternal = await BuildFallbackExternalBaseAsync(settings, port, cancellationToken);
+        var fallbackExternal = await BuildFallbackExternalBaseAsync(settings, port, allowPublicIpFallback, cancellationToken);
         if (port <= 0)
         {
             return (fallbackInternal, fallbackExternal);
@@ -245,12 +251,18 @@ public sealed class DesktopRoomLinkService : IRoomLinkService
     private async Task<string?> BuildFallbackExternalBaseAsync(
         DesktopSettingsModel settings,
         int port,
+        bool allowPublicIpFallback,
         CancellationToken cancellationToken)
     {
         var configured = BuildConfiguredExternalBase(settings, port);
         if (!string.IsNullOrWhiteSpace(configured))
         {
             return configured;
+        }
+
+        if (!allowPublicIpFallback)
+        {
+            return null;
         }
 
         var publicIp = await TryResolvePublicIpAsync(cancellationToken);
@@ -347,6 +359,11 @@ public sealed class DesktopRoomLinkService : IRoomLinkService
 
     private static string SelectLanIp()
     {
+        if (!string.IsNullOrWhiteSpace(s_cachedLanIp))
+        {
+            return s_cachedLanIp;
+        }
+
         var bestIp = "127.0.0.1";
         var bestScore = -1;
 
@@ -385,6 +402,7 @@ public sealed class DesktopRoomLinkService : IRoomLinkService
             }
         }
 
+        s_cachedLanIp = bestIp;
         return bestIp;
     }
 

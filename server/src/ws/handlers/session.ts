@@ -92,6 +92,7 @@ export interface SessionHandlerDeps {
   getScenarioStatus: (room: Room, playerId: string) => string | undefined;
   computeKickRemainingMs: (player: Player, now?: number) => number;
   markPlayerLeftBunker: (room: Room, player: Player) => void;
+  removeLobbyPlayer: (room: Room, playerId: string) => boolean;
   getEffectiveMaxPlayers: (room: Room) => number;
   getRoleForToken: (room: Room, token: string) => import("@bunker/shared").Role | null;
   canControl: (role: import("@bunker/shared").Role) => boolean;
@@ -291,6 +292,11 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
     }
   }
 
+  if (existing?.disconnectedBotTakeoverAt) {
+    deps.sendReconnectForbidden(ws, room);
+    return;
+  }
+
   if (existing && room.phase === "game") {
     const status = deps.getScenarioStatus(room, existing.playerId);
     if (status === "eliminated" && existing.disconnectedAt) {
@@ -310,6 +316,22 @@ export function handleHelloMessage(ws: WebSocket, message: HelloMessage, deps: S
         code: "LEFT_BUNKER",
       });
       return;
+    }
+  }
+
+  if (!existing && room.phase === "lobby" && room.players.size >= deps.getEffectiveMaxPlayers(room)) {
+    const replaceableBot = Array.from(room.players.values()).reverse().find((player) => player.isBot);
+    if (replaceableBot) {
+      deps.removeLobbyPlayer(room, replaceableBot.playerId);
+      const nextBotCount = Array.from(room.players.values()).filter((player) => player.isBot).length;
+      room.settings = {
+        ...room.settings,
+        bots: {
+          ...room.settings.bots,
+          enabled: nextBotCount > 0,
+          count: nextBotCount,
+        },
+      };
     }
   }
 
@@ -378,6 +400,11 @@ export function handleResumeMessage(ws: WebSocket, message: ResumeMessage, deps:
       deps.sendReconnectForbidden(ws, room);
       return;
     }
+  }
+
+  if (existing.disconnectedBotTakeoverAt) {
+    deps.sendReconnectForbidden(ws, room);
+    return;
   }
 
   if (room.phase === "game") {

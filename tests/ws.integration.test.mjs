@@ -344,6 +344,8 @@ test("ws integration: rule-based lobby bots reveal and vote in classic flow", as
       BUNKER_SERVE_CLIENT: "false",
       BUNKER_RULE_BOT_MIN_DELAY_MS: "1",
       BUNKER_RULE_BOT_MAX_DELAY_MS: "1",
+      BUNKER_RULE_BOT_DISCUSSION_MIN_DELAY_MS: "1",
+      BUNKER_RULE_BOT_DISCUSSION_MAX_DELAY_MS: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,

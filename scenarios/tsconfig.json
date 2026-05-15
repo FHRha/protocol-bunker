@@ -3,6 +3,8 @@
   "compilerOptions": {
     "moduleResolution": "Bundler",
     "module": "ESNext",
+    "declaration": true,
+    "declarationMap": true,
     "paths": {
       "@bunker/shared": ["../shared/src/index.ts"]
     }

@@ -369,7 +369,7 @@ test("ws integration: rule-based lobby bots reveal and vote in classic flow", as
       },
     });
 
-    await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
+    const hostAck = await nextMessage(hostWs, (msg) => msg?.type === "helloAck");
     const initialRoomStateMessage = await nextMessage(hostWs, (msg) => msg?.type === "roomState");
     const initialRoomState = getRoomStateFromMessage(initialRoomStateMessage);
     assert.ok(initialRoomState?.settings, "room settings must be present");
@@ -404,14 +404,45 @@ test("ws integration: rule-based lobby bots reveal and vote in classic flow", as
     const hiddenHostCard = hostStartView.you.hand.find((card) => !card.revealed);
     assert.ok(hiddenHostCard?.instanceId, "host must have a hidden card to reveal");
 
-    sendJson(hostWs, {
-      type: "revealCard",
-      payload: { cardId: hiddenHostCard.instanceId },
-    });
-    await waitForGameView(hostWs, (view) => view.phase === "reveal_discussion" && view.public.canContinue === true);
+    let hostView = hostStartView;
+    for (let guard = 0; guard < 30; guard += 1) {
+      if (hostView.phase === "voting" && hostView.public.votePhase === "voting") {
+        break;
+      }
 
-    sendJson(hostWs, { type: "continueRound", payload: {} });
-    const votingView = await waitForGameView(hostWs, (view) => view.phase === "voting" && view.public.votePhase === "voting");
+      if (hostView.phase === "reveal") {
+        const turnPlayerId = String(hostView.public.currentTurnPlayerId ?? "");
+        if (turnPlayerId === hostAck.payload.playerId) {
+          const hiddenCard = hostView.you.hand.find((card) => !card.revealed);
+          assert.ok(hiddenCard?.instanceId, "host must always have a hidden card while reveal phase continues");
+          sendJson(hostWs, {
+            type: "revealCard",
+            payload: { cardId: hiddenCard.instanceId },
+          });
+        }
+      } else if (hostView.phase === "reveal_discussion") {
+        sendJson(hostWs, { type: "continueRound", payload: {} });
+      } else {
+        throw new Error(`Unexpected phase while advancing to voting: ${hostView.phase}`);
+      }
+
+      const nextMsg = await nextMessage(
+        hostWs,
+        (msg) => msg?.type === "gameView" || msg?.type === "statePatch" || msg?.type === "error"
+      );
+      if (nextMsg.type === "error") {
+        throw new Error(`Failed to advance to voting: ${nextMsg.payload?.message ?? "unknown"}`);
+      }
+
+      const nextView = getGameViewFromMessage(nextMsg);
+      if (nextView) {
+        hostView = nextView;
+      }
+    }
+
+    assert.equal(hostView.phase, "voting", "game must reach voting phase");
+    assert.equal(hostView.public.votePhase, "voting", "voting must enter vote collection phase");
+    const votingView = hostView;
     const publicVotes = votingView.public.votesPublic ?? [];
 
     for (const bot of botPlayers) {

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "outDir": "dist",
+    "rootDir": "..",
+    "noEmit": true,
     "types": ["node"],
     "paths": {
       "@bunker/shared": ["../shared/src/index.ts"],

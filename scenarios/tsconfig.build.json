@@ -3,6 +3,7 @@
   "compilerOptions": {
     "noEmit": false,
     "declarationMap": false,
+    "outDir": "dist",
     "rootDir": "src",
     "paths": {
       "@bunker/shared": ["../shared/dist/index.d.ts"]

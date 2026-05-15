@@ -2,7 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    "outDir": "dist",
     "rootDir": "src",
+    "baseUrl": ".",
     "paths": {
       "@bunker/shared": ["../shared/dist/index.d.ts"],
       "@bunker/scenarios": ["../scenarios/dist/index.d.ts"]

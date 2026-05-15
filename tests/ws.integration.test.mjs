@@ -378,26 +378,27 @@ test("ws integration: rule-based lobby bots reveal and vote in classic flow", as
       type: "updateSettings",
       payload: {
         ...initialRoomState.settings,
-        maxPlayers: 4,
+        maxPlayers: 5,
         bots: {
           enabled: true,
           type: "rule_based",
-          count: 3,
+          count: 4,
         },
       },
     });
 
     const botsRoomStateMessage = await nextMessage(hostWs, (msg) => {
       const state = getRoomStateFromMessage(msg);
-      return state?.players?.filter((player) => player.isBot).length === 3;
+      return state?.players?.filter((player) => player.isBot).length === 4;
     });
     const botsRoomState = getRoomStateFromMessage(botsRoomStateMessage);
     const botPlayers = botsRoomState.players.filter((player) => player.isBot);
     assert.deepEqual(
-      botPlayers.map((player) => player.name),
+      botPlayers.slice(0, 3).map((player) => player.name),
       ["Mira", "Anton", "Vera"],
       "bots should receive localized automatic names"
     );
+    assert.equal(botPlayers.length, 4, "room should include four rule-based bots");
 
     sendJson(hostWs, { type: "startGame", payload: {} });
     const hostStartView = await waitForGameView(hostWs, (view) => view.phase === "reveal");

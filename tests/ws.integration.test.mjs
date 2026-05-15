@@ -426,18 +426,16 @@ test("ws integration: rule-based lobby bots reveal and vote in classic flow", as
         throw new Error(`Unexpected phase while advancing to voting: ${hostView.phase}`);
       }
 
-      const nextMsg = await nextMessage(
+      const previousPhase = hostView.phase;
+      const previousTurnPlayerId = String(hostView.public.currentTurnPlayerId ?? "");
+      hostView = await waitForGameView(
         hostWs,
-        (msg) => msg?.type === "gameView" || msg?.type === "statePatch" || msg?.type === "error"
+        (view) =>
+          view.phase === "voting" && view.public.votePhase === "voting" ||
+          view.phase !== previousPhase ||
+          String(view.public.currentTurnPlayerId ?? "") !== previousTurnPlayerId,
+        { allowCurrent: false }
       );
-      if (nextMsg.type === "error") {
-        throw new Error(`Failed to advance to voting: ${nextMsg.payload?.message ?? "unknown"}`);
-      }
-
-      const nextView = getGameViewFromMessage(nextMsg);
-      if (nextView) {
-        hostView = nextView;
-      }
     }
 
     assert.equal(hostView.phase, "voting", "game must reach voting phase");

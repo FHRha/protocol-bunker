@@ -39,6 +39,7 @@ tmp/
 **/.vite/
 .turbo/
 **/.turbo/
+*.csproj.iscache
 coverage/
 **/coverage/
 

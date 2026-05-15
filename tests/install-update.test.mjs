@@ -58,6 +58,7 @@ test("install.sh: install/update preserve settings+data and keep selected qualit
   const mockedInstall = path.join(root, "install.sh");
   const fakeCurl = path.join(fakeBin, "curl");
   const callLogFile = path.join(root, "curl.calls.log");
+  const nodeCallLogFile = path.join(root, "node.calls.log");
   const appDir = path.join(homeDir, ".local", "share", "protocol-bunker", "Protocol-Bunker");
   const launcherPath = path.join(homeDir, ".local", "bin", "protocol-bunker");
   const portableEnvPath = path.join(appDir, "portable.env");
@@ -66,10 +67,25 @@ test("install.sh: install/update preserve settings+data and keep selected qualit
   await mkdir(fakeBin, { recursive: true });
   await mkdir(path.join(packageDir, "app", "data"), { recursive: true });
   await mkdir(path.join(packageDir, "app", "node"), { recursive: true });
+  await mkdir(path.join(packageDir, "app", "server", "dist", "ai"), { recursive: true });
 
   await writeFile(path.join(packageDir, "start.sh"), "#!/usr/bin/env bash\necho start\n", "utf8");
   await chmod(path.join(packageDir, "start.sh"), 0o755);
-  await writeFile(path.join(packageDir, "app", "node", "node"), "fake-node\n", "utf8");
+  await writeFile(
+    path.join(packageDir, "app", "node", "node"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+{
+  echo "PWD=$PWD"
+  echo "AI_FILE=\${BUNKER_AI_ACCESS_KEYS_FILE:-}"
+  echo "ARG1=\${1:-}"
+  echo "ARG2=\${2:-}"
+} >> "$MOCK_NODE_CALL_LOG"
+`,
+    "utf8"
+  );
+  await chmod(path.join(packageDir, "app", "node", "node"), 0o755);
+  await writeFile(path.join(packageDir, "app", "server", "dist", "ai", "accessKeysCli.js"), "module.exports={};\n", "utf8");
   await writeFile(
     path.join(packageDir, "portable.env"),
     `# Protocol: Bunker Portable Configuration
@@ -146,6 +162,7 @@ exit 1
     MOCK_TAR_PATH: assetTar,
     MOCK_INSTALL_SCRIPT: mockedInstall,
     MOCK_CURL_CALL_LOG: callLogFile,
+    MOCK_NODE_CALL_LOG: nodeCallLogFile,
   };
 
   await run(
@@ -190,6 +207,12 @@ exit 1
   assert.match(launcher, /--edition "\$EDITION"/);
   assert.match(launcher, /--quality "\$QUALITY"/);
   assert.match(launcher, /--service-scope "\$SERVICE_SCOPE"/);
+  await run("bash", [launcherPath, "ai:key:list"], { env: commonEnv, cwd: root });
+  const nodeCalls = await readFile(nodeCallLogFile, "utf8");
+  assert.match(nodeCalls, /PWD=.*app[\\/]server/m);
+  assert.match(nodeCalls, /^AI_FILE=\.\.\/\.\.\/data\/ai-access-keys\.json$/m);
+  assert.match(nodeCalls, /ARG1=.*accessKeysCli\.js/m);
+  assert.match(nodeCalls, /^ARG2=list$/m);
 
   await run("bash", [launcherPath, "--update", "v0.2.6"], { env: commonEnv, cwd: root });
   const envAfterUpdate = await readFile(portableEnvPath, "utf8");

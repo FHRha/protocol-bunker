@@ -522,7 +522,11 @@ run_ai_key_cli() {
   local command_name="\$1"
   shift
   local node_bin="${APP_DIR}/app/node/node"
+  local server_root="${APP_DIR}/app/server"
   local cli_file="${APP_DIR}/app/server/dist/ai/accessKeysCli.js"
+  local configured_keys_file="\${BUNKER_AI_ACCESS_KEYS_FILE:-}"
+  local env_file
+  local line
 
   if [ ! -x "\$node_bin" ]; then
     node_bin="$(command -v node || true)"
@@ -533,12 +537,40 @@ run_ai_key_cli() {
     exit 1
   fi
 
+  if [ ! -d "\$server_root" ]; then
+    msg "Server root not found: \$server_root"
+    exit 1
+  fi
+
   if [ ! -f "\$cli_file" ]; then
     msg "AI access-key CLI not found: \$cli_file"
     exit 1
   fi
 
-  "\$node_bin" "\$cli_file" "\$command_name" "\$@"
+  if [ -z "\$configured_keys_file" ]; then
+    for env_file in "${APP_DIR}/portable.env" "${APP_DIR}/.env"; do
+      [ -f "\$env_file" ] || continue
+      line="$(grep -E '^[[:space:]]*BUNKER_AI_ACCESS_KEYS_FILE[[:space:]]*=' "\$env_file" | tail -n 1 || true)"
+      [ -n "\$line" ] || continue
+      configured_keys_file="${line#*=}"
+      configured_keys_file="$(printf '%s' "\$configured_keys_file" | sed -E 's/[[:space:]]+#.*$//')"
+      configured_keys_file="$(printf '%s' "\$configured_keys_file" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+      configured_keys_file="${configured_keys_file%\'}"
+      configured_keys_file="${configured_keys_file#\'}"
+      configured_keys_file="${configured_keys_file%\"}"
+      configured_keys_file="${configured_keys_file#\"}"
+      [ -n "\$configured_keys_file" ] && break
+    done
+  fi
+
+  if [ -z "\$configured_keys_file" ]; then
+    configured_keys_file="../../data/ai-access-keys.json"
+  fi
+
+  (
+    cd "\$server_root"
+    BUNKER_AI_ACCESS_KEYS_FILE="\$configured_keys_file" "\$node_bin" "\$cli_file" "\$command_name" "\$@"
+  )
 }
 
 case "\${1:-}" in

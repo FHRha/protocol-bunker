@@ -307,7 +307,7 @@ function ensureJsBuildOutputsOrThrow() {
     return;
   }
   throw new Error(
-    `[pack:win] --skip-build requested, but build outputs are missing. Run "pnpm -r build" first.\n${missing.join(
+    `[pack:win] --skip-build requested, but build outputs are missing. Run "pnpm run build" first.\n${missing.join(
       "\n"
     )}`
   );

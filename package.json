@@ -13,7 +13,7 @@
     "dev": "concurrently --kill-others --kill-others-on-fail -n server,client \"pnpm -C server dev\" \"pnpm -C client dev\"",
     "sync:icons": "node scripts/sync-icons.mjs",
     "build": "pnpm run sync:icons && pnpm -C shared build && pnpm -C scenarios build && pnpm -C server build && pnpm -C client build",
-    "build:all": "pnpm run sync:icons && pnpm -r build",
+    "build:all": "pnpm run build",
     "build:release-base": "pnpm run sync:icons && pnpm -C shared build && pnpm -C scenarios build && pnpm -C server build && pnpm -C client build",
     "locale:audit": "node scripts/localization-audit.mjs",
     "locale:check": "node scripts/localization-audit.mjs --strict",

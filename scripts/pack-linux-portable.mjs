@@ -299,7 +299,7 @@ function ensureJsBuildOutputsOrThrow() {
   const missing = ensureAnyMissing(required);
   if (missing.length === 0) return;
   throw new Error(
-    `[pack:linux] --skip-build requested, but build outputs are missing. Run "pnpm -r build" first.\n${missing.join(
+    `[pack:linux] --skip-build requested, but build outputs are missing. Run "pnpm run build" first.\n${missing.join(
       "\n"
     )}`
   );

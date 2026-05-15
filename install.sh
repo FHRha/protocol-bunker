@@ -548,17 +548,17 @@ run_ai_key_cli() {
   fi
 
   if [ -z "\$configured_keys_file" ]; then
-    for env_file in "${APP_DIR}/portable.env" "${APP_DIR}/.env"; do
+    for env_file in "\${APP_DIR}/portable.env" "\${APP_DIR}/.env"; do
       [ -f "\$env_file" ] || continue
-      line="$(grep -E '^[[:space:]]*BUNKER_AI_ACCESS_KEYS_FILE[[:space:]]*=' "\$env_file" | tail -n 1 || true)"
+      line="\$(grep -E '^[[:space:]]*BUNKER_AI_ACCESS_KEYS_FILE[[:space:]]*=' "\$env_file" | tail -n 1 || true)"
       [ -n "\$line" ] || continue
-      configured_keys_file="${line#*=}"
-      configured_keys_file="$(printf '%s' "\$configured_keys_file" | sed -E 's/[[:space:]]+#.*$//')"
-      configured_keys_file="$(printf '%s' "\$configured_keys_file" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-      configured_keys_file="${configured_keys_file%\'}"
-      configured_keys_file="${configured_keys_file#\'}"
-      configured_keys_file="${configured_keys_file%\"}"
-      configured_keys_file="${configured_keys_file#\"}"
+      configured_keys_file="\${line#*=}"
+      configured_keys_file="\$(printf '%s' "\$configured_keys_file" | sed -E 's/[[:space:]]+#.*$//')"
+      configured_keys_file="\$(printf '%s' "\$configured_keys_file" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+      configured_keys_file="\${configured_keys_file%\'}"
+      configured_keys_file="\${configured_keys_file#\'}"
+      configured_keys_file="\${configured_keys_file%\"}"
+      configured_keys_file="\${configured_keys_file#\"}"
       [ -n "\$configured_keys_file" ] && break
     done
   fi

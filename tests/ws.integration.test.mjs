@@ -441,8 +441,17 @@ test("ws integration: rule-based lobby bots reveal and vote in classic flow", as
 
     assert.equal(hostView.phase, "voting", "game must reach voting phase");
     assert.equal(hostView.public.votePhase, "voting", "voting must enter vote collection phase");
-    const votingView = hostView;
-    const publicVotes = votingView.public.votesPublic ?? [];
+    hostView = await waitForGameView(
+      hostWs,
+      (view) =>
+        view.phase === "voting" &&
+        view.public.votePhase === "voting" &&
+        botPlayers.every((bot) => {
+          const vote = view.public.votesPublic?.find((entry) => entry.voterId === bot.playerId);
+          return vote?.status === "voted" && Boolean(vote?.targetId);
+        })
+    );
+    const publicVotes = hostView.public.votesPublic ?? [];
 
     for (const bot of botPlayers) {
       const vote = publicVotes.find((entry) => entry.voterId === bot.playerId);
